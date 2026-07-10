@@ -1,132 +1,82 @@
-import {
-  fetchCongressBillActions,
-  fetchCongressBillDetail,
-  fetchCongressBills,
-  fetchCongressBillTextVersions,
-  getDefaultCongress,
-  isCongressBillsConfigured,
-} from "@/lib/adapters/congress";
-import {
-  mergeCongressBillDetail,
-  normalizeCongressBillListItem,
-  parseBillId,
-} from "@/lib/normalizers/bills";
-import type { CongressBillListItem } from "@/types/congress";
+import { emptyResult, withData } from "@/lib/data/result";
+import { getStoredBillById, listStoredBills } from "@/lib/supabase/bills";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getLatestSyncRun } from "@/lib/supabase/sync";
 import type { Bill } from "@/types/civic";
 
-export type BillDataSource = "live-congress" | "unconfigured" | "unavailable";
-
-function withRelatedBills(bills: Bill[]) {
-  return bills.map((bill) => ({
-    ...bill,
-    relatedBillIds: bills
-      .filter((candidate) =>
-        candidate.id !== bill.id
-        && (
-          candidate.topic === bill.topic
-          || candidate.sponsorId === bill.sponsorId
-          || candidate.committeeId === bill.committeeId
-        ),
-      )
-      .slice(0, 3)
-      .map((candidate) => candidate.id),
-  }));
-}
+export type BillDataSource = "supabase" | "unconfigured" | "unavailable";
 
 export async function getBillsData() {
-  if (!isCongressBillsConfigured()) {
+  if (!isSupabaseConfigured()) {
     return {
-      source: "unconfigured" as BillDataSource,
+      ...emptyResult("unconfigured", "federal_legislation_sync", [] as Bill[], "unconfigured"),
       bills: [] as Bill[],
     };
   }
 
   try {
-    const liveBills = await fetchCongressBills({
-      congress: getDefaultCongress(),
-      limit: 24,
-    });
-
+    const [bills, federalRun, stateRun] = await Promise.all([
+      listStoredBills(),
+      getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
+      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
+    ]);
+    const latestRun = [federalRun, stateRun]
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
+    const result = withData(
+      bills.length > 0 ? "supabase" : "unavailable",
+      "federal_legislation_sync",
+      bills,
+      latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: bills.length > 0 ? "live" : "empty",
+        detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
+      },
+    );
     return {
-      source: "live-congress" as BillDataSource,
-      bills: withRelatedBills(liveBills.map(normalizeCongressBillListItem)),
+      ...result,
+      source: result.source as BillDataSource,
+      bills,
     };
-  } catch {
+  } catch (error) {
     return {
-      source: "unavailable" as BillDataSource,
+      ...emptyResult("unavailable", "federal_legislation_sync", [] as Bill[], "unavailable", error instanceof Error ? error.message : "Stored bill read failed"),
       bills: [] as Bill[],
     };
   }
 }
 
 export async function getBillData(billId: string) {
-  if (!isCongressBillsConfigured()) {
+  if (!isSupabaseConfigured()) {
     return {
-      source: "unconfigured" as BillDataSource,
-      bill: undefined,
-    };
-  }
-
-  const parsed = parseBillId(billId);
-  if (!parsed) {
-    return {
-      source: "unavailable" as BillDataSource,
+      ...emptyResult("unconfigured", "federal_legislation_sync", undefined, "unconfigured"),
       bill: undefined,
     };
   }
 
   try {
-    const list = await fetchCongressBills({
-      congress: getDefaultCongress(),
-      limit: 250,
-    });
-    const normalizedBills = withRelatedBills(list.map(normalizeCongressBillListItem));
-    const listBill = normalizedBills.find((candidate) => candidate.id === billId);
-
-    const [detail, actions, textVersions] = await Promise.all([
-      fetchCongressBillDetail({
-        congress: getDefaultCongress(),
-        billType: parsed.billType,
-        billNumber: parsed.billNumber,
-      }),
-      fetchCongressBillActions({
-        congress: getDefaultCongress(),
-        billType: parsed.billType,
-        billNumber: parsed.billNumber,
-      }).catch(() => undefined),
-      fetchCongressBillTextVersions({
-        congress: getDefaultCongress(),
-        billType: parsed.billType,
-        billNumber: parsed.billNumber,
-      }).catch(() => undefined),
+    const [bill, latestRun] = await Promise.all([
+      getStoredBillById(billId),
+      getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
     ]);
-
-    const seed =
-      listBill
-      || normalizeCongressBillListItem((detail.bill || {}) as CongressBillListItem);
-    const merged = mergeCongressBillDetail(seed, detail, actions, textVersions);
-    const relatedBillIds = normalizedBills
-      .filter((candidate) =>
-        candidate.id !== merged.id
-        && (
-          candidate.topic === merged.topic
-          || candidate.sponsorId === merged.sponsorId
-          || candidate.committeeId === merged.committeeId
-        ),
-      )
-      .slice(0, 3)
-      .map((candidate) => candidate.id);
-
-    return {
-      source: "live-congress" as BillDataSource,
-      bill: {
-        ...merged,
-        relatedBillIds,
+    const result = withData(
+      bill ? "supabase" : "unavailable",
+      "federal_legislation_sync",
+      bill,
+      latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: bill ? "live" : "empty",
+        detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
       },
-    };
-  } catch {
+    );
     return {
-      source: "unavailable" as BillDataSource,
+      ...result,
+      source: result.source as BillDataSource,
+      bill,
+    };
+  } catch (error) {
+    return {
+      ...emptyResult("unavailable", "federal_legislation_sync", undefined, "unavailable", error instanceof Error ? error.message : "Stored bill read failed"),
       bill: undefined,
     };
   }
@@ -137,14 +87,14 @@ export async function getBillRouteParams() {
   return bills.map((bill) => ({ billId: bill.id }));
 }
 
-export function isLiveBillsSource(source: BillDataSource) {
-  return source === "live-congress";
+export function isLiveBillsSource(source: string) {
+  return source === "supabase";
 }
 
-export function getBillsSourceLabel(source: BillDataSource) {
-  if (source === "live-congress") return "Live Congress.gov data";
-  if (source === "unconfigured") return "Congress.gov API not configured";
-  return "Congress.gov data unavailable";
+export function getBillsSourceLabel(source: string) {
+  if (source === "supabase") return "Stored legislative data";
+  if (source === "unconfigured") return "Supabase is not configured";
+  return "Stored bill data unavailable";
 }
 
 export function getRecentlyPassedBills(bills: Bill[]) {

@@ -22,6 +22,8 @@ export const revalidate = 21600;
 export default async function HomePage() {
   const { analytics, feed } = await getDashboardData();
   const live = analytics.activeBills > 0;
+  const featuredBill = feed.trendingBills[0];
+  const secondaryBills = feed.trendingBills.slice(1, 4);
 
   return (
     <div className="space-y-6">
@@ -32,7 +34,7 @@ export default async function HomePage() {
         actions={
           <>
             <SourceBadge
-              label={live ? "Live dashboard data" : "Dashboard awaiting live data"}
+              label={live ? "Stored dashboard data" : "Dashboard awaiting stored data"}
               live={live}
             />
             <Link
@@ -50,7 +52,7 @@ export default async function HomePage() {
         <SparklineCard
           title="Active bills"
           value={analytics.activeBills.toLocaleString()}
-          change="Tracked from the current live bill feed"
+          change="Tracked from the current stored bill set"
           icon={<Landmark className="h-4 w-4" />}
           tone="emerald"
           data={analytics.activitySeries}
@@ -66,7 +68,7 @@ export default async function HomePage() {
         <SparklineCard
           title="Tracked committees"
           value={analytics.committees.toString()}
-          change="Current committee records from Congress.gov"
+          change="Committee records available in the current dataset"
           icon={<Building2 className="h-4 w-4" />}
           tone="sky"
           data={analytics.committeeSeries}
@@ -85,40 +87,65 @@ export default async function HomePage() {
         <div className="space-y-6">
           <SectionCard
             title="Trending now"
-            description="Fast-moving federal bills with strong cross-links into sponsors, committees, and issue areas."
+            description="Fast-moving bills with strong cross-links into sponsors, committees, and issue areas."
           >
             {feed.trendingBills.length > 0 ? (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {feed.trendingBills.map((bill) => (
+              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                {featuredBill ? (
                   <Link
-                    key={bill.id}
-                    href={`/bills/${bill.id}`}
-                    className="rounded-3xl border border-[var(--line)] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-[0_20px_50px_rgba(15,23,42,0.08)]"
+                    href={`/bills/${featuredBill.id}`}
+                    className="rounded-[32px] border border-[var(--line)] bg-[linear-gradient(135deg,_#0f172a,_#1e3a8a)] p-6 text-white transition hover:-translate-y-0.5"
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-                          {bill.number}
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/70">
+                          {featuredBill.number}
                         </p>
-                        <h3 className="mt-2 text-sm font-semibold text-[var(--ink)]">
-                          {bill.title}
+                        <h3 className="mt-3 text-2xl font-semibold leading-tight">
+                          {featuredBill.title}
                         </h3>
                       </div>
-                      <StatusPill status={bill.status} />
+                      <StatusPill status={featuredBill.status} />
                     </div>
-                    <p className="mt-3 text-sm text-[var(--muted)]">
-                      {bill.summary}
+                    <p className="mt-4 max-w-2xl text-sm leading-6 text-white/80">
+                      {featuredBill.summary}
                     </p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <EntityBadge>{bill.topic}</EntityBadge>
-                      <EntityBadge tone="subtle">{bill.sponsorName}</EntityBadge>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <EntityBadge>{featuredBill.topic}</EntityBadge>
+                      <EntityBadge tone="subtle">{featuredBill.sponsorName}</EntityBadge>
+                      <EntityBadge tone="subtle">{featuredBill.committeeName}</EntityBadge>
                     </div>
                   </Link>
-                ))}
+                ) : null}
+                <div className="grid gap-4">
+                  {secondaryBills.map((bill) => (
+                    <Link
+                      key={bill.id}
+                      href={`/bills/${bill.id}`}
+                      className="rounded-3xl border border-[var(--line)] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-[0_20px_50px_rgba(15,23,42,0.08)]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+                            {bill.number}
+                          </p>
+                          <h3 className="mt-2 text-sm font-semibold text-[var(--ink)]">
+                            {bill.title}
+                          </h3>
+                        </div>
+                        <StatusPill status={bill.status} />
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <EntityBadge>{bill.topic}</EntityBadge>
+                        <EntityBadge tone="subtle">{bill.sponsorName}</EntityBadge>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-[var(--muted)]">
-                Add a Congress.gov API key to populate the live dashboard.
+                Run the legislation sync to populate the dashboard.
               </p>
             )}
           </SectionCard>
@@ -126,7 +153,7 @@ export default async function HomePage() {
           <div className="grid gap-6 lg:grid-cols-2">
             <ChartCard
               title="Bill introductions over time"
-              description="A clean month-level pulse across the current live feed."
+              description="A month-level pulse across the current stored dataset."
             >
               <TrendLineChart data={analytics.introductionsSeries} />
             </ChartCard>
@@ -159,7 +186,7 @@ export default async function HomePage() {
                 </div>
               ) : (
                 <p className="text-sm text-[var(--muted)]">
-                  No passed-chamber items are available in the current feed.
+                  No passed-chamber items are available in the current dataset.
                 </p>
               )}
             </SectionCard>
@@ -169,7 +196,7 @@ export default async function HomePage() {
         <div className="space-y-6">
           <SectionCard
             title="Upcoming votes"
-            description="Floor action inferred from the latest live bill statuses."
+            description="Floor action inferred from the latest stored bill statuses."
           >
             {feed.upcomingVotes.length > 0 ? (
               <div className="space-y-3">
@@ -198,7 +225,7 @@ export default async function HomePage() {
               </div>
             ) : (
               <p className="text-sm text-[var(--muted)]">
-                No upcoming floor items are available from the current feed.
+                No upcoming floor items are available from the current dataset.
               </p>
             )}
           </SectionCard>
@@ -223,7 +250,7 @@ export default async function HomePage() {
                         {item.headline}
                       </p>
                       <p className="mt-1 text-sm text-[var(--muted)]">
-                        {item.source} · {item.publishedAt}
+                        {item.source} | {item.publishedAt}
                       </p>
                     </div>
                   </Link>
@@ -231,7 +258,7 @@ export default async function HomePage() {
               </div>
             ) : (
               <p className="text-sm text-[var(--muted)]">
-                No live news items are available yet.
+                No stored news items are available yet.
               </p>
             )}
           </SectionCard>

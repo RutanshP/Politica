@@ -132,6 +132,7 @@ export interface CongressCommitteeDetailPayload {
   committee?: CongressCommitteeListItem & {
     bills?: {
       count?: number;
+      url?: string;
     };
     history?: Array<{
       officialName?: string;

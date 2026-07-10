@@ -13,7 +13,6 @@ import {
   Menu,
   Newspaper,
   Scale,
-  Search,
   Star,
   Vote,
   Wallet,
@@ -23,20 +22,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import { SearchBar } from "@/components/search-bar";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Home", icon: Compass, exact: true },
   { href: "/bills", label: "Bills", icon: BookText },
   { href: "/politicians", label: "Politicians", icon: CircleUserRound, exact: true },
-  { href: "/committees/senate-finance", label: "Committees", icon: Building2 },
+  { href: "/committees", label: "Committees", icon: Building2, exact: true },
   { href: "/elections", label: "Elections", icon: Vote },
-  { href: "/money/network", label: "Money", icon: Wallet },
-  { href: "/issues/technology", label: "Issues", icon: Scale },
+  { href: "/money", label: "Money", icon: Wallet, exact: true },
+  { href: "/issues", label: "Issues", icon: Scale, exact: true },
   { href: "/news", label: "News", icon: Newspaper },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/watchlist", label: "Watchlist", icon: Star },
-  { href: "/politicians/elizabeth-warren", label: "Profile", icon: CircleUserRound, exact: true },
+  { href: "/profile", label: "Profile", icon: CircleUserRound, exact: true },
   { href: "/more", label: "More", icon: ChevronRight },
 ];
 
@@ -129,15 +129,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <Menu className="h-4 w-4" />
             </button>
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="search"
-                defaultValue=""
-                placeholder="Search bills, politicians, committees, issues..."
-                className="w-full rounded-full border border-slate-200/80 bg-white px-11 py-3 text-sm text-slate-700 outline-none ring-0 placeholder:text-slate-400"
-              />
-            </div>
+            <SearchBar />
             <button
               type="button"
               className="rounded-full border border-slate-200 bg-white p-3 text-slate-600"

@@ -2,9 +2,9 @@ import { notFound } from "next/navigation";
 
 import { ChartCard } from "@/components/chart-card";
 import { PageHeader } from "@/components/page-header";
+import { PoliticianTabs } from "@/components/politician-tabs";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
-import { Tabs } from "@/components/tabs";
 import { PartisanDonutChart, TrendLineChart } from "@/components/trend-charts";
 import {
   getPoliticianAnalyticsSeries,
@@ -52,13 +52,7 @@ export default async function PoliticianAnalyticsPage({
           />
         }
       />
-      <Tabs
-        items={[
-          { label: "Overview", href: `/politicians/${politician.slug}` },
-          { label: "Funding", href: `/politicians/${politician.slug}/funding` },
-          { label: "Analytics", href: `/politicians/${politician.slug}/analytics`, active: true },
-        ]}
-      />
+      <PoliticianTabs slug={politician.slug} active="analytics" />
       <section className="grid gap-6 xl:grid-cols-3">
         <ChartCard title="Vote alignment over time">
           <TrendLineChart data={derived.alignmentSeries} />
@@ -76,7 +70,7 @@ export default async function PoliticianAnalyticsPage({
                 +{derived.bipartisanIndex}
               </p>
               <p className="mt-2 text-sm text-[var(--muted)]">
-                Derived from the live sponsored-bill footprint plus current member fields.
+                Derived from the stored sponsored-bill footprint plus current member fields.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3">

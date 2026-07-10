@@ -1,36 +1,43 @@
-import { getBillsData } from "@/lib/data/bills";
+import { emptyResult, withData } from "@/lib/data/result";
+import { listStoredNewsItems } from "@/lib/supabase/news";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getLatestSyncRun } from "@/lib/supabase/sync";
 import type { NewsItem } from "@/types/civic";
 
-export type NewsDataSource = "live-derived" | "unconfigured" | "unavailable";
+export type NewsDataSource = "supabase" | "unconfigured" | "unavailable";
 
 export async function getNewsData() {
-  const { bills, source } = await getBillsData();
-
-  if (source === "unconfigured") {
+  if (!isSupabaseConfigured()) {
     return {
-      source: "unconfigured" as NewsDataSource,
+      ...emptyResult("unconfigured", "news_sync", [] as NewsItem[], "unconfigured"),
       news: [] as NewsItem[],
     };
   }
 
-  if (source !== "live-congress") {
+  try {
+    const [news, latestRun] = await Promise.all([
+      listStoredNewsItems(),
+      getLatestSyncRun("news_sync").catch(() => undefined),
+    ]);
+    const result = withData(
+      news.length > 0 ? "supabase" : "unavailable",
+      "news_sync",
+      news,
+      latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: news.length > 0 ? "live" : "empty",
+        detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No news sync history yet",
+      },
+    );
     return {
-      source: "unavailable" as NewsDataSource,
+      ...result,
+      source: result.source as NewsDataSource,
+      news,
+    };
+  } catch (error) {
+    return {
+      ...emptyResult("unavailable", "news_sync", [] as NewsItem[], "unavailable", error instanceof Error ? error.message : "Stored news read failed"),
       news: [] as NewsItem[],
     };
   }
-
-  const news = bills.slice(0, 6).map<NewsItem>((bill, index) => ({
-    id: `news-${bill.id}-${index + 1}`,
-    headline: `${bill.number} moved: ${bill.title}`,
-    source: "Congress.gov",
-    publishedAt: bill.lastActionAt,
-    relatedIds: [bill.id, bill.committeeId, bill.sponsorId],
-    summary: bill.latestAction,
-  }));
-
-  return {
-    source: "live-derived" as NewsDataSource,
-    news,
-  };
 }

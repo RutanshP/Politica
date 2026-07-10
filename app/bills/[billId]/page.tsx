@@ -17,7 +17,9 @@ import {
   isLiveBillsSource,
 } from "@/lib/data/bills";
 import { getCommitteesData } from "@/lib/data/committees";
+import { getNewsData } from "@/lib/data/news";
 import { getPoliticiansData } from "@/lib/data/politicians";
+import { findPoliticianForBillSponsor } from "@/lib/politician-links";
 import { slugifySegment } from "@/lib/utils";
 
 export async function generateStaticParams() {
@@ -32,22 +34,22 @@ export default async function BillDetailPage({
   params: Promise<{ billId: string }>;
 }) {
   const { billId } = await params;
-  const [{ bill, source }, { bills }, { politicians }, { committees }] = await Promise.all([
+  const [{ bill, source }, { bills }, { politicians }, { committees }, { news }] = await Promise.all([
     getBillData(billId),
     getBillsData(),
     getPoliticiansData(),
     getCommitteesData(),
+    getNewsData(),
   ]);
 
   if (!bill) notFound();
   const live = isLiveBillsSource(source);
-  const sponsor =
-    politicians.find((politician) => politician.id === bill.sponsorId)
-    || politicians.find((politician) => politician.slug === slugifySegment(bill.sponsorName));
+  const sponsor = findPoliticianForBillSponsor(bill, politicians);
   const committee =
     committees.find((item) => item.id === bill.committeeId)
     || committees.find((item) => item.slug === slugifySegment(bill.committeeName));
   const relatedBills = bills.filter((candidate) => bill.relatedBillIds.includes(candidate.id));
+  const relatedNews = news.filter((item) => item.relatedIds.includes(bill.id));
 
   const statCards = [
     ["Amendments", bill.stats.amendments],
@@ -74,10 +76,11 @@ export default async function BillDetailPage({
       <Tabs
         items={[
           { label: "Overview", href: `/bills/${bill.id}`, active: true },
-          { label: "Timeline", href: `/bills/${bill.id}#timeline` },
+          { label: "Timeline", href: `/bills/${bill.id}/timeline` },
           { label: "Text", href: `/bills/${bill.id}/text` },
           { label: "Votes", href: `/bills/${bill.id}/votes` },
           { label: "Sponsors", href: sponsor ? `/politicians/${sponsor.slug}` : `/bills/${bill.id}#sponsor` },
+          { label: "Amendments", href: `/bills/${bill.id}#statistics` },
           { label: "Related", href: `/bills/${bill.id}#related` },
           { label: "News", href: "/news" },
         ]}
@@ -119,6 +122,10 @@ export default async function BillDetailPage({
                   <EntityBadge>{bill.topic}</EntityBadge>
                   <EntityBadge tone="subtle">{bill.jurisdiction}</EntityBadge>
                 </div>
+                <div className="rounded-2xl bg-slate-50 p-4 text-sm text-[var(--muted)]">
+                  <p className="font-semibold text-[var(--ink)]">Official summary</p>
+                  <p className="mt-2">{bill.summary}</p>
+                </div>
               </div>
               <div className="rounded-3xl border border-[var(--line)] bg-white p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
@@ -136,6 +143,13 @@ export default async function BillDetailPage({
                 <p className="mt-3 text-sm text-[var(--muted)]">
                   Derived from sponsor count, committee traction, and bipartisan activity.
                 </p>
+                <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                    Latest action
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-[var(--ink)]">{bill.latestAction}</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">{bill.lastActionAt}</p>
+                </div>
               </div>
             </div>
           </SectionCard>
@@ -149,6 +163,25 @@ export default async function BillDetailPage({
 
         <div className="space-y-6">
           <SectionCard title="Bill statistics">
+            <div id="statistics" className="mb-4 rounded-2xl border border-[var(--line)] bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                Progress tracker
+              </p>
+              <div className="mt-3 grid gap-3 md:grid-cols-4">
+                {["Introduced", "In Committee", "On Floor", "Passed Chamber"].map((step) => (
+                  <div
+                    key={step}
+                    className={`rounded-2xl px-4 py-3 text-sm font-semibold ${
+                      bill.status === step || bill.actions.some((action) => action.label.toLowerCase().includes(step.toLowerCase()))
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-slate-50 text-[var(--muted)]"
+                    }`}
+                  >
+                    {step}
+                  </div>
+                ))}
+              </div>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {statCards.map(([label, value]) => (
                 <div key={label} className="rounded-3xl border border-[var(--line)] bg-white p-4">
@@ -188,6 +221,29 @@ export default async function BillDetailPage({
               )}
             </SectionCard>
           </div>
+          <SectionCard title="Related news">
+            {relatedNews.length > 0 ? (
+              <div className="space-y-3">
+                {relatedNews.map((item) => (
+                  <Link
+                    key={item.id}
+                    href="/news"
+                    className="block rounded-2xl border border-[var(--line)] bg-white p-4 transition hover:border-[var(--accent)]"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                      {item.source} · {item.publishedAt}
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-[var(--ink)]">{item.headline}</p>
+                    <p className="mt-1 text-sm text-[var(--muted)]">{item.summary}</p>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-[var(--muted)]">
+                No connected news items are available for this bill yet.
+              </p>
+            )}
+          </SectionCard>
         </div>
       </section>
     </div>

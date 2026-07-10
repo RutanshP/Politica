@@ -1,64 +1,81 @@
-import { getBillsData } from "@/lib/data/bills";
+import { emptyResult, withData } from "@/lib/data/result";
 import { getCommitteesData } from "@/lib/data/committees";
 import { getPoliticiansData } from "@/lib/data/politicians";
-import { slugifySegment } from "@/lib/utils";
+import { getStoredIssueBySlug, listStoredIssues } from "@/lib/supabase/issues";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getLatestSyncRun } from "@/lib/supabase/sync";
 import type { Issue } from "@/types/civic";
 
-export type IssueDataSource = "live-derived" | "unconfigured" | "unavailable";
+export type IssueDataSource = "supabase" | "unconfigured" | "unavailable";
 
 export async function getIssuesData() {
-  const { bills, source } = await getBillsData();
-
-  if (source === "unconfigured") {
+  if (!isSupabaseConfigured()) {
     return {
-      source: "unconfigured" as IssueDataSource,
+      ...emptyResult("unconfigured", "issue_rebuild", [] as Issue[], "unconfigured"),
       issues: [] as Issue[],
     };
   }
 
-  if (source !== "live-congress") {
+  try {
+    const [issues, latestRun] = await Promise.all([
+      listStoredIssues(),
+      getLatestSyncRun("issue_rebuild").catch(() => undefined),
+    ]);
+    const result = withData(
+      issues.length > 0 ? "supabase" : "unavailable",
+      "issue_rebuild",
+      issues,
+      latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: issues.length > 0 ? "live" : "empty",
+        detail: latestRun?.status ? `Latest rebuild status: ${latestRun.status}` : "No issue rebuild history yet",
+      },
+    );
     return {
-      source: "unavailable" as IssueDataSource,
+      ...result,
+      source: result.source as IssueDataSource,
+      issues,
+    };
+  } catch (error) {
+    return {
+      ...emptyResult("unavailable", "issue_rebuild", [] as Issue[], "unavailable", error instanceof Error ? error.message : "Stored issue read failed"),
       issues: [] as Issue[],
     };
   }
-
-  const byTopic = new Map<string, typeof bills>();
-  for (const bill of bills) {
-    const existing = byTopic.get(bill.topic) || [];
-    existing.push(bill);
-    byTopic.set(bill.topic, existing);
-  }
-
-  const issues: Issue[] = [...byTopic.entries()].map(([topic, topicBills]) => ({
-    id: slugifySegment(topic),
-    slug: slugifySegment(topic),
-    name: topic,
-    description: `Live issue cluster derived from Congress.gov bills tagged to ${topic}.`,
-    stats: {
-      activeBills: topicBills.length,
-      recentVotes: topicBills.reduce((sum, bill) => sum + bill.stats.votes, 0),
-      bipartisanSupport:
-        Math.round(
-          topicBills.reduce((sum, bill) => sum + bill.stats.bipartisanScore, 0) / Math.max(topicBills.length, 1),
-        ) || 0,
-    },
-    topBillIds: topicBills.slice(0, 4).map((bill) => bill.id),
-    committeeIds: [...new Set(topicBills.map((bill) => slugifySegment(bill.committeeName)))],
-  }));
-
-  return {
-    source: "live-derived" as IssueDataSource,
-    issues,
-  };
 }
 
 export async function getIssueData(slug: string) {
-  const { issues, source } = await getIssuesData();
-  return {
-    source,
-    issue: issues.find((issue) => issue.slug === slug),
-  };
+  if (!isSupabaseConfigured()) {
+    return {
+      ...emptyResult("unconfigured", "issue_rebuild", undefined, "unconfigured"),
+      source: "unconfigured" as IssueDataSource,
+      issue: undefined,
+    };
+  }
+
+  try {
+    const [issue, latestRun] = await Promise.all([
+      getStoredIssueBySlug(slug),
+      getLatestSyncRun("issue_rebuild").catch(() => undefined),
+    ]);
+    const result = withData(
+      issue ? "supabase" : "unavailable",
+      "issue_rebuild",
+      issue,
+      latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: issue ? "live" : "empty",
+        detail: latestRun?.status ? `Latest rebuild status: ${latestRun.status}` : "No issue rebuild history yet",
+      },
+    );
+    return { ...result, source: result.source as IssueDataSource, issue };
+  } catch (error) {
+    return {
+      ...emptyResult("unavailable", "issue_rebuild", undefined, "unavailable", error instanceof Error ? error.message : "Stored issue read failed"),
+      source: "unavailable" as IssueDataSource,
+      issue: undefined,
+    };
+  }
 }
 
 export async function getIssueRouteParams() {
@@ -67,9 +84,9 @@ export async function getIssueRouteParams() {
 }
 
 export async function getIssueViewData(slug: string) {
-  const [{ issue, source }, { bills }, { committees }, { politicians }] = await Promise.all([
+  const [{ issue, source, freshness, availability, error }, { bills }, { committees }, { politicians }] = await Promise.all([
     getIssueData(slug),
-    getBillsData(),
+    import("@/lib/data/bills").then((module) => module.getBillsData()),
     getCommitteesData(),
     getPoliticiansData(),
   ]);
@@ -82,6 +99,9 @@ export async function getIssueViewData(slug: string) {
 
   return {
     source,
+    freshness,
+    availability,
+    error,
     issue,
     issueBills,
     issueCommittees,
@@ -89,12 +109,12 @@ export async function getIssueViewData(slug: string) {
   };
 }
 
-export function getIssueSourceLabel(source: IssueDataSource) {
-  if (source === "live-derived") return "Live issue clusters";
-  if (source === "unconfigured") return "Congress.gov API not configured";
-  return "Issue data unavailable";
+export function getIssueSourceLabel(source: string) {
+  if (source === "supabase") return "Stored issue clusters";
+  if (source === "unconfigured") return "Supabase is not configured";
+  return "Stored issue data unavailable";
 }
 
-export function isLiveIssueSource(source: IssueDataSource) {
-  return source === "live-derived";
+export function isLiveIssueSource(source: string) {
+  return source === "supabase";
 }

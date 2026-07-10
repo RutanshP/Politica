@@ -1,20 +1,36 @@
+import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
+import { getSyncStatusData } from "@/lib/data/sync-status";
 
-export default function MorePage() {
+export default async function MorePage() {
+  const { runs } = await getSyncStatusData();
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="More"
-        title="Platform roadmap"
-        description="This area is reserved for alerts, exports, saved comparisons, API sync jobs, and admin tooling as Politica adds more live data sources."
+        title="Pipeline health"
+        description="Operational visibility for sync jobs, rebuilds, and stored-data freshness across Politica."
       />
-      <SectionCard title="Prepared architecture">
-        <ul className="space-y-2 text-sm text-[var(--muted)]">
-          <li>Supabase-ready entity model for bills, versions, sponsors, votes, committees, issues, and graph edges.</li>
-          <li>Clear component boundaries for reusable dashboards, tables, tabs, and graphs.</li>
-          <li>Placeholder hooks for scheduled sync jobs and search-index rebuilds.</li>
-        </ul>
+      <SectionCard title="Recent sync runs">
+        {runs.length > 0 ? (
+          <DataTable
+            columns={["Pipeline", "Status", "Started", "Finished", "Records", "Error"]}
+            rows={runs.slice(0, 12).map((run) => [
+              run.pipeline,
+              run.status,
+              run.started_at,
+              run.finished_at || "In progress",
+              run.record_count,
+              run.error_message || "None",
+            ])}
+          />
+        ) : (
+          <p className="text-sm text-[var(--muted)]">
+            No sync runs have been recorded yet. Trigger the protected sync endpoints to populate pipeline health data.
+          </p>
+        )}
       </SectionCard>
     </div>
   );

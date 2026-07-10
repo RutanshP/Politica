@@ -1,195 +1,79 @@
-import {
-  fetchCongressMemberDetail,
-  fetchCongressMembers,
-  isCongressBillsConfigured,
-} from "@/lib/adapters/congress";
-import { getBillsData, isLiveBillsSource } from "@/lib/data/bills";
+import { emptyResult, withData } from "@/lib/data/result";
+import { getBillsData } from "@/lib/data/bills";
+import { getStoredPoliticianBySlug, listStoredPoliticians } from "@/lib/supabase/politicians";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getLatestSyncRun } from "@/lib/supabase/sync";
 import { slugifySegment } from "@/lib/utils";
 import type { Bill, Politician } from "@/types/civic";
 
-export type PoliticianDataSource =
-  | "live-congress-members"
-  | "live-bill-derived"
-  | "unconfigured"
-  | "unavailable";
-
-function buildPoliticianProfile(input: {
-  id: string;
-  name: string;
-  title: string;
-  party: string;
-  state: string;
-  district?: string;
-  sponsoredBills: Bill[];
-}) {
-  return {
-    id: input.id,
-    slug: slugifySegment(input.name),
-    name: input.name,
-    title: input.title,
-    party: input.party,
-    state: input.state,
-    district: input.district,
-    biography:
-      `${input.title} from ${input.state}. Profile is synced from live congressional data and sponsored legislation.`,
-    born: "Not available from configured sources",
-    education: "Not available from configured sources",
-    occupation: "Public official",
-    website: "www.congress.gov/member",
-    officePhone: "Not available from configured sources",
-    officeAddress: "Office address not available from configured sources",
-    nextElection: "Election calendar not connected",
-    stats: {
-      votesWithParty: 0,
-      votesAgainstParty: 0,
-      attendance: 0,
-      billsIntroduced: input.sponsoredBills.length,
-      billsPassed: input.sponsoredBills.filter((bill) => bill.status === "Passed Chamber" || bill.status === "Signed").length,
-      amendmentsOffered: 0,
-    },
-    ideology: {},
-  } satisfies Politician;
-}
-
-function normalizePoliticiansFromBills(bills: Bill[]) {
-  const bySponsor = new Map<string, Bill[]>();
-
-  for (const bill of bills) {
-    const key = bill.sponsorId || bill.sponsorName;
-    const existing = bySponsor.get(key) || [];
-    existing.push(bill);
-    bySponsor.set(key, existing);
-  }
-
-  return [...bySponsor.entries()]
-    .map(([id, sponsoredBills]) => {
-      const firstBill = sponsoredBills[0];
-
-      return buildPoliticianProfile({
-        id,
-        name: firstBill.sponsorName,
-        title:
-          firstBill.chamber === "House"
-            ? "United States Representative"
-            : "United States Senator",
-        party: "Unknown",
-        state: "Federal",
-        sponsoredBills,
-      });
-    })
-    .sort((left, right) => right.stats.billsIntroduced - left.stats.billsIntroduced);
-}
-
-async function normalizeCongressMembers(bills: Bill[]) {
-  const members = await fetchCongressMembers({ limit: 250 });
-
-  return members.map((member) => {
-    const name = member.invertedOrderName
-      ? member.invertedOrderName.split(",").reverse().join(" ").trim()
-      : [member.honorificName, member.firstName, member.lastName].filter(Boolean).join(" ").trim();
-    const slug = slugifySegment(name);
-    const currentTerm = member.terms?.item?.[0];
-    const sponsoredBills = bills.filter((bill) =>
-      bill.sponsorId === member.bioguideId || slugifySegment(bill.sponsorName) === slug,
-    );
-
-    return buildPoliticianProfile({
-      id: member.bioguideId || slug,
-      name,
-      title:
-        currentTerm?.chamber === "House of Representatives"
-          ? "United States Representative"
-          : "United States Senator",
-      party: member.partyName || "Unknown",
-      state: member.state || "Federal",
-      district:
-        currentTerm?.district && Number(currentTerm.district) > 0
-          ? `${member.state}-${currentTerm.district}`
-          : undefined,
-      sponsoredBills,
-    });
-  });
-}
+export type PoliticianDataSource = "supabase" | "unconfigured" | "unavailable";
 
 export async function getPoliticiansData() {
-  const billsData = await getBillsData();
-
-  if (isCongressBillsConfigured()) {
-    try {
-      const politicians = await normalizeCongressMembers(billsData.bills);
-      if (politicians.length > 0) {
-        return {
-          source: "live-congress-members" as PoliticianDataSource,
-          politicians,
-        };
-      }
-    } catch {
-      if (isLiveBillsSource(billsData.source)) {
-        return {
-          source: "live-bill-derived" as PoliticianDataSource,
-          politicians: normalizePoliticiansFromBills(billsData.bills),
-        };
-      }
-
-      return {
-        source: billsData.source === "unconfigured"
-          ? ("unconfigured" as PoliticianDataSource)
-          : ("unavailable" as PoliticianDataSource),
-        politicians: [] as Politician[],
-      };
-    }
-  }
-
-  if (isLiveBillsSource(billsData.source)) {
+  if (!isSupabaseConfigured()) {
     return {
-      source: "live-bill-derived" as PoliticianDataSource,
-      politicians: normalizePoliticiansFromBills(billsData.bills),
+      ...emptyResult("unconfigured", "federal_members_sync", [] as Politician[], "unconfigured"),
+      politicians: [] as Politician[],
     };
   }
 
-  return {
-    source: billsData.source === "unconfigured"
-      ? ("unconfigured" as PoliticianDataSource)
-      : ("unavailable" as PoliticianDataSource),
-    politicians: [] as Politician[],
-  };
+  try {
+    const [politicians, federalRun, stateRun] = await Promise.all([
+      listStoredPoliticians(),
+      getLatestSyncRun("federal_members_sync").catch(() => undefined),
+      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
+    ]);
+    const latestRun = [federalRun, stateRun]
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
+    const result = withData(
+      politicians.length > 0 ? "supabase" : "unavailable",
+      "federal_members_sync",
+      politicians,
+      latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: politicians.length > 0 ? "live" : "empty",
+        detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
+      },
+    );
+    return { ...result, source: result.source as PoliticianDataSource, politicians };
+  } catch (error) {
+    return {
+      ...emptyResult("unavailable", "federal_members_sync", [] as Politician[], "unavailable", error instanceof Error ? error.message : "Stored politician read failed"),
+      politicians: [] as Politician[],
+    };
+  }
 }
 
 export async function getPoliticianData(slug: string) {
-  const { politicians, source } = await getPoliticiansData();
-  const politician = politicians.find((item) => item.slug === slug);
-
-  if (!politician) {
-    return { source, politician };
+  if (!isSupabaseConfigured()) {
+    return {
+      ...emptyResult("unconfigured", "federal_members_sync", undefined, "unconfigured"),
+      politician: undefined,
+    };
   }
 
-  if (isCongressBillsConfigured() && politician.id && politician.id.length <= 8) {
-    try {
-      const detail = await fetchCongressMemberDetail(politician.id);
-      return {
-        source,
-        politician: {
-          ...politician,
-          officeAddress:
-            detail.member?.addressInformation?.officeAddress
-            || politician.officeAddress,
-          officePhone:
-            detail.member?.addressInformation?.phoneNumber
-            || politician.officePhone,
-          stats: {
-            ...politician.stats,
-            billsIntroduced:
-              detail.member?.sponsoredLegislation?.count
-              ?? politician.stats.billsIntroduced,
-          },
-        },
-      };
-    } catch {
-      return { source, politician };
-    }
+  try {
+    const [politician, latestRun] = await Promise.all([
+      getStoredPoliticianBySlug(slug),
+      getLatestSyncRun("federal_members_sync").catch(() => undefined),
+    ]);
+    const result = withData(
+      politician ? "supabase" : "unavailable",
+      "federal_members_sync",
+      politician,
+      latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: politician ? "live" : "empty",
+        detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
+      },
+    );
+    return { ...result, source: result.source as PoliticianDataSource, politician };
+  } catch (error) {
+    return {
+      ...emptyResult("unavailable", "federal_members_sync", undefined, "unavailable", error instanceof Error ? error.message : "Stored politician read failed"),
+      politician: undefined,
+    };
   }
-
-  return { source, politician };
 }
 
 export async function getPoliticianRouteParams() {
@@ -208,15 +92,14 @@ export async function getSponsoredBillsForPolitician(slug: string) {
   );
 }
 
-export function getPoliticianSourceLabel(source: PoliticianDataSource) {
-  if (source === "live-congress-members") return "Live Congress members";
-  if (source === "live-bill-derived") return "Live bill-derived sponsors";
-  if (source === "unconfigured") return "Congress.gov API not configured";
-  return "Politician data unavailable";
+export function getPoliticianSourceLabel(source: string) {
+  if (source === "supabase") return "Stored Supabase politicians";
+  if (source === "unconfigured") return "Supabase is not configured";
+  return "Stored politician data unavailable";
 }
 
-export function isLivePoliticianSource(source: PoliticianDataSource) {
-  return source === "live-congress-members" || source === "live-bill-derived";
+export function isLivePoliticianSource(source: string) {
+  return source === "supabase";
 }
 
 export function getPoliticianAnalyticsSeries(

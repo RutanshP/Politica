@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { PoliticianTabs } from "@/components/politician-tabs";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
-import { Tabs } from "@/components/tabs";
 import { WatchButton } from "@/components/watch-button";
+import { getCommitteesData } from "@/lib/data/committees";
+import { getFundingGraphData } from "@/lib/data/graph";
+import { getNewsData } from "@/lib/data/news";
 import {
   getPoliticianData,
   getPoliticianRouteParams,
@@ -30,7 +34,19 @@ export default async function PoliticianProfilePage({
   const { politician, source } = await getPoliticianData(slug);
   if (!politician) notFound();
 
-  const sponsoredBills = await getSponsoredBillsForPolitician(slug);
+  const [sponsoredBills, committeesData, graphData, newsData] = await Promise.all([
+    getSponsoredBillsForPolitician(slug),
+    getCommitteesData(),
+    getFundingGraphData(slug),
+    getNewsData(),
+  ]);
+  const relatedCommittees = committeesData.committees.filter((committee) =>
+    sponsoredBills.some((bill) => bill.committeeId === committee.id || bill.committeeName === committee.name),
+  );
+  const relatedNews = newsData.news.filter((item) =>
+    item.relatedIds.includes(politician.id) || item.relatedIds.includes(politician.slug),
+  );
+  const fundingEdges = graphData.graph.edges.filter((edge) => edge.target === politician.slug || edge.target === politician.id);
   const statCards = [
     ["Votes with party", `${politician.stats.votesWithParty}%`],
     ["Votes against party", `${politician.stats.votesAgainstParty}%`],
@@ -45,7 +61,7 @@ export default async function PoliticianProfilePage({
       <PageHeader
         eyebrow={politician.party}
         title={politician.name}
-        description={`${politician.title} from ${politician.state}${politician.district ? ` · ${politician.district}` : ""}`}
+        description={`${politician.title} from ${politician.state}${politician.district ? ` | ${politician.district}` : ""}`}
         actions={
           <>
             <SourceBadge
@@ -56,18 +72,7 @@ export default async function PoliticianProfilePage({
           </>
         }
       />
-      <Tabs
-        items={[
-          { label: "Overview", href: `/politicians/${politician.slug}`, active: true },
-          { label: "Votes", href: `/politicians/${politician.slug}` },
-          { label: "Bills", href: `/politicians/${politician.slug}` },
-          { label: "Committees", href: `/politicians/${politician.slug}` },
-          { label: "Funding", href: `/politicians/${politician.slug}/funding` },
-          { label: "Analytics", href: `/politicians/${politician.slug}/analytics` },
-          { label: "Biography", href: `/politicians/${politician.slug}` },
-          { label: "News", href: "/news" },
-        ]}
-      />
+      <PoliticianTabs slug={politician.slug} active="overview" />
       <section className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
         <SectionCard title="About">
           <div className="flex items-center gap-4 rounded-3xl border border-[var(--line)] bg-white p-5">
@@ -81,7 +86,7 @@ export default async function PoliticianProfilePage({
               <p className="text-sm text-[var(--muted)]">{politician.title}</p>
             </div>
           </div>
-          <div className="mt-5 space-y-4 text-sm text-[var(--muted)]">
+          <div id="biography" className="mt-5 space-y-4 text-sm text-[var(--muted)]">
             <p>{politician.biography}</p>
             <p>Born: {politician.born}</p>
             <p>Education: {politician.education}</p>
@@ -138,6 +143,7 @@ export default async function PoliticianProfilePage({
             <p>{politician.officeAddress}</p>
             <p>{politician.officePhone}</p>
             <p>Next election: {politician.nextElection}</p>
+            <p>Funding relationships: {fundingEdges.length}</p>
             <Link
               href={`/politicians/${politician.slug}/analytics`}
               className="inline-flex rounded-full bg-[var(--accent)] px-4 py-2 font-semibold text-white"
@@ -147,24 +153,77 @@ export default async function PoliticianProfilePage({
           </div>
         </SectionCard>
       </section>
-      <SectionCard title="Sponsored bills">
-        <div className="grid gap-4 lg:grid-cols-2">
-          {sponsoredBills.map((bill) => (
-            <Link
-              key={bill.id}
-              href={`/bills/${bill.id}`}
-              className="rounded-3xl border border-[var(--line)] bg-white p-5 transition hover:border-[var(--accent)]"
-            >
-              <p className="text-sm font-semibold text-[var(--accent)]">
-                {bill.number}
-              </p>
-              <p className="mt-2 text-sm font-semibold text-[var(--ink)]">
-                {bill.title}
-              </p>
-              <p className="mt-2 text-sm text-[var(--muted)]">{bill.summary}</p>
-            </Link>
-          ))}
-        </div>
+      <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+        <SectionCard title="Sponsored bills">
+          <div id="bills" className="grid gap-4 lg:grid-cols-1">
+            {sponsoredBills.map((bill) => (
+              <Link
+                key={bill.id}
+                href={`/bills/${bill.id}`}
+                className="rounded-3xl border border-[var(--line)] bg-white p-5 transition hover:border-[var(--accent)]"
+              >
+                <p className="text-sm font-semibold text-[var(--accent)]">
+                  {bill.number}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-[var(--ink)]">
+                  {bill.title}
+                </p>
+                <p className="mt-2 text-sm text-[var(--muted)]">{bill.summary}</p>
+              </Link>
+            ))}
+          </div>
+        </SectionCard>
+        <SectionCard title="Committees, votes, and funding overview">
+          <div id="committees" className="space-y-4">
+            {relatedCommittees.length > 0 ? (
+              relatedCommittees.slice(0, 4).map((committee) => (
+                <Link
+                  key={committee.id}
+                  href={`/committees/${committee.slug}`}
+                  className="block rounded-2xl border border-[var(--line)] bg-white p-4 transition hover:border-[var(--accent)]"
+                >
+                  <p className="font-semibold text-[var(--ink)]">{committee.name}</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">{committee.jurisdiction}</p>
+                </Link>
+              ))
+            ) : (
+              <EmptyState
+                title="No committee affiliations connected yet"
+                description="Committee memberships are ready to display here as more detailed member data is synced."
+              />
+            )}
+            <div className="rounded-2xl border border-[var(--line)] bg-white p-4 text-sm text-[var(--muted)]">
+              Recent votes route: <Link href={`/politicians/${politician.slug}/votes`} className="font-semibold text-[var(--accent)]">open voting page</Link>
+            </div>
+            <div className="rounded-2xl border border-[var(--line)] bg-white p-4 text-sm text-[var(--muted)]">
+              Funding overview: {fundingEdges.length > 0 ? `${fundingEdges.length} connected finance relationships` : "No finance relationships connected yet."}
+            </div>
+          </div>
+        </SectionCard>
+      </section>
+      <SectionCard title="Related news">
+        {relatedNews.length > 0 ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {relatedNews.map((item) => (
+              <Link
+                key={item.id}
+                href="/news"
+                className="rounded-3xl border border-[var(--line)] bg-white p-5 transition hover:border-[var(--accent)]"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  {item.source} | {item.publishedAt}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-[var(--ink)]">{item.headline}</p>
+                <p className="mt-2 text-sm text-[var(--muted)]">{item.summary}</p>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No connected news yet"
+            description="Related headlines appear here when stored news entities reference this politician."
+          />
+        )}
       </SectionCard>
     </div>
   );

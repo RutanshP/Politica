@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test tests\\unit\\*.test.cjs tests\\api\\*.test.cjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@xyflow/react": "^12.11.2",

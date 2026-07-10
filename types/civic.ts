@@ -2,11 +2,36 @@ export type EntityType =
   | "bill"
   | "politician"
   | "committee"
+  | "donor"
   | "pac"
   | "company"
   | "industry"
   | "lobbying-firm"
-  | "issue";
+  | "issue"
+  | "vote"
+  | "agency"
+  | "state";
+
+export type DataAvailability =
+  | "live"
+  | "partial"
+  | "empty"
+  | "unconfigured"
+  | "unavailable";
+
+export interface DataFreshness {
+  pipeline: string;
+  syncedAt?: string;
+  stale: boolean;
+  detail?: string;
+}
+
+export interface SourceMetadata {
+  sourceSystem: string;
+  sourceId: string;
+  syncedAt?: string;
+  rawAvailable?: boolean;
+}
 
 export type BillStatus =
   | "Introduced"
@@ -34,12 +59,15 @@ export interface BillVersion {
 
 export interface Bill {
   id: string;
+  slug?: string;
   number: string;
   title: string;
   summary: string;
   jurisdiction: "Federal" | "State";
   country: string;
   state?: string;
+  jurisdictionType?: "federal" | "state";
+  sessionId?: string;
   chamber: string;
   status: BillStatus;
   topic: string;
@@ -61,6 +89,7 @@ export interface Bill {
   actions: BillAction[];
   versions: BillVersion[];
   relatedBillIds: string[];
+  sourceMetadata?: SourceMetadata;
 }
 
 export interface Politician {
@@ -79,6 +108,8 @@ export interface Politician {
   officePhone: string;
   officeAddress: string;
   nextElection: string;
+  jurisdictionType?: "federal" | "state";
+  sessionId?: string;
   stats: {
     votesWithParty: number;
     votesAgainstParty: number;
@@ -88,6 +119,7 @@ export interface Politician {
     amendmentsOffered: number;
   };
   ideology: Record<string, number>;
+  sourceMetadata?: SourceMetadata;
 }
 
 export interface VotePosition {
@@ -96,10 +128,12 @@ export interface VotePosition {
   party: string;
   state: string;
   vote: "Yea" | "Nay" | "Present" | "Not Voting";
+  sourceMetadata?: SourceMetadata;
 }
 
 export interface Vote {
   id: string;
+  canonicalId?: string;
   billId: string;
   billNumber: string;
   title: string;
@@ -111,6 +145,7 @@ export interface Vote {
   present: number;
   notVoting: number;
   positions: VotePosition[];
+  sourceMetadata?: SourceMetadata;
 }
 
 export interface Committee {
@@ -125,15 +160,21 @@ export interface Committee {
   hearing: string;
   activeBillIds: string[];
   memberIds: string[];
+  jurisdictionType?: "federal" | "state";
+  sessionId?: string;
+  sourceMetadata?: SourceMetadata;
 }
 
 export interface NewsItem {
   id: string;
+  canonicalId?: string;
   headline: string;
   source: string;
   publishedAt: string;
   relatedIds: string[];
   summary: string;
+  url?: string;
+  sourceMetadata?: SourceMetadata;
 }
 
 export interface Issue {
@@ -148,6 +189,7 @@ export interface Issue {
   };
   topBillIds: string[];
   committeeIds: string[];
+  sourceMetadata?: SourceMetadata;
 }
 
 export interface WatchlistItem {
@@ -165,6 +207,8 @@ export interface FundingNode {
   type: EntityType;
   detail: string;
   amount?: string;
+  href?: string;
+  sourceMetadata?: SourceMetadata;
 }
 
 export interface FundingEdge {
@@ -173,4 +217,25 @@ export interface FundingEdge {
   target: string;
   label: string;
   amount: number;
+  sourceMetadata?: SourceMetadata;
+}
+
+export interface SearchEntity {
+  id: string;
+  type: EntityType | "news";
+  label: string;
+  title: string;
+  description: string;
+  href: string;
+  meta: string;
+  sourceMetadata?: SourceMetadata;
+}
+
+export interface SyncPipelineSummary {
+  pipeline: string;
+  status: "success" | "partial" | "failed" | "running";
+  startedAt?: string;
+  finishedAt?: string;
+  recordCount: number;
+  error?: string;
 }

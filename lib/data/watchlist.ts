@@ -2,9 +2,10 @@ import { getBillsData } from "@/lib/data/bills";
 import { getCommitteesData } from "@/lib/data/committees";
 import { getIssuesData } from "@/lib/data/issues";
 import { getPoliticiansData } from "@/lib/data/politicians";
+import { withData } from "@/lib/data/result";
 import type { WatchlistItem } from "@/types/civic";
 
-export type WatchlistDataSource = "live-derived" | "unconfigured" | "unavailable";
+export type WatchlistDataSource = "supabase-derived" | "unconfigured" | "unavailable";
 
 export async function getWatchlistData() {
   const [billsData, politiciansData, committeesData, issuesData] = await Promise.all([
@@ -57,12 +58,29 @@ export async function getWatchlistData() {
     issuesData.source,
   ];
 
+  const source = hasData
+    ? ("supabase-derived" as WatchlistDataSource)
+    : allSources.every((item) => item === "unconfigured")
+      ? ("unconfigured" as WatchlistDataSource)
+      : ("unavailable" as WatchlistDataSource);
+
+  const result = withData(
+    source,
+    "watchlist_seed",
+    items,
+    [billsData.freshness.syncedAt, politiciansData.freshness.syncedAt, committeesData.freshness.syncedAt, issuesData.freshness.syncedAt]
+      .filter(Boolean)
+      .sort()
+      .at(-1),
+    {
+      availability: hasData ? "live" : source === "unconfigured" ? "unconfigured" : "empty",
+      detail: "App-level watchlist generated from stored entities",
+    },
+  );
+
   return {
-    source: hasData
-      ? ("live-derived" as WatchlistDataSource)
-      : allSources.every((item) => item === "unconfigured")
-        ? ("unconfigured" as WatchlistDataSource)
-        : ("unavailable" as WatchlistDataSource),
+    ...result,
+    source,
     items,
   };
 }

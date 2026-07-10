@@ -108,7 +108,7 @@ export default async function BillVotesPage({
           </section>
           <SectionCard
             title="Member vote table"
-            description="This table will populate when an official vote-position feed is connected."
+            description="Stored member-by-member vote positions for the selected bill."
           >
             <div className="mb-5">
               <FilterBar
@@ -145,7 +145,7 @@ export default async function BillVotesPage({
       ) : (
         <SectionCard title="No vote data yet">
           <p className="text-sm text-[var(--muted)]">
-            This bill is live, but Politica does not have an official member-by-member vote feed connected yet.
+            This bill is stored, but no vote records have been synced for it yet.
           </p>
         </SectionCard>
       )}

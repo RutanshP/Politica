@@ -1,90 +1,68 @@
-import {
-  fetchCongressCommitteeDetail,
-  fetchCongressCommittees,
-  getDefaultCongress,
-  isCongressBillsConfigured,
-} from "@/lib/adapters/congress";
-import { getBillsData } from "@/lib/data/bills";
-import { slugifySegment } from "@/lib/utils";
+import { emptyResult, withData } from "@/lib/data/result";
+import { getStoredCommitteeBySlug, listStoredCommittees } from "@/lib/supabase/committees";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getLatestSyncRun } from "@/lib/supabase/sync";
 import type { Committee } from "@/types/civic";
 
-export type CommitteeDataSource = "live-congress" | "unconfigured" | "unavailable";
+export type CommitteeDataSource = "supabase" | "unconfigured" | "unavailable";
 
 export async function getCommitteesData() {
-  if (!isCongressBillsConfigured()) {
+  if (!isSupabaseConfigured()) {
     return {
-      source: "unconfigured" as CommitteeDataSource,
+      ...emptyResult("unconfigured", "federal_legislation_sync", [] as Committee[], "unconfigured"),
       committees: [] as Committee[],
     };
   }
 
   try {
-    const { bills } = await getBillsData();
-    const [senate, house] = await Promise.all([
-      fetchCongressCommittees({ congress: getDefaultCongress(), chamber: "senate", limit: 100 }),
-      fetchCongressCommittees({ congress: getDefaultCongress(), chamber: "house", limit: 100 }),
-    ]);
-
-    const committees: Committee[] = [...senate, ...house].map((committee) => ({
-      id: committee.systemCode || slugifySegment(committee.name || "committee"),
-      slug: slugifySegment(committee.name || "committee"),
-      name: committee.name || "Congressional Committee",
-      chamber: committee.chamber || "Congress",
-      jurisdiction: "Live committee metadata loaded from Congress.gov.",
-      chair: "Chair data not connected",
-      rankingMember: "Ranking member data not connected",
-      description: "Live committee record imported from Congress.gov.",
-      hearing: "Hearing calendar not connected",
-      activeBillIds: bills
-        .filter((bill) => slugifySegment(bill.committeeName) === slugifySegment(committee.name || "committee"))
-        .map((bill) => bill.id),
-      memberIds: [],
-    }));
-
-    return {
-      source: "live-congress" as CommitteeDataSource,
+    const committees = await listStoredCommittees();
+    const latestRun = await getLatestSyncRun("federal_legislation_sync").catch(() => undefined);
+    const result = withData(
+      committees.length > 0 ? "supabase" : "unavailable",
+      "federal_legislation_sync",
       committees,
-    };
-  } catch {
+      latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: committees.length > 0 ? "live" : "empty",
+        detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
+      },
+    );
+    return { ...result, source: result.source as CommitteeDataSource, committees };
+  } catch (error) {
     return {
-      source: "unavailable" as CommitteeDataSource,
+      ...emptyResult("unavailable", "federal_legislation_sync", [] as Committee[], "unavailable", error instanceof Error ? error.message : "Stored committee read failed"),
       committees: [] as Committee[],
     };
   }
 }
 
 export async function getCommitteeData(slug: string) {
-  const { committees, source } = await getCommitteesData();
-  const committee = committees.find((item) => item.slug === slug);
-
-  if (!committee || source !== "live-congress" || !committee.id) {
-    return { source, committee };
+  if (!isSupabaseConfigured()) {
+    return {
+      ...emptyResult("unconfigured", "federal_legislation_sync", undefined, "unconfigured"),
+      committee: undefined,
+    };
   }
 
   try {
-    const detail = await fetchCongressCommitteeDetail({
-      congress: getDefaultCongress(),
-      chamber: committee.chamber,
-      systemCode: committee.id,
-    });
-
-    const { bills } = await getBillsData();
-
-    return {
-      source,
-      committee: {
-        ...committee,
-        jurisdiction: detail.committee?.jurisdiction || committee.jurisdiction,
-        description:
-          detail.committee?.history?.[0]?.officialName
-          || committee.description,
-        activeBillIds: bills
-          .filter((bill) => slugifySegment(bill.committeeName) === committee.slug)
-          .map((bill) => bill.id),
+    const committee = await getStoredCommitteeBySlug(slug);
+    const latestRun = await getLatestSyncRun("federal_legislation_sync").catch(() => undefined);
+    const result = withData(
+      committee ? "supabase" : "unavailable",
+      "federal_legislation_sync",
+      committee,
+      latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: committee ? "live" : "empty",
+        detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
       },
+    );
+    return { ...result, source: result.source as CommitteeDataSource, committee };
+  } catch (error) {
+    return {
+      ...emptyResult("unavailable", "federal_legislation_sync", undefined, "unavailable", error instanceof Error ? error.message : "Stored committee read failed"),
+      committee: undefined,
     };
-  } catch {
-    return { source, committee };
   }
 }
 
@@ -93,12 +71,12 @@ export async function getCommitteeRouteParams() {
   return committees.map((committee) => ({ slug: committee.slug }));
 }
 
-export function getCommitteeSourceLabel(source: CommitteeDataSource) {
-  if (source === "live-congress") return "Live Congress committees";
-  if (source === "unconfigured") return "Congress.gov API not configured";
-  return "Committee data unavailable";
+export function getCommitteeSourceLabel(source: string) {
+  if (source === "supabase") return "Stored committee data";
+  if (source === "unconfigured") return "Supabase is not configured";
+  return "Stored committee data unavailable";
 }
 
-export function isLiveCommitteeSource(source: CommitteeDataSource) {
-  return source === "live-congress";
+export function isLiveCommitteeSource(source: string) {
+  return source === "supabase";
 }

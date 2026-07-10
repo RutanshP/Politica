@@ -1,7 +1,11 @@
+"use client";
+
 export function FilterBar({
   filters,
+  onChange,
 }: {
   filters: Array<{ label: string; value: string; options?: string[] }>;
+  onChange?: (label: string, value: string) => void;
 }) {
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -14,7 +18,8 @@ export function FilterBar({
             {filter.label}
           </span>
           <select
-            defaultValue={filter.value}
+            value={filter.value}
+            onChange={(event) => onChange?.(filter.label, event.target.value)}
             className="mt-2 w-full bg-transparent text-sm text-[var(--ink)] outline-none"
           >
             {(filter.options ?? [filter.value]).map((option) => (

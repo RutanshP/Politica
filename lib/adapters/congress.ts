@@ -28,6 +28,10 @@ export function getDefaultCongress() {
 
 function buildCongressUrl(pathname: string, params?: Record<string, string | number | undefined>) {
   const url = new URL(`${CONGRESS_API_BASE}${pathname}`);
+  return applyCongressQueryParams(url, params).toString();
+}
+
+function applyCongressQueryParams(url: URL, params?: Record<string, string | number | undefined>) {
   url.searchParams.set("format", "json");
   url.searchParams.set("api_key", getCongressApiKey());
 
@@ -37,11 +41,26 @@ function buildCongressUrl(pathname: string, params?: Record<string, string | num
     }
   }
 
-  return url.toString();
+  return url;
 }
 
 async function fetchCongressJson<T>(pathname: string, params?: Record<string, string | number | undefined>) {
   const response = await fetch(buildCongressUrl(pathname, params), {
+    next: { revalidate: 21600 },
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Congress API request failed: ${response.status} ${response.statusText}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+async function fetchCongressJsonByUrl<T>(urlString: string, params?: Record<string, string | number | undefined>) {
+  const response = await fetch(applyCongressQueryParams(new URL(urlString, CONGRESS_API_BASE), params).toString(), {
     next: { revalidate: 21600 },
     headers: {
       Accept: "application/json",
@@ -138,6 +157,36 @@ export async function fetchCongressCommittees(options?: {
   );
 
   return payload.committees ?? [];
+}
+
+export async function fetchCongressCommitteesByUrl(
+  url: string,
+  options?: {
+    limit?: number;
+    offset?: number;
+  },
+) {
+  const payload = await fetchCongressJsonByUrl<{ committees?: CongressCommitteeListItem[] }>(url, {
+    limit: options?.limit,
+    offset: options?.offset,
+  });
+
+  return payload.committees ?? [];
+}
+
+export async function fetchCongressBillsByUrl(
+  url: string,
+  options?: {
+    limit?: number;
+    offset?: number;
+  },
+) {
+  const payload = await fetchCongressJsonByUrl<{ bills?: CongressBillListItem[] }>(url, {
+    limit: options?.limit,
+    offset: options?.offset,
+  });
+
+  return payload.bills ?? [];
 }
 
 export async function fetchCongressCommitteeDetail(input: {

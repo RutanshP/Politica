@@ -1,10 +1,14 @@
+import { emptyResult, withData } from "@/lib/data/result";
 import { getBillsData } from "@/lib/data/bills";
 import { getCommitteesData } from "@/lib/data/committees";
 import { getPoliticiansData } from "@/lib/data/politicians";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getAnalyticsSnapshot } from "@/lib/supabase/analytics";
+import { getLatestSyncRun } from "@/lib/supabase/sync";
 
 type SeriesPoint = { label: string; value: number };
 
-export type AnalyticsDataSource = "live-derived" | "unconfigured" | "unavailable";
+export type AnalyticsDataSource = "supabase" | "supabase-derived" | "unconfigured" | "unavailable";
 
 function emptySeries(labels: string[]) {
   return labels.map((label) => ({ label, value: 0 }));
@@ -30,24 +34,12 @@ function withFallbackSeries(series: SeriesPoint[], labels: string[]) {
   return series.length > 0 ? series : emptySeries(labels);
 }
 
-export async function getAnalyticsData() {
+export async function computeAnalyticsSummary() {
   const [billsData, committeesData, politiciansData] = await Promise.all([
     getBillsData(),
     getCommitteesData(),
     getPoliticiansData(),
   ]);
-
-  const allSources = [billsData.source, committeesData.source, politiciansData.source];
-  const hasLiveData =
-    billsData.bills.length > 0
-    || committeesData.committees.length > 0
-    || politiciansData.politicians.length > 0;
-
-  const source: AnalyticsDataSource = hasLiveData
-    ? "live-derived"
-    : allSources.every((item) => item === "unconfigured")
-      ? "unconfigured"
-      : "unavailable";
 
   const activeBills = billsData.bills.length;
   const upcomingVotes = billsData.bills.filter((bill) =>
@@ -72,34 +64,34 @@ export async function getAnalyticsData() {
   );
 
   const voteCadenceSeries = withFallbackSeries(
-    billsData.bills
-      .slice(0, 5)
-      .map((bill) => ({ label: bill.number, value: bill.stats.votes })),
+    billsData.bills.slice(0, 5).map((bill) => ({ label: bill.number, value: bill.stats.votes })),
     ["Bill 1", "Bill 2", "Bill 3", "Bill 4", "Bill 5"],
   );
 
   const committeeSeries = withFallbackSeries(
-    committeesData.committees
-      .slice(0, 5)
-      .map((committee) => ({
-        label: committee.name.split(" ").slice(0, 2).join(" "),
-        value: committee.activeBillIds.length,
-      })),
+    committeesData.committees.slice(0, 5).map((committee) => ({
+      label: committee.name.split(" ").slice(0, 2).join(" "),
+      value: committee.activeBillIds.length,
+    })),
     ["Cmte 1", "Cmte 2", "Cmte 3", "Cmte 4", "Cmte 5"],
   );
 
   const alertSeries = withFallbackSeries(
-    politiciansData.politicians
-      .slice(0, 5)
-      .map((politician) => ({
-        label: politician.name.split(" ").slice(-1)[0] || politician.name,
-        value: politician.stats.billsIntroduced,
-      })),
+    politiciansData.politicians.slice(0, 5).map((politician) => ({
+      label: politician.name.split(" ").slice(-1)[0] || politician.name,
+      value: politician.stats.billsIntroduced,
+    })),
     ["M1", "M2", "M3", "M4", "M5"],
   );
 
   const introductionsSeries = withFallbackSeries(
-    buildMonthlySeries(billsData.bills.map((bill) => bill.introducedAt)),
+    buildMonthlySeries(
+      billsData.bills.map((bill) =>
+        bill.introducedAt === "Unknown" || bill.introducedAt === "Not available"
+          ? bill.lastActionAt
+          : bill.introducedAt,
+      ),
+    ),
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
   );
 
@@ -114,27 +106,88 @@ export async function getAnalyticsData() {
   const politicianCount = Math.max(politiciansData.politicians.length, 1);
 
   return {
-    source,
-    summary: {
-      activeBills,
-      upcomingVotes,
-      committees,
-      watchlistHits,
-      activitySeries,
-      voteCadenceSeries,
-      committeeSeries,
-      alertSeries,
-      introductionsSeries,
-      partisanSeries: [
-        {
-          label: "With party",
-          value: Math.round(totalAlignment / politicianCount),
-        },
-        {
-          label: "Cross-party",
-          value: Math.round(totalCrossParty / politicianCount),
-        },
-      ],
+    activeBills,
+    upcomingVotes,
+    committees,
+    watchlistHits,
+    activitySeries,
+    voteCadenceSeries,
+    committeeSeries,
+    alertSeries,
+    introductionsSeries,
+    partisanSeries: [
+      {
+        label: "With party",
+        value: Math.round(totalAlignment / politicianCount),
+      },
+      {
+        label: "Cross-party",
+        value: Math.round(totalCrossParty / politicianCount),
+      },
+    ],
+  };
+}
+
+export async function getAnalyticsData() {
+  if (!isSupabaseConfigured()) {
+    return {
+      ...emptyResult("unconfigured", "analytics_rebuild", { activeBills: 0, upcomingVotes: 0, committees: 0, watchlistHits: 0, activitySeries: [], voteCadenceSeries: [], committeeSeries: [], alertSeries: [], introductionsSeries: [], partisanSeries: [] }, "unconfigured"),
+      source: "unconfigured" as AnalyticsDataSource,
+      summary: {
+        activeBills: 0,
+        upcomingVotes: 0,
+        committees: 0,
+        watchlistHits: 0,
+        activitySeries: [],
+        voteCadenceSeries: [],
+        committeeSeries: [],
+        alertSeries: [],
+        introductionsSeries: [],
+        partisanSeries: [],
+      },
+    };
+  }
+
+  const [snapshot, latestRun] = await Promise.all([
+    getAnalyticsSnapshot("dashboard-summary").catch(() => undefined),
+    getLatestSyncRun("analytics_rebuild").catch(() => undefined),
+  ]);
+
+  if (snapshot?.payload) {
+    const summary = snapshot.payload as Awaited<ReturnType<typeof computeAnalyticsSummary>>;
+    const result = withData(
+      "supabase",
+      "analytics_rebuild",
+      summary,
+      snapshot.synced_at || latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: "live",
+        detail: latestRun?.status ? `Latest rebuild status: ${latestRun.status}` : "Stored analytics snapshot",
+      },
+    );
+
+    return {
+      ...result,
+      source: "supabase" as AnalyticsDataSource,
+      summary,
+    };
+  }
+
+  const summary = await computeAnalyticsSummary();
+  const result = withData(
+    "supabase-derived",
+    "analytics_rebuild",
+    summary,
+    latestRun?.finished_at || latestRun?.started_at,
+    {
+      availability: summary.activeBills > 0 ? "partial" : "empty",
+      detail: "Using derived analytics because no stored snapshot exists yet",
     },
+  );
+
+  return {
+    ...result,
+    source: "supabase-derived" as AnalyticsDataSource,
+    summary,
   };
 }

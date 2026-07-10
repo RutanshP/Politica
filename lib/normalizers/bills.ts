@@ -66,6 +66,7 @@ export function normalizeCongressBillListItem(bill: CongressBillListItem): Bill 
 
   return {
     id: buildBillId(billType, billNumber),
+    slug: buildBillId(billType, billNumber),
     number: `${String(bill.type || "").toUpperCase()}.${billNumber}`,
     title: titleFromListBill(bill),
     summary: "Live Congress.gov bill imported. Rich summaries can be layered in from stored detail records or generated briefs later.",
@@ -101,6 +102,12 @@ export function normalizeCongressBillListItem(bill: CongressBillListItem): Bill 
       : [],
     versions: [],
     relatedBillIds: [],
+    jurisdictionType: "federal",
+    sourceMetadata: {
+      sourceSystem: "congress",
+      sourceId: buildBillId(billType, billNumber),
+      rawAvailable: true,
+    },
   };
 }
 
@@ -161,6 +168,11 @@ export function mergeCongressBillDetail(
     actions: actions.length > 0 ? actions : seed.actions,
     versions: versions.length > 0 ? versions : seed.versions,
     relatedBillIds: seed.relatedBillIds,
+    sourceMetadata: {
+      sourceSystem: "congress",
+      sourceId: detail.number ? buildBillId(detail.type, detail.number) : seed.id,
+      rawAvailable: true,
+    },
   };
 }
 

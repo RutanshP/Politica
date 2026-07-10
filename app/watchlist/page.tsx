@@ -1,18 +1,20 @@
 import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
+import { SourceBadge } from "@/components/source-badge";
 import { WatchButton } from "@/components/watch-button";
 import { getWatchlistData } from "@/lib/data/watchlist";
 
 export default async function WatchlistPage() {
-  const { items } = await getWatchlistData();
+  const { items, availability } = await getWatchlistData();
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Watchlist"
         title="Tracked bills, people, committees, and issues"
-        description="A live-derived starter watchlist. Persisted follows can layer in later."
+        description="A stored starter watchlist built from synced legislative and politician records."
+        actions={<SourceBadge label={availability === "live" ? "App-level watchlist seeds" : "Watchlist awaiting stored entities"} live={availability === "live"} />}
       />
       <SectionCard title="Your watchlist">
         {items.length > 0 ? (
@@ -30,7 +32,7 @@ export default async function WatchlistPage() {
           />
         ) : (
           <p className="text-sm text-[var(--muted)]">
-            No live entities are available to seed the watchlist yet.
+            No stored entities are available to seed the watchlist yet.
           </p>
         )}
       </SectionCard>

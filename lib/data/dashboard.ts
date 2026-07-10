@@ -8,9 +8,9 @@ export async function getDashboardData() {
 
   return {
     source:
-      billsSource === "live-congress"
-      || analyticsSource === "live-derived"
-        ? "live-derived"
+      billsSource === "supabase"
+      || analyticsSource === "supabase-derived"
+        ? "supabase-derived"
         : billsSource === "unconfigured"
           ? "unconfigured"
           : "unavailable",

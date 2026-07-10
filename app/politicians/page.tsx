@@ -1,10 +1,7 @@
-import Link from "next/link";
-
-import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
+import { PoliticiansDirectory } from "@/components/politicians-directory";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
-import { WatchButton } from "@/components/watch-button";
 import {
   getPoliticianSourceLabel,
   getPoliticiansData,
@@ -29,21 +26,8 @@ export default async function PoliticiansPage() {
           />
         }
       />
-      <SectionCard title="Member directory">
-        <DataTable
-          columns={["Name", "Office", "Party", "State", "Attendance", "Profile", "Watch"]}
-          rows={politicians.map((politician) => [
-            politician.name,
-            politician.title,
-            politician.party,
-            politician.state,
-            `${politician.stats.attendance}%`,
-            <Link key={politician.id} href={`/politicians/${politician.slug}`} className="font-semibold text-[var(--accent)]">
-              View profile
-            </Link>,
-            <WatchButton key={`${politician.id}-watch`} />,
-          ])}
-        />
+      <SectionCard title="Member directory" description="Search, filter, and sort the stored member records.">
+        <PoliticiansDirectory politicians={politicians} />
       </SectionCard>
     </div>
   );
