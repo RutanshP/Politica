@@ -2,6 +2,38 @@ import { mapRowToBill, sortBillsByActivity } from "@/lib/normalizers/legislation
 import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import type { BillActionRow, BillRow, BillVersionRow } from "@/types/supabase";
 
+const BILL_LIST_SELECT = [
+  "id",
+  "slug",
+  "number",
+  "title",
+  "summary",
+  "jurisdiction",
+  "country",
+  "state",
+  "chamber",
+  "status",
+  "topic",
+  "sponsor_id",
+  "sponsor_name",
+  "committee_id",
+  "committee_name",
+  "latest_action",
+  "last_action_at",
+  "introduced_at",
+  "session",
+  "chance_of_passing",
+  "stats",
+  "related_bill_ids",
+  "source",
+  "source_system",
+  "source_id",
+  "jurisdiction_type",
+  "state_code",
+  "session_id",
+  "synced_at",
+].join(",");
+
 function buildQuotedInFilter(values: string[]) {
   return values
     .map((value) => `"${value.replace(/"/g, '\\"')}"`)
@@ -10,7 +42,10 @@ function buildQuotedInFilter(values: string[]) {
 
 export async function listStoredBills() {
   const [billRows, actionRows, versionRows] = await Promise.all([
-    fetchSupabaseRows<BillRow>("bills"),
+    fetchSupabaseRows<BillRow>("bills", undefined, {
+      cache: "no-store",
+      select: BILL_LIST_SELECT,
+    }),
     fetchSupabaseRows<BillActionRow>("bill_actions", "order=bill_id.asc,sort_order.asc"),
     fetchSupabaseRows<BillVersionRow>("bill_versions", "order=bill_id.asc,sort_order.asc"),
   ]);

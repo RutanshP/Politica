@@ -5,6 +5,7 @@ const jiti = require("../support/jiti.cjs");
 
 const { buildUpdatedPoliticianRowsFromVotePositions } = jiti("@/lib/server/vote-stats");
 const { mergeCommitteeMembershipIds } = jiti("@/lib/supabase/committees");
+const { normalizeCongressMemberToPolitician, mapPoliticianToRow } = jiti("@/lib/normalizers/politicians");
 
 test("buildUpdatedPoliticianRowsFromVotePositions recomputes attendance and party alignment", () => {
   const rows = buildUpdatedPoliticianRowsFromVotePositions(
@@ -77,4 +78,63 @@ test("mergeCommitteeMembershipIds applies roster ids onto committee records", ()
   );
 
   assert.deepEqual(committees[0].memberIds, ["member-1", "member-2"]);
+});
+
+test("normalizeCongressMemberToPolitician prefers the latest term for chamber and district", () => {
+  const politician = normalizeCongressMemberToPolitician(
+    {
+      bioguideId: "X000001",
+      firstName: "Lisa",
+      lastName: "Blunt Rochester",
+      state: "DE",
+      terms: {
+        item: [
+          { chamber: "House of Representatives", district: 0, startYear: 2017, endYear: 2024 },
+          { chamber: "Senate", startYear: 2025, endYear: 2030 },
+        ],
+      },
+    },
+    undefined,
+  );
+
+  assert.equal(politician.title, "US Senator");
+  assert.equal(politician.district, undefined);
+  assert.equal(politician.state, "DE");
+});
+
+test("mapPoliticianToRow stores a normalized federal state code", () => {
+  const row = mapPoliticianToRow({
+    id: "X000002",
+    slug: "becca-balint",
+    name: "Becca Balint",
+    title: "US Representative",
+    party: "Democratic",
+    state: "Vermont",
+    district: "VT-AL",
+    biography: "",
+    born: "",
+    education: "",
+    occupation: "",
+    website: "",
+    officePhone: "",
+    officeAddress: "",
+    nextElection: "",
+    jurisdictionType: "federal",
+    stats: {
+      votesWithParty: 0,
+      votesAgainstParty: 0,
+      attendance: 0,
+      billsIntroduced: 0,
+      billsPassed: 0,
+      amendmentsOffered: 0,
+    },
+    ideology: {},
+    sourceMetadata: {
+      sourceSystem: "congress",
+      sourceId: "X000002",
+      rawAvailable: true,
+    },
+  }, {});
+
+  assert.equal(row.state_code, "VT");
 });

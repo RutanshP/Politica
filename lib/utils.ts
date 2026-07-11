@@ -21,6 +21,7 @@ export function slugifySegment(input: string) {
 
 const STATE_NAMES: Record<string, string> = {
   AL: "Alabama",
+  AS: "American Samoa",
   AK: "Alaska",
   AZ: "Arizona",
   AR: "Arkansas",
@@ -30,6 +31,7 @@ const STATE_NAMES: Record<string, string> = {
   DE: "Delaware",
   FL: "Florida",
   GA: "Georgia",
+  GU: "Guam",
   HI: "Hawaii",
   ID: "Idaho",
   IL: "Illinois",
@@ -54,10 +56,12 @@ const STATE_NAMES: Record<string, string> = {
   NY: "New York",
   NC: "North Carolina",
   ND: "North Dakota",
+  MP: "Northern Mariana Islands",
   OH: "Ohio",
   OK: "Oklahoma",
   OR: "Oregon",
   PA: "Pennsylvania",
+  PR: "Puerto Rico",
   RI: "Rhode Island",
   SC: "South Carolina",
   SD: "South Dakota",
@@ -66,12 +70,17 @@ const STATE_NAMES: Record<string, string> = {
   UT: "Utah",
   VT: "Vermont",
   VA: "Virginia",
+  VI: "Virgin Islands",
   WA: "Washington",
   WV: "West Virginia",
   WI: "Wisconsin",
   WY: "Wyoming",
   DC: "District of Columbia",
 };
+
+const STATE_CODES_BY_NAME = Object.fromEntries(
+  Object.entries(STATE_NAMES).map(([code, name]) => [name.toUpperCase(), code]),
+) as Record<string, string>;
 
 const PARTY_NAMES: Record<string, string> = {
   D: "Democratic",
@@ -98,12 +107,108 @@ export function normalizeStateLabel(value?: string | null) {
   return normalized;
 }
 
+export function normalizeStateCode(value?: string | null) {
+  const normalized = value?.trim();
+  if (!normalized) return "";
+
+  const upper = normalized.toUpperCase();
+  if (STATE_NAMES[upper]) {
+    return upper;
+  }
+
+  return STATE_CODES_BY_NAME[upper] || "";
+}
+
+export function normalizeDistrictSeat(
+  state?: string | null,
+  district?: string | number | null,
+) {
+  const stateCode = normalizeStateCode(state);
+  const districtText = String(district ?? "").trim();
+  if (!districtText) {
+    return "";
+  }
+
+  const districtNumber = Number(districtText);
+  if (Number.isFinite(districtNumber)) {
+    if (!stateCode) {
+      return "";
+    }
+    return districtNumber <= 0 ? `${stateCode}-AL` : `${stateCode}-${districtNumber}`;
+  }
+
+  const normalized = districtText.toUpperCase().replace(/\s+/g, "");
+  if (!normalized.includes("-")) {
+    if (!stateCode) {
+      return "";
+    }
+    return normalized === "AL" ? `${stateCode}-AL` : `${stateCode}-${normalized}`;
+  }
+
+  const hyphenIndex = normalized.indexOf("-");
+  const suffix = hyphenIndex >= 0 ? normalized.slice(hyphenIndex + 1) : normalized;
+  if (!suffix) {
+    return "";
+  }
+
+  if (!stateCode) {
+    const prefix = hyphenIndex >= 0 ? normalized.slice(0, hyphenIndex) : "";
+    return STATE_NAMES[prefix] ? normalized : "";
+  }
+
+  return `${stateCode}-${suffix}`;
+}
+
 export function normalizePartyLabel(value?: string | null) {
   const normalized = value?.trim();
   if (!normalized) return "Unknown";
 
   const upper = normalized.toUpperCase();
   return PARTY_NAMES[upper] || normalized;
+}
+
+export function normalizeOfficeTitle(
+  title?: string | null,
+  options?: {
+    jurisdictionType?: string | null;
+    state?: string | null;
+  },
+) {
+  const normalized = (title || "").trim();
+  if (!normalized) {
+    return options?.jurisdictionType === "state"
+      ? `${normalizeStateLabel(options?.state)} Legislator`
+      : "US Legislator";
+  }
+
+  const lower = normalized.toLowerCase();
+  const stateName = normalizeStateLabel(options?.state);
+
+  if (options?.jurisdictionType === "federal") {
+    if (/(house|representative)/i.test(normalized)) {
+      return "US Representative";
+    }
+    if (/senator/i.test(normalized)) {
+      return "US Senator";
+    }
+    if (/legislator/i.test(normalized)) {
+      return "US Legislator";
+    }
+  }
+
+  if (options?.jurisdictionType === "state") {
+    if (/(upper|senate|senator)/i.test(lower)) {
+      return `${stateName} Senator`;
+    }
+    if (/(lower|house|assembly|delegate|representative)/i.test(lower)) {
+      return `${stateName} Representative`;
+    }
+    if (/legislator/i.test(lower)) {
+      return `${stateName} Legislator`;
+    }
+  }
+
+  return normalized;
 }
 
 export function hasVotePerformanceStats(stats: {

@@ -12,11 +12,43 @@ import type { Politician } from "@/types/civic";
 
 const PAGE_SIZE = 20;
 
+function getOfficeBucket(politician: Politician) {
+  if (politician.jurisdictionType === "federal") {
+    if (politician.title === "US Senator") return "US Senate";
+    if (politician.title === "US Representative") return "US House";
+    return "Other federal";
+  }
+
+  if (politician.title.includes("Senator")) return "State Senate";
+  if (politician.title.includes("Representative")) return "State House";
+  return "Other state";
+}
+
 export function PoliticiansDirectory({
   politicians,
 }: {
   politicians: Politician[];
 }) {
+  const offices = useMemo(
+    () => {
+      const present = new Set(politicians.map(getOfficeBucket));
+      return [
+        "All chambers",
+        "US House",
+        "US Senate",
+        ...(present.has("State House") ? ["State House"] : []),
+        ...(present.has("State Senate") ? ["State Senate"] : []),
+        ...(present.has("Other state") ? ["Other state"] : []),
+      ];
+    },
+    [politicians],
+  );
+  const levels = useMemo(
+    () => ["All levels", ...sortLabelsAlphabetically(
+      politicians.map((politician) => politician.jurisdictionType === "state" ? "State" : "Federal"),
+    )],
+    [politicians],
+  );
   const parties = useMemo(
     () => ["All parties", ...sortLabelsAlphabetically(politicians.map((politician) => politician.party))],
     [politicians],
@@ -27,9 +59,10 @@ export function PoliticiansDirectory({
   );
 
   const [query, setQuery] = useState("");
+  const [office, setOffice] = useState("All chambers");
+  const [level, setLevel] = useState("All levels");
   const [party, setParty] = useState("All parties");
   const [state, setState] = useState("All states");
-  const [chamber, setChamber] = useState("All chambers");
   const [sortBy, setSortBy] = useState("Name");
   const [page, setPage] = useState(1);
 
@@ -46,14 +79,14 @@ export function PoliticiansDirectory({
             politician.party,
             politician.state,
           ].some((value) => value.toLowerCase().includes(normalizedQuery));
+        const politicianOffice = getOfficeBucket(politician);
+        const politicianLevel = politician.jurisdictionType === "state" ? "State" : "Federal";
+        const matchesOffice = office === "All chambers" || politicianOffice === office;
+        const matchesLevel = level === "All levels" || politicianLevel === level;
         const matchesParty = party === "All parties" || politician.party === party;
         const matchesState = state === "All states" || politician.state === state;
-        const matchesChamber =
-          chamber === "All chambers"
-          || (chamber === "Senate" && politician.title.includes("Senator"))
-          || (chamber === "House" && politician.title.includes("Representative"));
 
-        return matchesQuery && matchesParty && matchesState && matchesChamber;
+        return matchesQuery && matchesOffice && matchesLevel && matchesParty && matchesState;
       })
       .sort((left, right) => {
         if (sortBy === "Attendance") return right.stats.attendance - left.stats.attendance;
@@ -71,7 +104,7 @@ export function PoliticiansDirectory({
       });
 
     return next;
-  }, [chamber, party, politicians, query, sortBy, state]);
+  }, [level, office, party, politicians, query, sortBy, state]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -97,16 +130,18 @@ export function PoliticiansDirectory({
 
       <FilterBar
         filters={[
+          { label: "Chamber", value: office, options: offices },
+          { label: "Level", value: level, options: levels },
           { label: "Party", value: party, options: parties },
           { label: "State", value: state, options: states },
-          { label: "Chamber", value: chamber, options: ["All chambers", "House", "Senate"] },
           { label: "Sort by", value: sortBy, options: ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"] },
         ]}
         onChange={(label, value) => {
           setPage(1);
+          if (label === "Chamber") setOffice(value);
+          if (label === "Level") setLevel(value);
           if (label === "Party") setParty(value);
           if (label === "State") setState(value);
-          if (label === "Chamber") setChamber(value);
           if (label === "Sort by") setSortBy(value);
         }}
       />

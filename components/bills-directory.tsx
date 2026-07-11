@@ -13,6 +13,10 @@ import type { Bill, Committee, Politician } from "@/types/civic";
 
 const PAGE_SIZE = 20;
 
+function normalizeBillLevel(bill: Bill) {
+  return bill.jurisdictionType === "state" || bill.jurisdiction === "State" ? "State" : "Federal";
+}
+
 function getSponsorSlug(bill: Bill, politicians: Politician[]) {
   const normalizedSponsorName = normalizePersonLookup(bill.sponsorName);
   const sponsor =
@@ -45,10 +49,12 @@ export function BillsDirectory({
     () => ["All states", ...sortLabelsAlphabetically(bills.map((bill) => bill.state).filter(Boolean) as string[])],
     [bills],
   );
+  const levels = useMemo(() => ["All levels", ...sortLabelsAlphabetically(bills.map(normalizeBillLevel))], [bills]);
   const chambers = useMemo(() => ["Both", ...sortLabelsAlphabetically(bills.map((bill) => bill.chamber))], [bills]);
   const statuses = useMemo(() => ["All statuses", ...sortLabelsAlphabetically(bills.map((bill) => bill.status))], [bills]);
 
   const [query, setQuery] = useState("");
+  const [level, setLevel] = useState("All levels");
   const [state, setState] = useState("All states");
   const [chamber, setChamber] = useState("Both");
   const [status, setStatus] = useState("All statuses");
@@ -56,32 +62,50 @@ export function BillsDirectory({
   const [topic, setTopic] = useState("All topics");
   const [sponsor, setSponsor] = useState("Any sponsor");
   const [committee, setCommittee] = useState("Any committee");
+  const [sortBy, setSortBy] = useState("Recent activity");
   const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return bills.filter((bill) => {
-      const matchesQuery =
-        normalizedQuery.length === 0
-        || [
-          bill.number,
-          bill.title,
-          bill.topic,
-          bill.sponsorName,
-          bill.committeeName,
-        ].some((value) => value.toLowerCase().includes(normalizedQuery));
+    return bills
+      .filter((bill) => {
+        const matchesQuery =
+          normalizedQuery.length === 0
+          || [
+            bill.number,
+            bill.title,
+            bill.topic,
+            bill.sponsorName,
+            bill.committeeName,
+          ].some((value) => value.toLowerCase().includes(normalizedQuery));
 
-      return matchesQuery
-        && (state === "All states" || bill.state === state)
-        && (chamber === "Both" || bill.chamber === chamber)
-        && (status === "All statuses" || bill.status === status)
-        && (session === "All sessions" || bill.session === session)
-        && (topic === "All topics" || bill.topic === topic)
-        && (sponsor === "Any sponsor" || bill.sponsorName === sponsor)
-        && (committee === "Any committee" || bill.committeeName === committee);
-    });
-  }, [bills, chamber, committee, query, session, sponsor, state, status, topic]);
+        return matchesQuery
+          && (level === "All levels" || normalizeBillLevel(bill) === level)
+          && (state === "All states" || bill.state === state)
+          && (chamber === "Both" || bill.chamber === chamber)
+          && (status === "All statuses" || bill.status === status)
+          && (session === "All sessions" || bill.session === session)
+          && (topic === "All topics" || bill.topic === topic)
+          && (sponsor === "Any sponsor" || bill.sponsorName === sponsor)
+          && (committee === "Any committee" || bill.committeeName === committee);
+      })
+      .sort((left, right) => {
+        if (sortBy === "Bill number") {
+          return left.number.localeCompare(right.number, "en-US", { numeric: true, sensitivity: "base" });
+        }
+        if (sortBy === "Title") {
+          return left.title.localeCompare(right.title, "en-US", { sensitivity: "base" });
+        }
+        if (sortBy === "Level") {
+          return normalizeBillLevel(left).localeCompare(normalizeBillLevel(right), "en-US", { sensitivity: "base" })
+            || (left.state || "").localeCompare(right.state || "", "en-US", { sensitivity: "base" })
+            || left.number.localeCompare(right.number, "en-US", { numeric: true, sensitivity: "base" });
+        }
+
+        return (right.lastActionAt || "").localeCompare(left.lastActionAt || "", "en-US", { sensitivity: "base" });
+      });
+  }, [bills, chamber, committee, level, query, session, sortBy, sponsor, state, status, topic]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -107,6 +131,7 @@ export function BillsDirectory({
 
       <FilterBar
         filters={[
+          { label: "Level", value: level, options: levels },
           { label: "State", value: state, options: states },
           { label: "Chamber", value: chamber, options: chambers },
           { label: "Status", value: status, options: statuses },
@@ -114,9 +139,11 @@ export function BillsDirectory({
           { label: "Topic", value: topic, options: topics },
           { label: "Sponsor", value: sponsor, options: sponsors },
           { label: "Committee", value: committee, options: committees },
+          { label: "Sort by", value: sortBy, options: ["Recent activity", "Bill number", "Title", "Level"] },
         ]}
         onChange={(label, value) => {
           setPage(1);
+          if (label === "Level") setLevel(value);
           if (label === "State") setState(value);
           if (label === "Chamber") setChamber(value);
           if (label === "Status") setStatus(value);
@@ -124,6 +151,7 @@ export function BillsDirectory({
           if (label === "Topic") setTopic(value);
           if (label === "Sponsor") setSponsor(value);
           if (label === "Committee") setCommittee(value);
+          if (label === "Sort by") setSortBy(value);
         }}
       />
 

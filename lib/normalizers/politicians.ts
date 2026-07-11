@@ -1,16 +1,50 @@
 import type { CongressMemberDetailPayload, CongressMemberListItem } from "@/types/congress";
 import type { Politician } from "@/types/civic";
 import type { PoliticianRow } from "@/types/supabase";
-import { slugifySegment } from "@/lib/utils";
+import { normalizeDistrictSeat, normalizeOfficeTitle, normalizeStateCode, slugifySegment } from "@/lib/utils";
 
 function buildTitle(chamber?: string) {
-  return chamber === "House of Representatives"
-    ? "United States Representative"
-    : "United States Senator";
+  return normalizeOfficeTitle(
+    chamber === "House of Representatives" ? "Representative" : "Senator",
+    { jurisdictionType: "federal" },
+  );
 }
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function buildCongressDistrict(
+  state: string | undefined,
+  district: number | string | undefined,
+) {
+  return normalizeDistrictSeat(state, district) || undefined;
+}
+
+function toYear(value?: number | string) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) ? parsed : -1;
+}
+
+function chooseCurrentTerm(
+  member: CongressMemberListItem,
+  detail?: CongressMemberDetailPayload,
+) {
+  const detailTerms = detail?.member?.terms?.item ?? [];
+  const listTerms = member.terms?.item ?? [];
+  const terms = (detailTerms.length > 0 ? detailTerms : listTerms).filter(Boolean);
+
+  if (terms.length === 0) {
+    return undefined;
+  }
+
+  const preferred = [...terms].sort((left, right) =>
+    toYear(right.startYear) - toYear(left.startYear)
+    || toYear(right.endYear) - toYear(left.endYear)
+    || String(right.chamber || "").localeCompare(String(left.chamber || ""), "en-US", { sensitivity: "base" })
+  )[0];
+
+  return preferred;
 }
 
 function buildMemberName(
@@ -55,8 +89,9 @@ export function normalizeCongressMemberToPolitician(
 ) {
   const detailMember = detail?.member;
   const name = buildMemberName(member, detail);
-  const currentTerm = detailMember?.terms?.item?.[0] || member.terms?.item?.[0];
+  const currentTerm = chooseCurrentTerm(member, detail);
   const id = member.bioguideId || slugifySegment(name);
+  const state = detailMember?.state || member.state || "Federal";
 
   return {
     id,
@@ -64,12 +99,9 @@ export function normalizeCongressMemberToPolitician(
     name,
     title: buildTitle(currentTerm?.chamber),
     party: detailMember?.partyName || member.partyName || "Unknown",
-    state: detailMember?.state || member.state || "Federal",
-    district:
-      currentTerm?.district && Number(currentTerm.district) > 0
-        ? `${detailMember?.state || member.state}-${currentTerm.district}`
-        : undefined,
-    biography: `${buildTitle(currentTerm?.chamber)} from ${detailMember?.state || member.state || "Federal"}. Synced from Congress.gov via scheduled ingestion.`,
+    state,
+    district: buildCongressDistrict(state, currentTerm?.district ?? member.district),
+    biography: `${buildTitle(currentTerm?.chamber)} from ${state}. Synced from Congress.gov via scheduled ingestion.`,
     born: "Not available from configured sources",
     education: "Not available from configured sources",
     occupation: "Public official",
@@ -118,7 +150,7 @@ export function mapPoliticianToRow(politician: Politician, rawMember: unknown): 
     source_system: politician.sourceMetadata?.sourceSystem || "congress",
     source_id: politician.sourceMetadata?.sourceId || politician.id,
     jurisdiction_type: politician.jurisdictionType || "federal",
-    state_code: politician.state || null,
+    state_code: normalizeStateCode(politician.state) || politician.state || null,
     session_id: politician.sessionId || null,
     synced_at: new Date().toISOString(),
     raw_payload: rawMember,

@@ -18,9 +18,13 @@ function buildHeaders(extra?: Record<string, string>) {
   };
 }
 
-function applyRestQuery(url: URL, query?: string, includeSelect = false) {
+function applyRestQuery(url: URL, query?: string, includeSelect = false, select?: string) {
   if (includeSelect) {
     url.searchParams.set("select", "*");
+  }
+
+  if (select) {
+    url.searchParams.set("select", select);
   }
 
   if (!query) {
@@ -37,9 +41,9 @@ function applyRestQuery(url: URL, query?: string, includeSelect = false) {
   return url;
 }
 
-function buildRestUrl(pathname: string, query?: string) {
+function buildRestUrl(pathname: string, query?: string, select?: string) {
   const base = getSupabaseUrl();
-  return applyRestQuery(new URL(`${base}/rest/v1/${pathname}`), query, true).toString();
+  return applyRestQuery(new URL(`${base}/rest/v1/${pathname}`), query, true, select).toString();
 }
 
 function buildRestMutationUrl(pathname: string, query?: string) {
@@ -52,13 +56,14 @@ export async function fetchSupabaseRows<T>(
   query?: string,
   options?: {
     cache?: "default" | "no-store";
+    select?: string;
   },
 ) {
   if (!isSupabaseConfigured()) {
     throw new Error("Supabase is not configured");
   }
 
-  const response = await fetch(buildRestUrl(pathname, query), {
+  const response = await fetch(buildRestUrl(pathname, query, options?.select), {
     headers: buildHeaders(),
     ...(options?.cache === "no-store"
       ? { cache: "no-store" as const }

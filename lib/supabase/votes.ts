@@ -111,6 +111,25 @@ export async function listStoredVotesByPoliticianId(politicianId: string) {
   return voteRows.map((row) => mapRowToVote(row, positionsByVoteId.get(row.id) || []));
 }
 
+export async function listStoredVotePositionContextByPoliticianId(politicianId: string) {
+  const positionRows = await fetchSupabaseRows<VotePositionRow>(
+    "vote_positions",
+    `politician_id=eq.${encodeURIComponent(politicianId)}&order=vote_id.asc`,
+    { cache: "no-store" },
+  );
+
+  const voteIds = [...new Set(positionRows.map((row) => row.vote_id))];
+  if (voteIds.length === 0) {
+    return [];
+  }
+
+  return fetchSupabaseRows<VotePositionRow>(
+    "vote_positions",
+    `vote_id=in.(${buildQuotedInFilter(voteIds)})&order=vote_id.asc,name.asc`,
+    { cache: "no-store" },
+  );
+}
+
 export async function replaceStoredVotes(voteIds: string[], voteRows: VoteRow[], positionRows: VotePositionRow[]) {
   const chunkSize = 100;
 

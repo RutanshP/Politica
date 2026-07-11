@@ -14,7 +14,7 @@ import { replaceStoredCommitteeMemberships } from "@/lib/supabase/committees";
 import { upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import { replaceStoredVotes } from "@/lib/supabase/votes";
 import { buildUpdatedPoliticianRowsFromVotePositions } from "@/lib/server/vote-stats";
-import { normalizePersonLookup, slugifySegment } from "@/lib/utils";
+import { normalizeOfficeTitle, normalizePersonLookup, normalizeStateLabel, slugifySegment } from "@/lib/utils";
 import type {
   BillActionRow,
   BillRow,
@@ -181,9 +181,10 @@ export async function syncStateLegislationFromOpenStates(states: string | string
 
     people.slice(0, OPENSTATES_MAX_ROWS).forEach((person) => {
       const name = person.name || [person.given_name, person.family_name].filter(Boolean).join(" ") || "State Legislator";
+      const stateName = normalizeStateLabel(state);
       const title = person.current_role?.org_classification?.toLowerCase().includes("upper")
-        ? "State Senator"
-        : "State Representative";
+        ? `${stateName} Senator`
+        : `${stateName} Representative`;
       const id = person.id || `${state}-${slugifySegment(name)}`;
 
       politicianMap.set(id, {
@@ -329,7 +330,10 @@ export async function syncStateLegislationFromOpenStates(states: string | string
           id: sponsorFields.sponsorId,
           slug: slugifySegment(`${state}-${sponsorFields.sponsorName}`),
           name: sponsorFields.sponsorName,
-          title: "State Legislator",
+          title: normalizeOfficeTitle("State Legislator", {
+            jurisdictionType: "state",
+            state,
+          }),
           party: "Unknown",
           state: state.toUpperCase(),
           district: null,
