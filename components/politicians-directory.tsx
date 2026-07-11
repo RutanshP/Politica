@@ -7,6 +7,7 @@ import { DataTable } from "@/components/data-table";
 import { FilterBar } from "@/components/filter-bar";
 import { Pagination } from "@/components/pagination";
 import { WatchButton } from "@/components/watch-button";
+import { hasVotePerformanceStats, sortLabelsAlphabetically } from "@/lib/utils";
 import type { Politician } from "@/types/civic";
 
 const PAGE_SIZE = 20;
@@ -17,11 +18,11 @@ export function PoliticiansDirectory({
   politicians: Politician[];
 }) {
   const parties = useMemo(
-    () => ["All parties", ...new Set(politicians.map((politician) => politician.party))],
+    () => ["All parties", ...sortLabelsAlphabetically(politicians.map((politician) => politician.party))],
     [politicians],
   );
   const states = useMemo(
-    () => ["All states", ...new Set(politicians.map((politician) => politician.state))],
+    () => ["All states", ...sortLabelsAlphabetically(politicians.map((politician) => politician.state))],
     [politicians],
   );
 
@@ -119,7 +120,7 @@ export function PoliticiansDirectory({
           politician.title,
           politician.party,
           politician.state,
-          `${politician.stats.attendance}%`,
+          hasVotePerformanceStats(politician.stats) ? `${politician.stats.attendance}%` : "N/A",
           <Link key={`${politician.id}-profile`} href={`/politicians/${politician.slug}`} className="font-semibold text-[var(--accent)]">
             View profile
           </Link>,
@@ -150,4 +151,3 @@ export function PoliticiansDirectory({
     </div>
   );
 }
-

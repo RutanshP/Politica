@@ -50,6 +50,7 @@ export default async function BillDetailPage({
     || committees.find((item) => item.slug === slugifySegment(bill.committeeName));
   const relatedBills = bills.filter((candidate) => bill.relatedBillIds.includes(candidate.id));
   const relatedNews = news.filter((item) => item.relatedIds.includes(bill.id));
+  const chronologicalActions = [...bill.actions].reverse();
 
   const statCards = [
     ["Amendments", bill.stats.amendments],
@@ -156,7 +157,7 @@ export default async function BillDetailPage({
 
           <div id="timeline">
             <SectionCard title="Timeline" description="Latest committee and floor milestones.">
-              <Timeline items={bill.actions} />
+              <Timeline items={chronologicalActions} />
             </SectionCard>
           </div>
         </div>

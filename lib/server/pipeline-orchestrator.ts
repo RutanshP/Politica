@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { upsertSyncErrors, upsertSyncRuns } from "@/lib/supabase/sync";
+import { listRunningSyncRuns, upsertSyncErrors, upsertSyncRuns } from "@/lib/supabase/sync";
 import type { SyncPipelineSummary } from "@/types/civic";
 import type { SyncErrorRow, SyncRunRow } from "@/types/supabase";
 
@@ -9,6 +9,18 @@ export async function runPipeline(
   worker: () => Promise<{ recordCount: number; metadata?: unknown }>,
 ): Promise<SyncPipelineSummary> {
   const startedAt = new Date().toISOString();
+  const staleRunningRows = await listRunningSyncRuns(pipeline).catch(() => []);
+  if (staleRunningRows.length > 0) {
+    await upsertSyncRuns(
+      staleRunningRows.map((row) => ({
+        ...row,
+        status: "failed",
+        finished_at: startedAt,
+        error_message: row.error_message || "Superseded by a newer pipeline run",
+      })),
+    ).catch(() => undefined);
+  }
+
   const runningRow: SyncRunRow = {
     id: randomUUID(),
     pipeline,

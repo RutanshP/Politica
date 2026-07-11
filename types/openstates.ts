@@ -2,6 +2,10 @@ export interface OpenStatesPerson {
   id?: string;
   name?: string;
   party?: string[];
+  given_name?: string;
+  family_name?: string;
+  image?: string;
+  email?: string;
   current_role?: {
     org_classification?: string;
     district?: string;
@@ -10,6 +14,10 @@ export interface OpenStatesPerson {
       classification?: string;
     };
   };
+  offices?: Array<{
+    voice?: string;
+    address?: string;
+  }>;
   links?: Array<{ url?: string }>;
 }
 
@@ -20,11 +28,63 @@ export interface OpenStatesBill {
   classification?: string[];
   from_organization?: { name?: string; classification?: string };
   abstracts?: Array<{ abstract?: string }>;
+  other_titles?: Array<{ title?: string }>;
   subjects?: string[];
   latest_action_description?: string;
   latest_action_date?: string;
   created_at?: string;
   updated_at?: string;
+  first_action_date?: string;
+  latest_passage_date?: string;
+  openstates_url?: string;
+  sponsorships?: Array<{
+    name?: string;
+    person?: {
+      id?: string;
+      name?: string;
+    };
+    entity_type?: string;
+    classification?: string;
+    primary?: boolean;
+  }>;
+  actions?: Array<{
+    date?: string;
+    description?: string;
+    organization?: {
+      name?: string;
+      classification?: string;
+    };
+    classification?: string[];
+  }>;
+  documents?: Array<{
+    note?: string;
+    date?: string;
+    links?: Array<{
+      media_type?: string;
+      url?: string;
+    }>;
+  }>;
+  votes?: OpenStatesVote[];
+}
+
+export interface OpenStatesCommittee {
+  id?: string;
+  name?: string;
+  classification?: string;
+  chamber?: string;
+  parent?: string;
+  email?: string;
+  image?: string;
+  members?: Array<{
+    name?: string;
+    role?: string;
+    person_id?: string;
+  }>;
+  jurisdiction?: {
+    name?: string;
+    classification?: string;
+  };
+  links?: Array<{ url?: string }>;
 }
 
 export interface OpenStatesVote {
@@ -32,6 +92,7 @@ export interface OpenStatesVote {
   motion_text?: string;
   result?: string;
   start_date?: string;
+  updated_at?: string;
   counts?: Array<{ option?: string; value?: number }>;
   organization?: { name?: string; classification?: string };
   bill?: { identifier?: string };

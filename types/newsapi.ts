@@ -1,15 +1,22 @@
-export interface NewsApiArticle {
-  source?: { id?: string | null; name?: string | null };
-  author?: string | null;
+export interface EventRegistryArticleSource {
   title?: string | null;
-  description?: string | null;
-  url?: string | null;
-  publishedAt?: string | null;
-  content?: string | null;
+  uri?: string | null;
 }
 
-export interface NewsApiResponse {
-  status?: string;
-  totalResults?: number;
-  articles?: NewsApiArticle[];
+export interface EventRegistryArticle {
+  title?: string | null;
+  body?: string | null;
+  url?: string | null;
+  date?: string | null;
+  dateTime?: string | null;
+  source?: EventRegistryArticleSource | null;
+  authors?: Array<{ name?: string | null }> | null;
+}
+
+export interface EventRegistryArticlesEnvelope {
+  results?: EventRegistryArticle[];
+}
+
+export interface EventRegistryResponse {
+  articles?: EventRegistryArticlesEnvelope;
 }

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
@@ -26,6 +27,7 @@ export default async function BillTimelinePage({
   const { billId } = await params;
   const { bill, source } = await getBillData(billId);
   if (!bill) notFound();
+  const chronologicalActions = [...bill.actions].reverse();
 
   return (
     <div className="space-y-6">
@@ -45,7 +47,14 @@ export default async function BillTimelinePage({
         ]}
       />
       <SectionCard title="Legislative timeline">
-        <Timeline items={bill.actions} />
+        {bill.actions.length > 0 ? (
+          <Timeline items={chronologicalActions} />
+        ) : (
+          <EmptyState
+            title="No stored timeline actions yet"
+            description="This bill record exists, but detailed action history has not been stored for it in the current dataset."
+          />
+        )}
       </SectionCard>
     </div>
   );

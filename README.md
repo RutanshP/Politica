@@ -107,7 +107,7 @@ Planned data sources:
 - Congress.gov API for federal bills, actions, sponsors, committees, and bill text
 - OpenStates API for state bills, votes, legislators, committees, and sessions
 - FEC API for campaign finance
-- NewsAPI for connected political coverage
+- NewsAPI.ai / Event Registry for connected political coverage
 
 The implementation now follows a flow like:
 
@@ -125,7 +125,7 @@ Protected endpoints now exist for:
 Current live-data status:
 
 - Bills, politicians, committees, issues, news, finance graph data, sync status, and analytics now read from stored Supabase-backed loaders
-- Congress, OpenStates, FEC, and News API adapters are ingestion-only clients used by sync workers
+- Congress, OpenStates, FEC, and NewsAPI.ai adapters are ingestion-only clients used by sync workers
 - Search, issue clusters, entity indexes, and analytics snapshots are rebuilt into stored tables through the rebuild pipeline
 - `/elections` remains intentionally minimal in v1
 

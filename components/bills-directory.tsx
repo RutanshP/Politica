@@ -8,35 +8,45 @@ import { FilterBar } from "@/components/filter-bar";
 import { Pagination } from "@/components/pagination";
 import { StatusPill } from "@/components/status-pill";
 import { WatchButton } from "@/components/watch-button";
-import type { Bill, Politician } from "@/types/civic";
+import { normalizePersonLookup, sortLabelsAlphabetically } from "@/lib/utils";
+import type { Bill, Committee, Politician } from "@/types/civic";
 
 const PAGE_SIZE = 20;
 
 function getSponsorSlug(bill: Bill, politicians: Politician[]) {
+  const normalizedSponsorName = normalizePersonLookup(bill.sponsorName);
   const sponsor =
     politicians.find((politician) => politician.id === bill.sponsorId)
+    || politicians.find((politician) => normalizePersonLookup(politician.name) === normalizedSponsorName)
     || politicians.find((politician) => politician.name === bill.sponsorName);
 
   return sponsor?.slug;
 }
 
+function getCommitteeSlug(bill: Bill, committees: Committee[]) {
+  const committee = committees.find((item) => item.id === bill.committeeId || item.name === bill.committeeName);
+  return committee?.slug;
+}
+
 export function BillsDirectory({
   bills,
   politicians,
+  committees: linkedCommittees,
 }: {
   bills: Bill[];
   politicians: Politician[];
+  committees: Committee[];
 }) {
-  const sessions = useMemo(() => ["All sessions", ...new Set(bills.map((bill) => bill.session))], [bills]);
-  const topics = useMemo(() => ["All topics", ...new Set(bills.map((bill) => bill.topic))], [bills]);
-  const sponsors = useMemo(() => ["Any sponsor", ...new Set(bills.map((bill) => bill.sponsorName))], [bills]);
-  const committees = useMemo(() => ["Any committee", ...new Set(bills.map((bill) => bill.committeeName))], [bills]);
+  const sessions = useMemo(() => ["All sessions", ...sortLabelsAlphabetically(bills.map((bill) => bill.session))], [bills]);
+  const topics = useMemo(() => ["All topics", ...sortLabelsAlphabetically(bills.map((bill) => bill.topic))], [bills]);
+  const sponsors = useMemo(() => ["Any sponsor", ...sortLabelsAlphabetically(bills.map((bill) => bill.sponsorName))], [bills]);
+  const committees = useMemo(() => ["Any committee", ...sortLabelsAlphabetically(bills.map((bill) => bill.committeeName))], [bills]);
   const states = useMemo(
-    () => ["All states", ...new Set(bills.map((bill) => bill.state).filter(Boolean) as string[])],
+    () => ["All states", ...sortLabelsAlphabetically(bills.map((bill) => bill.state).filter(Boolean) as string[])],
     [bills],
   );
-  const chambers = useMemo(() => ["Both", ...new Set(bills.map((bill) => bill.chamber))], [bills]);
-  const statuses = useMemo(() => ["All statuses", ...new Set(bills.map((bill) => bill.status))], [bills]);
+  const chambers = useMemo(() => ["Both", ...sortLabelsAlphabetically(bills.map((bill) => bill.chamber))], [bills]);
+  const statuses = useMemo(() => ["All statuses", ...sortLabelsAlphabetically(bills.map((bill) => bill.status))], [bills]);
 
   const [query, setQuery] = useState("");
   const [state, setState] = useState("All states");
@@ -131,6 +141,7 @@ export function BillsDirectory({
         ]}
         rows={pageRows.map((bill) => {
           const sponsorSlug = getSponsorSlug(bill, politicians);
+          const committeeSlug = getCommitteeSlug(bill, linkedCommittees);
 
           return [
             <Link key={`${bill.id}-number`} href={`/bills/${bill.id}`} className="font-semibold text-[var(--accent)]">
@@ -154,9 +165,13 @@ export function BillsDirectory({
             ) : (
               bill.sponsorName
             ),
-            <Link key={`${bill.id}-committee`} href={`/committees/${bill.committeeId}`} className="text-[var(--accent)]">
-              {bill.committeeName}
-            </Link>,
+            committeeSlug ? (
+              <Link key={`${bill.id}-committee`} href={`/committees/${committeeSlug}`} className="text-[var(--accent)]">
+                {bill.committeeName}
+              </Link>
+            ) : (
+              bill.committeeName
+            ),
             <WatchButton key={`${bill.id}-watch`} />,
           ];
         })}

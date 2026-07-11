@@ -1,5 +1,5 @@
 import { mapRowToBill, sortBillsByActivity } from "@/lib/normalizers/legislation";
-import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
+import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import type { BillActionRow, BillRow, BillVersionRow } from "@/types/supabase";
 
 function buildQuotedInFilter(values: string[]) {
@@ -46,7 +46,7 @@ export async function getStoredBillById(billId: string) {
 }
 
 export async function upsertStoredBills(rows: BillRow[]) {
-  return upsertSupabaseRows("bills", rows, "id");
+  return upsertSupabaseRowsInChunks("bills", rows, "id", 25);
 }
 
 export async function replaceStoredBillActions(billIds: string[], rows: BillActionRow[]) {

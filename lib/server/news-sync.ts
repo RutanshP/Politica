@@ -6,7 +6,16 @@ import { listStoredIssues } from "@/lib/supabase/issues";
 import { listStoredPoliticians } from "@/lib/supabase/politicians";
 import { replaceStoredNews } from "@/lib/supabase/news";
 import { slugifySegment } from "@/lib/utils";
+import type { Bill, Issue, Politician } from "@/types/civic";
 import type { NewsEntityLinkRow, NewsItemRow } from "@/types/supabase";
+
+export function buildNewsQueries(bills: Bill[], politicians: Politician[], issues: Issue[]) {
+  return [
+    ...bills.slice(0, 3).map((bill) => bill.number),
+    ...politicians.slice(0, 3).map((politician) => politician.name),
+    ...issues.slice(0, 2).map((issue) => issue.name),
+  ].filter(Boolean);
+}
 
 export async function syncNewsFromApi() {
   if (!isNewsApiConfigured()) {
@@ -19,11 +28,14 @@ export async function syncNewsFromApi() {
     listStoredIssues().catch(() => []),
   ]);
 
-  const queries = [
-    ...bills.slice(0, 5).map((bill) => bill.number),
-    ...politicians.slice(0, 5).map((politician) => politician.name),
-    ...issues.slice(0, 3).map((issue) => issue.name),
-  ].filter(Boolean);
+  const queries = buildNewsQueries(bills, politicians, issues);
+
+  if (queries.length === 0) {
+    return {
+      synced: 0,
+      at: new Date().toISOString(),
+    };
+  }
 
   const articles = dedupeNewsArticles(
     (await Promise.all(queries.map((query) => fetchTopPoliticalArticles(query))))
@@ -42,12 +54,12 @@ export async function syncNewsFromApi() {
       id,
       canonical_id: article.url || article.title || null,
       headline: article.title || "Political coverage",
-      source: article.source?.name || "News API",
-      published_at: article.publishedAt || new Date().toISOString(),
+      source: article.source?.title || "NewsAPI.ai",
+      published_at: article.dateTime || article.date || new Date().toISOString(),
       related_ids: relatedIds,
-      summary: article.description || article.content || "Stored political article.",
+      summary: article.body || "Stored political article.",
       url: article.url || null,
-      source_system: "newsapi",
+      source_system: "newsapi_ai",
       source_id: article.url || id,
       synced_at: new Date().toISOString(),
       raw_payload: article,
@@ -59,7 +71,7 @@ export async function syncNewsFromApi() {
       news_item_id: row.id,
       entity_id: relatedId,
       entity_type: "related",
-      source_system: "newsapi",
+      source_system: "newsapi_ai",
       source_id: `${row.id}-${relatedId}`,
       synced_at: new Date().toISOString(),
       raw_payload: { relatedId },

@@ -2,6 +2,7 @@ import type {
   CongressBillActionPayload,
   CongressBillDetailPayload,
   CongressBillListItem,
+  CongressBillSummaryPayload,
   CongressCommitteeDetailPayload,
   CongressCommitteeListItem,
   CongressMemberDetailPayload,
@@ -11,6 +12,10 @@ import type {
 
 const CONGRESS_API_BASE = process.env.POLITICA_CONGRESS_API_BASE_URL?.trim()
   || "https://api.congress.gov/v3";
+const CONGRESS_FETCH_TIMEOUT_MS = Number.parseInt(
+  process.env.POLITICA_CONGRESS_FETCH_TIMEOUT_MS?.trim() || "20000",
+  10,
+);
 
 function getCongressApiKey() {
   return process.env.CONGRESS_API_KEY?.trim()
@@ -44,9 +49,17 @@ function applyCongressQueryParams(url: URL, params?: Record<string, string | num
   return url;
 }
 
+function getCongressFetchSignal() {
+  const timeoutMs = Number.isFinite(CONGRESS_FETCH_TIMEOUT_MS) && CONGRESS_FETCH_TIMEOUT_MS > 0
+    ? CONGRESS_FETCH_TIMEOUT_MS
+    : 20000;
+  return AbortSignal.timeout(timeoutMs);
+}
+
 async function fetchCongressJson<T>(pathname: string, params?: Record<string, string | number | undefined>) {
   const response = await fetch(buildCongressUrl(pathname, params), {
     next: { revalidate: 21600 },
+    signal: getCongressFetchSignal(),
     headers: {
       Accept: "application/json",
     },
@@ -62,6 +75,7 @@ async function fetchCongressJson<T>(pathname: string, params?: Record<string, st
 async function fetchCongressJsonByUrl<T>(urlString: string, params?: Record<string, string | number | undefined>) {
   const response = await fetch(applyCongressQueryParams(new URL(urlString, CONGRESS_API_BASE), params).toString(), {
     next: { revalidate: 21600 },
+    signal: getCongressFetchSignal(),
     headers: {
       Accept: "application/json",
     },
@@ -110,6 +124,16 @@ export async function fetchCongressBillActions(input: {
   );
 }
 
+export async function fetchCongressBillSummaries(input: {
+  congress: string;
+  billType: string;
+  billNumber: string;
+}) {
+  return fetchCongressJson<CongressBillSummaryPayload>(
+    `/bill/${input.congress}/${input.billType}/${input.billNumber}/summaries`,
+  );
+}
+
 export async function fetchCongressBillTextVersions(input: {
   congress: string;
   billType: string;
@@ -118,6 +142,22 @@ export async function fetchCongressBillTextVersions(input: {
   return fetchCongressJson<CongressBillTextPayload>(
     `/bill/${input.congress}/${input.billType}/${input.billNumber}/text`,
   );
+}
+
+export async function fetchCongressTextContent(url: string) {
+  const response = await fetch(url, {
+    next: { revalidate: 21600 },
+    signal: getCongressFetchSignal(),
+    headers: {
+      Accept: "text/plain,text/html,application/xml,text/xml;q=0.9,*/*;q=0.8",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Congress text request failed: ${response.status} ${response.statusText}`);
+  }
+
+  return response.text();
 }
 
 export async function fetchCongressMembers(options?: {

@@ -48,7 +48,16 @@ alter table public.committees
   add column if not exists jurisdiction_type text default 'federal',
   add column if not exists state_code text,
   add column if not exists session_id text,
-  add column if not exists raw_payload jsonb;
+  add column if not exists raw_payload jsonb,
+  add column if not exists contact_url text,
+  add column if not exists contact_phone text,
+  add column if not exists contact_address text,
+  add column if not exists subcommittees jsonb default '[]'::jsonb;
+
+alter table public.bill_versions
+  add column if not exists source_url text,
+  add column if not exists formats jsonb default '[]'::jsonb,
+  add column if not exists is_full_text_available boolean default false;
 
 create table if not exists public.committee_members (
   committee_id text not null references public.committees (id) on delete cascade,

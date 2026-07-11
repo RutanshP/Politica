@@ -69,7 +69,7 @@ export function normalizeCongressBillListItem(bill: CongressBillListItem): Bill 
     slug: buildBillId(billType, billNumber),
     number: `${String(bill.type || "").toUpperCase()}.${billNumber}`,
     title: titleFromListBill(bill),
-    summary: "Live Congress.gov bill imported. Rich summaries can be layered in from stored detail records or generated briefs later.",
+    summary: "Official summary not provided by the source yet. Stored bill details will appear here as more metadata is synced.",
     jurisdiction: "Federal",
     country: "United States",
     chamber: bill.originChamber || "Congress",
@@ -125,22 +125,30 @@ export function mergeCongressBillDetail(
     || titles[0]?.title
     || seed.title;
 
-  const actions = (actionsPayload?.actions ?? []).slice(0, 8).map((action) => ({
+  const actions = (actionsPayload?.actions ?? []).map((action) => ({
     date: formatDisplayDate(action.actionDate),
     label: action.type || "Action",
     detail: action.text || "No action detail available",
     type: actionTypeFromText(action.text),
   }));
 
-  const versions: BillVersion[] = (textPayload?.textVersions ?? []).slice(0, 4).map((version, index) => ({
+  const versions: BillVersion[] = (textPayload?.textVersions ?? []).map((version, index) => ({
     id: `${seed.id}-text-${index + 1}`,
     label: version.type || `Text version ${index + 1}`,
     date: formatDisplayDate(version.date),
     type: version.type || "Version",
     content: [
-      "Live text metadata imported from Congress.gov.",
+      "Stored bill text metadata imported from Congress.gov.",
       ...(version.formats?.map((format) => `${format.type || "Format"}: ${format.url || "Unavailable"}`) ?? []),
     ],
+    sourceUrl: version.formats?.[0]?.url,
+    formats: (version.formats ?? [])
+      .filter((format): format is { type: string; url: string } => Boolean(format?.type && format?.url))
+      .map((format) => ({
+        type: format.type,
+        url: format.url,
+      })),
+    isFullTextAvailable: false,
   }));
 
   return {

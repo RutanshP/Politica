@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const result = await runPipeline("federal_legislation_sync", async () => {
       const sync = await syncLegislationFromCongress();
       return {
-        recordCount: sync.billsSynced + sync.committeesSynced,
+        recordCount: sync.billsSynced + sync.committeesSynced + sync.votesSynced,
         metadata: sync,
       };
     });

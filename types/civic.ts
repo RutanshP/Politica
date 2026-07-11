@@ -55,6 +55,12 @@ export interface BillVersion {
   date: string;
   type: string;
   content: string[];
+  sourceUrl?: string;
+  formats?: Array<{
+    type: string;
+    url: string;
+  }>;
+  isFullTextAvailable?: boolean;
 }
 
 export interface Bill {
@@ -160,8 +166,23 @@ export interface Committee {
   hearing: string;
   activeBillIds: string[];
   memberIds: string[];
+  contactUrl?: string;
+  contactPhone?: string;
+  contactAddress?: string;
+  subcommittees?: Array<{
+    name: string;
+    systemCode?: string;
+  }>;
   jurisdictionType?: "federal" | "state";
   sessionId?: string;
+  sourceMetadata?: SourceMetadata;
+}
+
+export interface CommitteeMembership {
+  committeeId: string;
+  politicianId: string;
+  role: string;
+  sortOrder: number;
   sourceMetadata?: SourceMetadata;
 }
 

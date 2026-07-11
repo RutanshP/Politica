@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { DataTable } from "@/components/data-table";
+import { EmptyState } from "@/components/empty-state";
 import { NetworkGraph } from "@/components/network-graph";
 import { PageHeader } from "@/components/page-header";
 import { PoliticianTabs } from "@/components/politician-tabs";
@@ -73,18 +74,32 @@ export default async function PoliticianFundingPage({
           </div>
         </SectionCard>
         <SectionCard title="Funding network">
-          <NetworkGraph nodes={graph.nodes} edges={graph.edges} focusNodeId={politician.slug} />
+          {graph.edges.length > 0 ? (
+            <NetworkGraph nodes={graph.nodes} edges={graph.edges} focusNodeId={politician.slug} />
+          ) : (
+            <EmptyState
+              title="No stored finance relationships yet"
+              description="The FEC sync ran, but this politician does not yet have matched stored committee relationships in the current finance graph."
+            />
+          )}
         </SectionCard>
         <SectionCard title="Connected sources">
-          <DataTable
-            columns={["Source", "Target", "Amount", "Type"]}
-            rows={graph.edges.map((edge) => [
-              graph.nodes.find((node) => node.id === edge.source)?.label || edge.source,
-              graph.nodes.find((node) => node.id === edge.target)?.label || edge.target,
-              edge.amount ? `$${edge.amount.toLocaleString()}` : "Context edge",
-              edge.label,
-            ])}
-          />
+          {graph.edges.length > 0 ? (
+            <DataTable
+              columns={["Source", "Target", "Amount", "Type"]}
+              rows={graph.edges.map((edge) => [
+                graph.nodes.find((node) => node.id === edge.source)?.label || edge.source,
+                graph.nodes.find((node) => node.id === edge.target)?.label || edge.target,
+                edge.amount ? `$${edge.amount.toLocaleString()}` : "Context edge",
+                edge.label,
+              ])}
+            />
+          ) : (
+            <EmptyState
+              title="No connected sources yet"
+              description="Stored funding edges will appear here once a campaign committee or donor match is synced for this member."
+            />
+          )}
         </SectionCard>
       </section>
     </div>

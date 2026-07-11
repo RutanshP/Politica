@@ -1,5 +1,11 @@
 import { emptyResult, withData } from "@/lib/data/result";
-import { getStoredCommitteeBySlug, listStoredCommittees } from "@/lib/supabase/committees";
+import {
+  getStoredCommitteeBySlug,
+  listStoredCommitteeMemberships,
+  listStoredCommitteeMembershipsByCommitteeId,
+  listStoredCommittees,
+  mergeCommitteeMembershipIds,
+} from "@/lib/supabase/committees";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
 import type { Committee } from "@/types/civic";
@@ -15,19 +21,27 @@ export async function getCommitteesData() {
   }
 
   try {
-    const committees = await listStoredCommittees();
-    const latestRun = await getLatestSyncRun("federal_legislation_sync").catch(() => undefined);
+    const [committees, memberships, federalRun, stateRun] = await Promise.all([
+      listStoredCommittees(),
+      listStoredCommitteeMemberships().catch(() => []),
+      getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
+      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
+    ]);
+    const mergedCommittees = mergeCommitteeMembershipIds(committees, memberships);
+    const latestRun = [federalRun, stateRun]
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const result = withData(
-      committees.length > 0 ? "supabase" : "unavailable",
+      mergedCommittees.length > 0 ? "supabase" : "unavailable",
       "federal_legislation_sync",
-      committees,
+      mergedCommittees,
       latestRun?.finished_at || latestRun?.started_at,
       {
-        availability: committees.length > 0 ? "live" : "empty",
+        availability: mergedCommittees.length > 0 ? "live" : "empty",
         detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
       },
     );
-    return { ...result, source: result.source as CommitteeDataSource, committees };
+    return { ...result, source: result.source as CommitteeDataSource, committees: mergedCommittees };
   } catch (error) {
     return {
       ...emptyResult("unavailable", "federal_legislation_sync", [] as Committee[], "unavailable", error instanceof Error ? error.message : "Stored committee read failed"),
@@ -45,19 +59,30 @@ export async function getCommitteeData(slug: string) {
   }
 
   try {
-    const committee = await getStoredCommitteeBySlug(slug);
-    const latestRun = await getLatestSyncRun("federal_legislation_sync").catch(() => undefined);
+    const [committee, memberships, federalRun, stateRun] = await Promise.all([
+      getStoredCommitteeBySlug(slug),
+      getStoredCommitteeBySlug(slug).then((item) =>
+        item ? listStoredCommitteeMembershipsByCommitteeId(item.id).catch(() => []) : []),
+      getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
+      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
+    ]);
+    const mergedCommittee = committee
+      ? mergeCommitteeMembershipIds([committee], memberships)[0]
+      : undefined;
+    const latestRun = [federalRun, stateRun]
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const result = withData(
-      committee ? "supabase" : "unavailable",
+      mergedCommittee ? "supabase" : "unavailable",
       "federal_legislation_sync",
-      committee,
+      mergedCommittee,
       latestRun?.finished_at || latestRun?.started_at,
       {
-        availability: committee ? "live" : "empty",
+        availability: mergedCommittee ? "live" : "empty",
         detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
       },
     );
-    return { ...result, source: result.source as CommitteeDataSource, committee };
+    return { ...result, source: result.source as CommitteeDataSource, committee: mergedCommittee };
   } catch (error) {
     return {
       ...emptyResult("unavailable", "federal_legislation_sync", undefined, "unavailable", error instanceof Error ? error.message : "Stored committee read failed"),

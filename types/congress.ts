@@ -25,6 +25,10 @@ export interface CongressBillListItem {
 
 export interface CongressBillDetailPayload {
   bill?: {
+    summaries?: {
+      count?: number;
+      url?: string;
+    };
     constitutionalAuthorityStatementText?: string;
     congress?: number | string;
     introducedDate?: string;
@@ -63,11 +67,24 @@ export interface CongressBillDetailPayload {
   };
 }
 
+export interface CongressBillSummaryPayload {
+  summaries?: Array<{
+    actionDate?: string;
+    text?: string;
+    updateDate?: string;
+    versionCode?: string;
+  }>;
+}
+
 export interface CongressBillActionPayload {
   actions?: Array<{
     actionDate?: string;
     text?: string;
     type?: string;
+    sourceSystem?: {
+      code?: string;
+      name?: string;
+    };
   }>;
 }
 
@@ -75,6 +92,7 @@ export interface CongressBillTextPayload {
   textVersions?: Array<{
     date?: string;
     type?: string;
+    textVersionCode?: string;
     formats?: Array<{
       type?: string;
       url?: string;
@@ -112,6 +130,7 @@ export interface CongressMemberDetailPayload {
       officeAddress?: string;
       phoneNumber?: string;
     };
+    officialWebsiteUrl?: string;
     cosponsoredLegislation?: {
       count?: number;
     };
@@ -126,6 +145,7 @@ export interface CongressCommitteeListItem {
   name?: string;
   systemCode?: string;
   updateDate?: string;
+  url?: string;
 }
 
 export interface CongressCommitteeDetailPayload {
@@ -138,6 +158,11 @@ export interface CongressCommitteeDetailPayload {
       officialName?: string;
     }>;
     jurisdiction?: string;
+    address?: string;
+    phone?: string;
+    website?: string;
+    chair?: string;
+    rankingMember?: string;
     subcommittees?: Array<{
       name?: string;
       systemCode?: string;

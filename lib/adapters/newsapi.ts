@@ -1,7 +1,7 @@
-import type { NewsApiArticle, NewsApiResponse } from "@/types/newsapi";
+import type { EventRegistryArticle, EventRegistryResponse } from "@/types/newsapi";
 
 const NEWS_API_BASE = process.env.POLITICA_NEWS_API_BASE_URL?.trim()
-  || "https://newsapi.org/v2";
+  || "https://eventregistry.org/api/v1";
 
 function getNewsApiKey() {
   return process.env.POLITICA_NEWS_API_KEY?.trim() || "";
@@ -14,6 +14,8 @@ export function isNewsApiConfigured() {
 async function fetchNewsApiJson<T>(pathname: string, params?: Record<string, string | number | undefined>) {
   const url = new URL(`${NEWS_API_BASE}${pathname}`);
 
+  url.searchParams.set("apiKey", getNewsApiKey());
+
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== "") {
       url.searchParams.set(key, String(value));
@@ -23,30 +25,32 @@ async function fetchNewsApiJson<T>(pathname: string, params?: Record<string, str
   const response = await fetch(url.toString(), {
     headers: {
       Accept: "application/json",
-      "X-Api-Key": getNewsApiKey(),
     },
     next: { revalidate: 21600 },
   });
 
   if (!response.ok) {
-    throw new Error(`News API request failed: ${response.status} ${response.statusText}`);
+    const detail = await response.text().catch(() => "");
+    throw new Error(`News API request failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`);
   }
 
   return (await response.json()) as T;
 }
 
 export async function fetchTopPoliticalArticles(query: string) {
-  const payload = await fetchNewsApiJson<NewsApiResponse>("/everything", {
-    q: query,
-    pageSize: 20,
-    language: "en",
-    sortBy: "publishedAt",
+  const payload = await fetchNewsApiJson<EventRegistryResponse>("/article/getArticles", {
+    resultType: "articles",
+    keyword: query,
+    keywordOper: "or",
+    lang: "eng",
+    articlesSortBy: "date",
+    maxItems: 10,
   });
 
-  return payload.articles ?? [];
+  return payload.articles?.results ?? [];
 }
 
-export function dedupeNewsArticles(items: NewsApiArticle[]) {
+export function dedupeNewsArticles(items: EventRegistryArticle[]) {
   const seen = new Set<string>();
   return items.filter((item) => {
     const key = item.url || item.title || "";

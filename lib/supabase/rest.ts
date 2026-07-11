@@ -47,14 +47,22 @@ function buildRestMutationUrl(pathname: string, query?: string) {
   return applyRestQuery(new URL(`${base}/rest/v1/${pathname}`), query, false).toString();
 }
 
-export async function fetchSupabaseRows<T>(pathname: string, query?: string) {
+export async function fetchSupabaseRows<T>(
+  pathname: string,
+  query?: string,
+  options?: {
+    cache?: "default" | "no-store";
+  },
+) {
   if (!isSupabaseConfigured()) {
     throw new Error("Supabase is not configured");
   }
 
   const response = await fetch(buildRestUrl(pathname, query), {
     headers: buildHeaders(),
-    next: { revalidate: 21600 },
+    ...(options?.cache === "no-store"
+      ? { cache: "no-store" as const }
+      : { next: { revalidate: 21600 } }),
   });
 
   if (!response.ok) {
@@ -83,10 +91,28 @@ export async function upsertSupabaseRows<T extends object>(
   });
 
   if (!response.ok) {
-    throw new Error(`Supabase upsert failed: ${response.status} ${response.statusText}`);
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Supabase upsert failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`);
   }
 
   return (await response.json()) as T[];
+}
+
+export async function upsertSupabaseRowsInChunks<T extends object>(
+  pathname: string,
+  rows: T[],
+  onConflict: string,
+  chunkSize = 100,
+) {
+  const written: T[] = [];
+
+  for (let index = 0; index < rows.length; index += chunkSize) {
+    const chunk = rows.slice(index, index + chunkSize);
+    const result = await upsertSupabaseRows(pathname, chunk, onConflict);
+    written.push(...result);
+  }
+
+  return written;
 }
 
 export async function deleteSupabaseRows(pathname: string, query: string) {

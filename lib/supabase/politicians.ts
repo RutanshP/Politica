@@ -1,15 +1,58 @@
 import type { Politician } from "@/types/civic";
 import type { PoliticianRow } from "@/types/supabase";
 import { fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
+import { normalizePartyLabel, normalizeStateLabel } from "@/lib/utils";
+
+function normalizeWhitespace(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function fallbackPoliticianName(row: PoliticianRow) {
+  if (row.name?.trim()) {
+    return row.name.trim();
+  }
+
+  const rawMember = (row.raw_member ?? row.raw_payload ?? {}) as Record<string, unknown>;
+  const directName = normalizeWhitespace([
+    typeof rawMember.honorificName === "string" ? rawMember.honorificName : "",
+    typeof rawMember.firstName === "string" ? rawMember.firstName : "",
+    typeof rawMember.lastName === "string" ? rawMember.lastName : "",
+  ].filter(Boolean).join(" "));
+
+  if (directName) {
+    return directName;
+  }
+
+  if (typeof rawMember.name === "string" && rawMember.name.trim()) {
+    return rawMember.name.trim();
+  }
+
+  if (typeof rawMember.invertedOrderName === "string" && rawMember.invertedOrderName.trim()) {
+    const rebuilt = normalizeWhitespace(
+      rawMember.invertedOrderName
+        .split(",")
+        .reverse()
+        .join(" "),
+    ).replace(/^,+|,+$/g, "").trim();
+
+    if (rebuilt) {
+      return rebuilt;
+    }
+  }
+
+  return row.title?.trim() || row.id;
+}
 
 function mapRowToPolitician(row: PoliticianRow): Politician {
+  const name = fallbackPoliticianName(row);
+
   return {
     id: row.id,
-    slug: row.slug,
-    name: row.name,
+    slug: row.slug || row.id,
+    name,
     title: row.title,
-    party: row.party,
-    state: row.state,
+    party: normalizePartyLabel(row.party),
+    state: normalizeStateLabel(row.state),
     district: row.district || undefined,
     biography: row.biography,
     born: row.born,
@@ -33,7 +76,9 @@ function mapRowToPolitician(row: PoliticianRow): Politician {
 }
 
 export async function listStoredPoliticians() {
-  const rows = await fetchSupabaseRows<PoliticianRow>("politicians", "order=name.asc");
+  const rows = await fetchSupabaseRows<PoliticianRow>("politicians", "order=name.asc", {
+    cache: "no-store",
+  });
   return rows.map(mapRowToPolitician);
 }
 

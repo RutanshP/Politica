@@ -1,4 +1,4 @@
-import type { Bill, BillAction, Issue, Politician, Vote } from "@/types/civic";
+import type { Bill, BillAction, CommitteeMembership, Issue, Politician, Vote } from "@/types/civic";
 
 export interface JurisdictionRow {
   id: string;
@@ -107,6 +107,12 @@ export interface BillVersionRow {
   date: string;
   type: string;
   content: string[];
+  source_url?: string | null;
+  formats?: Array<{
+    type: string;
+    url: string;
+  }>;
+  is_full_text_available?: boolean;
 }
 
 export interface CommitteeRow {
@@ -121,6 +127,13 @@ export interface CommitteeRow {
   hearing: string;
   active_bill_ids: string[];
   member_ids: string[];
+  contact_url?: string | null;
+  contact_phone?: string | null;
+  contact_address?: string | null;
+  subcommittees?: Array<{
+    name: string;
+    systemCode?: string;
+  }>;
   source: string;
   source_system?: string;
   source_id?: string;
@@ -135,7 +148,7 @@ export interface CommitteeRow {
 export interface CommitteeMemberRow {
   committee_id: string;
   politician_id: string;
-  role: string;
+  role: CommitteeMembership["role"];
   sort_order: number;
   source_system: string;
   source_id: string;

@@ -9,14 +9,52 @@ function buildTitle(chamber?: string) {
     : "United States Senator";
 }
 
+function normalizeWhitespace(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function buildMemberName(
+  member: CongressMemberListItem,
+  detail?: CongressMemberDetailPayload,
+) {
+  const detailMember = detail?.member;
+  const directName = normalizeWhitespace([
+    detailMember?.honorificName || member.honorificName,
+    detailMember?.firstName || member.firstName,
+    detailMember?.lastName || member.lastName,
+  ].filter(Boolean).join(" "));
+
+  const inverted = normalizeWhitespace(
+    (detailMember?.invertedOrderName || member.invertedOrderName || "")
+      .split(",")
+      .reverse()
+      .join(" "),
+  );
+
+  const cleanedInverted = inverted.replace(/^,+|,+$/g, "").trim();
+
+  if (cleanedInverted.length > 1) {
+    return cleanedInverted;
+  }
+
+  if (directName.length > 1) {
+    return directName;
+  }
+
+  const fallback = normalizeWhitespace([
+    detailMember?.firstName,
+    detailMember?.lastName,
+  ].filter(Boolean).join(" "));
+
+  return fallback || member.bioguideId || "Congress Member";
+}
+
 export function normalizeCongressMemberToPolitician(
   member: CongressMemberListItem,
   detail?: CongressMemberDetailPayload,
 ) {
   const detailMember = detail?.member;
-  const name = member.invertedOrderName
-    ? member.invertedOrderName.split(",").reverse().join(" ").trim()
-    : [member.honorificName, member.firstName, member.lastName].filter(Boolean).join(" ").trim();
+  const name = buildMemberName(member, detail);
   const currentTerm = detailMember?.terms?.item?.[0] || member.terms?.item?.[0];
   const id = member.bioguideId || slugifySegment(name);
 
@@ -35,7 +73,7 @@ export function normalizeCongressMemberToPolitician(
     born: "Not available from configured sources",
     education: "Not available from configured sources",
     occupation: "Public official",
-    website: "www.congress.gov/member",
+    website: detailMember?.officialWebsiteUrl || "www.congress.gov/member",
     officePhone: detailMember?.addressInformation?.phoneNumber || "Not available from configured sources",
     officeAddress: detailMember?.addressInformation?.officeAddress || "Office address not available from configured sources",
     nextElection: "Election calendar not connected",

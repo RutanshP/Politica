@@ -1,6 +1,6 @@
 import type { Bill, Committee } from "@/types/civic";
 import type { BillActionRow, BillRow, BillVersionRow, CommitteeRow } from "@/types/supabase";
-import { slugifySegment } from "@/lib/utils";
+import { normalizeStateLabel, slugifySegment } from "@/lib/utils";
 
 function parseDateLabel(value: string) {
   const timestamp = Date.parse(value);
@@ -67,6 +67,9 @@ export function mapBillVersionToRow(billId: string, version: Bill["versions"][nu
     date: version.date,
     type: version.type,
     content: version.content,
+    source_url: version.sourceUrl || null,
+    formats: version.formats || [],
+    is_full_text_available: Boolean(version.isFullTextAvailable),
   };
 }
 
@@ -83,7 +86,7 @@ export function mapRowToBill(
     summary: row.summary,
     jurisdiction: row.jurisdiction,
     country: row.country,
-    state: row.state || undefined,
+    state: row.state ? normalizeStateLabel(row.state) : undefined,
     chamber: row.chamber,
     status: row.status,
     topic: row.topic,
@@ -113,6 +116,9 @@ export function mapRowToBill(
         date: version.date,
         type: version.type,
         content: version.content,
+        sourceUrl: version.source_url || undefined,
+        formats: version.formats || [],
+        isFullTextAvailable: Boolean(version.is_full_text_available),
       })),
     relatedBillIds: row.related_bill_ids,
     jurisdictionType: row.jurisdiction_type,
@@ -139,6 +145,10 @@ export function mapCommitteeToRow(committee: Committee, rawCommittee: unknown): 
     hearing: committee.hearing,
     active_bill_ids: committee.activeBillIds,
     member_ids: committee.memberIds,
+    contact_url: committee.contactUrl || null,
+    contact_phone: committee.contactPhone || null,
+    contact_address: committee.contactAddress || null,
+    subcommittees: committee.subcommittees || [],
     source: "congress_sync",
     source_system: committee.sourceMetadata?.sourceSystem || "congress",
     source_id: committee.sourceMetadata?.sourceId || committee.id,
@@ -164,6 +174,10 @@ export function mapRowToCommittee(row: CommitteeRow): Committee {
     hearing: row.hearing,
     activeBillIds: row.active_bill_ids,
     memberIds: row.member_ids,
+    contactUrl: row.contact_url || undefined,
+    contactPhone: row.contact_phone || undefined,
+    contactAddress: row.contact_address || undefined,
+    subcommittees: row.subcommittees || [],
     jurisdictionType: row.jurisdiction_type,
     sessionId: row.session_id || undefined,
     sourceMetadata: {

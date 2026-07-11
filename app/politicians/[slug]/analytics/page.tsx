@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ChartCard } from "@/components/chart-card";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { PoliticianTabs } from "@/components/politician-tabs";
 import { SectionCard } from "@/components/section-card";
@@ -14,6 +15,7 @@ import {
   getSponsoredBillsForPolitician,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
+import { hasVotePerformanceStats } from "@/lib/utils";
 
 export async function generateStaticParams() {
   return getPoliticianRouteParams();
@@ -32,6 +34,7 @@ export default async function PoliticianAnalyticsPage({
 
   const sponsoredBills = await getSponsoredBillsForPolitician(slug);
   const derived = getPoliticianAnalyticsSeries(politician, sponsoredBills);
+  const hasVoteStats = hasVotePerformanceStats(politician.stats);
   const metricCards = [
     ["Missed votes", derived.missedVotes.toString()],
     ["Leadership votes", derived.leadershipVotes.toString()],
@@ -53,6 +56,12 @@ export default async function PoliticianAnalyticsPage({
         }
       />
       <PoliticianTabs slug={politician.slug} active="analytics" />
+      {!hasVoteStats && sponsoredBills.length === 0 ? (
+        <EmptyState
+          title="Analytics are partially filled because upstream vote and sponsorship detail is limited"
+          description="This member profile is synced, but the current stored dataset does not yet include enough vote-position or sponsored-bill history to populate the full analytics view."
+        />
+      ) : null}
       <section className="grid gap-6 xl:grid-cols-3">
         <ChartCard title="Vote alignment over time">
           <TrendLineChart data={derived.alignmentSeries} />

@@ -11,13 +11,15 @@ import { getCommitteesData } from "@/lib/data/committees";
 import { getFundingGraphData } from "@/lib/data/graph";
 import { getNewsData } from "@/lib/data/news";
 import {
+  getCommitteeMembershipsForPolitician,
   getPoliticianData,
   getPoliticianRouteParams,
   getPoliticianSourceLabel,
   getSponsoredBillsForPolitician,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
-import { initials } from "@/lib/utils";
+import type { Bill, Committee, FundingEdge, NewsItem } from "@/types/civic";
+import { hasVotePerformanceStats, initials } from "@/lib/utils";
 
 export async function generateStaticParams() {
   return getPoliticianRouteParams();
@@ -34,23 +36,25 @@ export default async function PoliticianProfilePage({
   const { politician, source } = await getPoliticianData(slug);
   if (!politician) notFound();
 
-  const [sponsoredBills, committeesData, graphData, newsData] = await Promise.all([
+  const [sponsoredBills, committeesData, graphData, newsData, committeeMemberships] = await Promise.all([
     getSponsoredBillsForPolitician(slug),
     getCommitteesData(),
     getFundingGraphData(slug),
     getNewsData(),
+    getCommitteeMembershipsForPolitician(slug),
   ]);
-  const relatedCommittees = committeesData.committees.filter((committee) =>
-    sponsoredBills.some((bill) => bill.committeeId === committee.id || bill.committeeName === committee.name),
+  const relatedCommittees = committeesData.committees.filter((committee: Committee) =>
+    committeeMemberships.some((membership) => membership.committeeId === committee.id),
   );
-  const relatedNews = newsData.news.filter((item) =>
+  const relatedNews = newsData.news.filter((item: NewsItem) =>
     item.relatedIds.includes(politician.id) || item.relatedIds.includes(politician.slug),
   );
-  const fundingEdges = graphData.graph.edges.filter((edge) => edge.target === politician.slug || edge.target === politician.id);
+  const fundingEdges = graphData.graph.edges.filter((edge: FundingEdge) => edge.target === politician.slug || edge.target === politician.id);
+  const hasVoteStats = hasVotePerformanceStats(politician.stats);
   const statCards = [
-    ["Votes with party", `${politician.stats.votesWithParty}%`],
-    ["Votes against party", `${politician.stats.votesAgainstParty}%`],
-    ["Attendance", `${politician.stats.attendance}%`],
+    ["Votes with party", hasVoteStats ? `${politician.stats.votesWithParty}%` : "N/A"],
+    ["Votes against party", hasVoteStats ? `${politician.stats.votesAgainstParty}%` : "N/A"],
+    ["Attendance", hasVoteStats ? `${politician.stats.attendance}%` : "N/A"],
     ["Bills introduced", politician.stats.billsIntroduced],
     ["Bills passed", politician.stats.billsPassed],
     ["Amendments", politician.stats.amendmentsOffered],
@@ -94,7 +98,7 @@ export default async function PoliticianProfilePage({
             <p>
               Website:{" "}
               <a
-                href={`https://${politician.website}`}
+                href={politician.website.startsWith("http") ? politician.website : `https://${politician.website}`}
                 className="font-semibold text-[var(--accent)]"
               >
                 {politician.website}
@@ -155,8 +159,13 @@ export default async function PoliticianProfilePage({
       </section>
       <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <SectionCard title="Sponsored bills">
+          {sponsoredBills.length < politician.stats.billsIntroduced ? (
+            <p className="mb-4 text-sm text-[var(--muted)]">
+              The official source reports {politician.stats.billsIntroduced} introduced bills, but the current stored bill sync window only contains {sponsoredBills.length} connected records for this member.
+            </p>
+          ) : null}
           <div id="bills" className="grid gap-4 lg:grid-cols-1">
-            {sponsoredBills.map((bill) => (
+            {sponsoredBills.length > 0 ? sponsoredBills.map((bill: Bill) => (
               <Link
                 key={bill.id}
                 href={`/bills/${bill.id}`}
@@ -170,22 +179,33 @@ export default async function PoliticianProfilePage({
                 </p>
                 <p className="mt-2 text-sm text-[var(--muted)]">{bill.summary}</p>
               </Link>
-            ))}
+            )) : (
+              <EmptyState
+                title="No stored sponsored bills in the current dataset"
+                description="This profile is connected, but the currently synced bill window does not yet include sponsored legislation for this member."
+                actionLabel="Open bills"
+                actionHref="/bills"
+              />
+            )}
           </div>
         </SectionCard>
         <SectionCard title="Committees, votes, and funding overview">
           <div id="committees" className="space-y-4">
             {relatedCommittees.length > 0 ? (
-              relatedCommittees.slice(0, 4).map((committee) => (
-                <Link
-                  key={committee.id}
-                  href={`/committees/${committee.slug}`}
-                  className="block rounded-2xl border border-[var(--line)] bg-white p-4 transition hover:border-[var(--accent)]"
-                >
-                  <p className="font-semibold text-[var(--ink)]">{committee.name}</p>
-                  <p className="mt-1 text-sm text-[var(--muted)]">{committee.jurisdiction}</p>
-                </Link>
-              ))
+              relatedCommittees.slice(0, 4).map((committee: Committee) => {
+                const membership = committeeMemberships.find((item) => item.committeeId === committee.id);
+                return (
+                  <Link
+                    key={committee.id}
+                    href={`/committees/${committee.slug}`}
+                    className="block rounded-2xl border border-[var(--line)] bg-white p-4 transition hover:border-[var(--accent)]"
+                  >
+                    <p className="font-semibold text-[var(--ink)]">{committee.name}</p>
+                    <p className="mt-1 text-sm text-[var(--muted)]">{committee.jurisdiction}</p>
+                    <p className="mt-1 text-sm text-[var(--muted)]">Role: {membership?.role || "Member"}</p>
+                  </Link>
+                );
+              })
             ) : (
               <EmptyState
                 title="No committee affiliations connected yet"
@@ -204,7 +224,7 @@ export default async function PoliticianProfilePage({
       <SectionCard title="Related news">
         {relatedNews.length > 0 ? (
           <div className="grid gap-4 lg:grid-cols-2">
-            {relatedNews.map((item) => (
+            {relatedNews.map((item: NewsItem) => (
               <Link
                 key={item.id}
                 href="/news"

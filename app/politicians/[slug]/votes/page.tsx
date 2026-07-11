@@ -18,6 +18,7 @@ import {
   getVotesDataForPolitician,
   isLiveVoteSource,
 } from "@/lib/data/votes";
+import { hasVotePerformanceStats } from "@/lib/utils";
 
 export async function generateStaticParams() {
   return getPoliticianRouteParams();
@@ -35,6 +36,7 @@ export default async function PoliticianVotesPage({
   if (!politician) notFound();
   const { votes, source: voteSource } = await getVotesDataForPolitician(politician.id);
   const issueOptions = [...new Set(votes.map((vote) => vote.title).slice(0, 6))];
+  const hasVoteStats = hasVotePerformanceStats(politician.stats);
 
   return (
     <div className="space-y-6">
@@ -65,15 +67,15 @@ export default async function PoliticianVotesPage({
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-2xl border border-[var(--line)] bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">With party</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{politician.stats.votesWithParty}%</p>
+              <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.votesWithParty}%` : "N/A"}</p>
             </div>
             <div className="rounded-2xl border border-[var(--line)] bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">Against party</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{politician.stats.votesAgainstParty}%</p>
+              <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.votesAgainstParty}%` : "N/A"}</p>
             </div>
             <div className="rounded-2xl border border-[var(--line)] bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">Attendance</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{politician.stats.attendance}%</p>
+              <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.attendance}%` : "N/A"}</p>
             </div>
           </div>
         </SectionCard>
@@ -88,7 +90,9 @@ export default async function PoliticianVotesPage({
                 >
                   <p className="font-semibold text-[var(--accent)]">{vote.billNumber}</p>
                   <p className="mt-1 text-sm text-[var(--ink)]">{vote.title}</p>
-                  <p className="mt-1 text-sm text-[var(--muted)]">{vote.result} | {vote.dateLabel}</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    {vote.positions[0]?.vote || "Vote unavailable"} | {vote.result} | {vote.dateLabel}
+                  </p>
                 </Link>
               ))}
             </div>

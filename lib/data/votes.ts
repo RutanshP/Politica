@@ -11,7 +11,7 @@ export async function getVotesDataForBill(billId: string) {
   const emptyVotes: Vote[] = [];
   if (!isSupabaseConfigured()) {
     return {
-      ...emptyResult("unconfigured", "state_legislation_sync", emptyVotes, "unconfigured"),
+      ...emptyResult("unconfigured", "federal_legislation_sync", emptyVotes, "unconfigured"),
       source: "unconfigured" as VoteDataSource,
       votes: emptyVotes,
     };
@@ -30,7 +30,7 @@ export async function getVotesDataForBill(billId: string) {
 
     if (!bill) {
       return {
-        ...emptyResult("unavailable", "state_legislation_sync", emptyVotes, "empty"),
+        ...emptyResult("unavailable", latestRun?.pipeline || "federal_legislation_sync", emptyVotes, "empty"),
         source: "unavailable" as VoteDataSource,
         votes: emptyVotes,
       };
@@ -39,7 +39,7 @@ export async function getVotesDataForBill(billId: string) {
     const source = votes.length > 0 ? "supabase" : "partial";
     const result = withData(
       source,
-      "state_legislation_sync",
+      latestRun?.pipeline || "federal_legislation_sync",
       votes,
       latestRun?.finished_at || latestRun?.started_at,
       {
@@ -56,7 +56,7 @@ export async function getVotesDataForBill(billId: string) {
     };
   } catch (error) {
     return {
-      ...emptyResult("unavailable", "state_legislation_sync", emptyVotes, "unavailable", error instanceof Error ? error.message : "Stored vote read failed"),
+      ...emptyResult("unavailable", "federal_legislation_sync", emptyVotes, "unavailable", error instanceof Error ? error.message : "Stored vote read failed"),
       source: "unavailable" as VoteDataSource,
       votes: emptyVotes,
     };
@@ -67,23 +67,27 @@ export async function getVotesDataForPolitician(politicianId: string) {
   const emptyVotes: Vote[] = [];
   if (!isSupabaseConfigured()) {
     return {
-      ...emptyResult("unconfigured", "state_legislation_sync", emptyVotes, "unconfigured"),
+      ...emptyResult("unconfigured", "federal_legislation_sync", emptyVotes, "unconfigured"),
       source: "unconfigured" as VoteDataSource,
       votes: emptyVotes,
     };
   }
 
   try {
-    const [votes, stateRun] = await Promise.all([
+    const [votes, federalRun, stateRun] = await Promise.all([
       listStoredVotesByPoliticianId(politicianId),
+      getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
       getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
+    const latestRun = [federalRun, stateRun]
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const source = votes.length > 0 ? "supabase" : "partial";
     const result = withData(
       source,
-      "state_legislation_sync",
+      latestRun?.pipeline || "federal_legislation_sync",
       votes,
-      stateRun?.finished_at || stateRun?.started_at,
+      latestRun?.finished_at || latestRun?.started_at,
       {
         availability: votes.length > 0 ? "live" : "partial",
         detail: votes.length > 0
@@ -94,7 +98,7 @@ export async function getVotesDataForPolitician(politicianId: string) {
     return { ...result, source: source as VoteDataSource, votes };
   } catch (error) {
     return {
-      ...emptyResult("unavailable", "state_legislation_sync", emptyVotes, "unavailable", error instanceof Error ? error.message : "Stored politician vote read failed"),
+      ...emptyResult("unavailable", "federal_legislation_sync", emptyVotes, "unavailable", error instanceof Error ? error.message : "Stored politician vote read failed"),
       source: "unavailable" as VoteDataSource,
       votes: emptyVotes,
     };

@@ -43,6 +43,9 @@ create table if not exists public.bill_versions (
   date text not null,
   type text not null,
   content jsonb not null default '[]'::jsonb,
+  source_url text,
+  formats jsonb not null default '[]'::jsonb,
+  is_full_text_available boolean not null default false,
   primary key (bill_id, version_id)
 );
 
@@ -58,6 +61,10 @@ create table if not exists public.committees (
   hearing text not null,
   active_bill_ids jsonb not null default '[]'::jsonb,
   member_ids jsonb not null default '[]'::jsonb,
+  contact_url text,
+  contact_phone text,
+  contact_address text,
+  subcommittees jsonb not null default '[]'::jsonb,
   source text not null default 'congress_sync',
   synced_at timestamptz not null default timezone('utc', now()),
   raw_committee jsonb

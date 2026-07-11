@@ -1,12 +1,38 @@
 import { emptyResult, withData } from "@/lib/data/result";
-import { getBillsData } from "@/lib/data/bills";
+import { listStoredBills } from "@/lib/supabase/bills";
+import { listStoredCommitteeMembershipsByPoliticianId } from "@/lib/supabase/committees";
 import { getStoredPoliticianBySlug, listStoredPoliticians } from "@/lib/supabase/politicians";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
-import { slugifySegment } from "@/lib/utils";
+import { normalizePersonLookup, slugifySegment } from "@/lib/utils";
 import type { Bill, Politician } from "@/types/civic";
 
 export type PoliticianDataSource = "supabase" | "unconfigured" | "unavailable";
+
+function enhancePoliticianStats(politicians: Politician[], bills: Bill[]) {
+  const billsByPolitician = new Map<string, Bill[]>();
+  for (const bill of bills) {
+    const sponsorKey = bill.sponsorId || slugifySegment(bill.sponsorName);
+    const items = billsByPolitician.get(sponsorKey) || [];
+    items.push(bill);
+    billsByPolitician.set(sponsorKey, items);
+  }
+
+  return politicians.map((politician) => {
+    const sponsoredBills = billsByPolitician.get(politician.id)
+      || billsByPolitician.get(slugifySegment(politician.name))
+      || [];
+
+    return {
+      ...politician,
+      stats: {
+        ...politician.stats,
+        billsIntroduced: sponsoredBills.length || politician.stats.billsIntroduced,
+        billsPassed: sponsoredBills.filter((bill) => bill.status === "Passed Chamber" || bill.status === "Signed").length,
+      },
+    };
+  });
+}
 
 export async function getPoliticiansData() {
   if (!isSupabaseConfigured()) {
@@ -17,25 +43,28 @@ export async function getPoliticiansData() {
   }
 
   try {
-    const [politicians, federalRun, stateRun] = await Promise.all([
+    const [politicians, bills, federalMembersRun, federalLegislationRun, stateRun] = await Promise.all([
       listStoredPoliticians(),
+      listStoredBills().catch(() => []),
       getLatestSyncRun("federal_members_sync").catch(() => undefined),
+      getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
       getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
-    const latestRun = [federalRun, stateRun]
+    const enrichedPoliticians = enhancePoliticianStats(politicians, bills);
+    const latestRun = [federalMembersRun, federalLegislationRun, stateRun]
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const result = withData(
-      politicians.length > 0 ? "supabase" : "unavailable",
+      enrichedPoliticians.length > 0 ? "supabase" : "unavailable",
       "federal_members_sync",
-      politicians,
+      enrichedPoliticians,
       latestRun?.finished_at || latestRun?.started_at,
       {
-        availability: politicians.length > 0 ? "live" : "empty",
+        availability: enrichedPoliticians.length > 0 ? "live" : "empty",
         detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
       },
     );
-    return { ...result, source: result.source as PoliticianDataSource, politicians };
+    return { ...result, source: result.source as PoliticianDataSource, politicians: enrichedPoliticians };
   } catch (error) {
     return {
       ...emptyResult("unavailable", "federal_members_sync", [] as Politician[], "unavailable", error instanceof Error ? error.message : "Stored politician read failed"),
@@ -53,21 +82,29 @@ export async function getPoliticianData(slug: string) {
   }
 
   try {
-    const [politician, latestRun] = await Promise.all([
+    const [politician, bills, federalMembersRun, federalLegislationRun] = await Promise.all([
       getStoredPoliticianBySlug(slug),
+      listStoredBills().catch(() => []),
       getLatestSyncRun("federal_members_sync").catch(() => undefined),
+      getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
     ]);
+    const enrichedPolitician = politician
+      ? enhancePoliticianStats([politician], bills)[0]
+      : undefined;
+    const latestRun = [federalMembersRun, federalLegislationRun]
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const result = withData(
-      politician ? "supabase" : "unavailable",
+      enrichedPolitician ? "supabase" : "unavailable",
       "federal_members_sync",
-      politician,
+      enrichedPolitician,
       latestRun?.finished_at || latestRun?.started_at,
       {
-        availability: politician ? "live" : "empty",
+        availability: enrichedPolitician ? "live" : "empty",
         detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
       },
     );
-    return { ...result, source: result.source as PoliticianDataSource, politician };
+    return { ...result, source: result.source as PoliticianDataSource, politician: enrichedPolitician };
   } catch (error) {
     return {
       ...emptyResult("unavailable", "federal_members_sync", undefined, "unavailable", error instanceof Error ? error.message : "Stored politician read failed"),
@@ -82,14 +119,25 @@ export async function getPoliticianRouteParams() {
 }
 
 export async function getSponsoredBillsForPolitician(slug: string) {
-  const { bills } = await getBillsData();
-  const { politician } = await getPoliticianData(slug);
+  const [bills, { politician }] = await Promise.all([
+    listStoredBills().catch(() => []),
+    getPoliticianData(slug),
+  ]);
 
   if (!politician) return [];
 
+  const normalizedPoliticianName = normalizePersonLookup(politician.name);
   return bills.filter((bill) =>
     bill.sponsorId === politician.id || slugifySegment(bill.sponsorName) === politician.slug,
-  );
+  ).concat(
+    bills.filter((bill) => normalizePersonLookup(bill.sponsorName) === normalizedPoliticianName),
+  ).filter((bill, index, items) => items.findIndex((candidate) => candidate.id === bill.id) === index);
+}
+
+export async function getCommitteeMembershipsForPolitician(slug: string) {
+  const { politician } = await getPoliticianData(slug);
+  if (!politician) return [];
+  return listStoredCommitteeMembershipsByPoliticianId(politician.id).catch(() => []);
 }
 
 export function getPoliticianSourceLabel(source: string) {

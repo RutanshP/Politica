@@ -5,14 +5,16 @@ import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { Tabs } from "@/components/tabs";
+import { getBillData } from "@/lib/data/bills";
 import {
   getCommitteeData,
   getCommitteeRouteParams,
   getCommitteeSourceLabel,
   isLiveCommitteeSource,
 } from "@/lib/data/committees";
-import { getBillData } from "@/lib/data/bills";
 import { getPoliticiansData } from "@/lib/data/politicians";
+import { deriveCommitteeSector, normalizeCommitteeField } from "@/lib/utils";
+import type { Bill } from "@/types/civic";
 
 export async function generateStaticParams() {
   return getCommitteeRouteParams();
@@ -31,11 +33,12 @@ export default async function CommitteePage({
 
   const { politicians } = await getPoliticiansData();
   const members = politicians.filter((politician) => committee.memberIds.includes(politician.id));
+  const sector = deriveCommitteeSector(committee);
   const activeBills = (
     await Promise.all(committee.activeBillIds.map((billId) => getBillData(billId)))
   )
     .map((result) => result.bill)
-    .filter((bill): bill is NonNullable<typeof bill> => Boolean(bill));
+    .filter((bill): bill is Bill => Boolean(bill));
 
   return (
     <div className="space-y-6">
@@ -64,15 +67,20 @@ export default async function CommitteePage({
         <div className="space-y-6">
           <SectionCard title="Committee overview">
             <div className="space-y-4 text-sm text-[var(--muted)]">
+              <p>Sector: {sector}</p>
               <p>Jurisdiction: {committee.jurisdiction}</p>
-              <p>Chair: {committee.chair}</p>
-              <p>Ranking member: {committee.rankingMember}</p>
-              <p>Upcoming hearing: {committee.hearing}</p>
+              <p>Chair: {normalizeCommitteeField(committee.chair, "Leadership has not been synced yet")}</p>
+              <p>Ranking member: {normalizeCommitteeField(committee.rankingMember, "Ranking member has not been synced yet")}</p>
+              <p>Upcoming hearing: {normalizeCommitteeField(committee.hearing, "No hearing scheduled")}</p>
+              <p>Contact URL: {committee.contactUrl ? <a href={committee.contactUrl} className="font-semibold text-[var(--accent)]">{committee.contactUrl}</a> : "Not available yet"}</p>
+              <p>Phone: {committee.contactPhone || "Not available yet"}</p>
+              <p>Address: {committee.contactAddress || "Not available yet"}</p>
+              <p>Subcommittees: {committee.subcommittees?.length ? committee.subcommittees.map((item) => item.name).join(", ") : "None stored yet"}</p>
             </div>
           </SectionCard>
           <SectionCard title="Members">
             <div className="grid gap-4 md:grid-cols-2">
-              {members.map((member) => (
+              {members.length > 0 ? members.map((member) => (
                 <Link
                   key={member.id}
                   href={`/politicians/${member.slug}`}
@@ -85,13 +93,17 @@ export default async function CommitteePage({
                     {member.party} · {member.state}
                   </p>
                 </Link>
-              ))}
+              )) : (
+                <p className="text-sm text-[var(--muted)]">
+                  Member roster has not been synced for this committee yet.
+                </p>
+              )}
             </div>
           </SectionCard>
         </div>
         <SectionCard title="Active bills">
           <div className="space-y-3">
-            {activeBills.map((bill) => (
+            {activeBills.length > 0 ? activeBills.map((bill) => (
               <Link
                 key={bill.id}
                 href={`/bills/${bill.id}`}
@@ -102,7 +114,11 @@ export default async function CommitteePage({
                 </p>
                 <p className="mt-1 text-sm text-[var(--ink)]">{bill.title}</p>
               </Link>
-            ))}
+            )) : (
+              <p className="text-sm text-[var(--muted)]">
+                No active stored bills are linked to this committee yet.
+              </p>
+            )}
           </div>
         </SectionCard>
       </section>

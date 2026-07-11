@@ -28,15 +28,18 @@ export const revalidate = 21600;
 
 export default async function BillVotesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ billId: string }>;
+  searchParams: Promise<{ voteId?: string }>;
 }) {
   const { billId } = await params;
+  const { voteId } = await searchParams;
   const { bill, source } = await getBillData(billId);
   if (!bill) notFound();
 
   const { votes, source: voteSource } = await getVotesDataForBill(billId);
-  const vote = votes[0];
+  const vote = votes.find((item) => item.id === voteId) || votes[0];
   const live = isLiveBillsSource(source);
   const voteStats = vote
     ? ([
@@ -85,6 +88,28 @@ export default async function BillVotesPage({
             </ChartCard>
             <SectionCard title="Vote details">
               <div className="space-y-4">
+                {votes.length > 1 ? (
+                  <div className="rounded-3xl border border-[var(--line)] bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Vote records
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {votes.map((item) => (
+                        <a
+                          key={item.id}
+                          href={`/bills/${bill.id}/votes?voteId=${encodeURIComponent(item.id)}`}
+                          className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                            item.id === vote.id
+                              ? "bg-[var(--accent)] text-white"
+                              : "border border-[var(--line)] bg-white text-[var(--ink)]"
+                          }`}
+                        >
+                          {item.dateLabel}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="rounded-3xl border border-[var(--line)] bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
                     Result
