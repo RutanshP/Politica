@@ -10,16 +10,11 @@ import { PartisanDonutChart, TrendLineChart } from "@/components/trend-charts";
 import {
   getPoliticianAnalyticsSeries,
   getPoliticianData,
-  getPoliticianRouteParams,
   getPoliticianSourceLabel,
   getSponsoredBillsForPolitician,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
 import { hasVotePerformanceStats } from "@/lib/utils";
-
-export async function generateStaticParams() {
-  return getPoliticianRouteParams();
-}
 
 export const revalidate = 21600;
 

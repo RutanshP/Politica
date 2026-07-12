@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const jiti = require("../support/jiti.cjs");
 
-const { FEDERAL_HOUSE_OFFICE_KEYS } = jiti("@/lib/data/politicians");
+const { FEDERAL_HOUSE_OFFICE_KEYS, getPoliticiansData } = jiti("@/lib/data/politicians");
 const { listStoredPoliticians } = jiti("@/lib/supabase/politicians");
 const { fetchOpenStatesVotes } = jiti("@/lib/adapters/openstates");
 const { normalizeDistrictSeat } = jiti("@/lib/utils");
@@ -627,6 +627,150 @@ test("listStoredPoliticians preserves at-large federal house seats", async () =>
     assert.equal(politicians[0].title, "US Representative");
     assert.equal(politicians[0].district, "AK-AL");
     assert.equal(politicians[0].stats.attendance, 97);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("listStoredPoliticians restores at-large seats from array-shaped raw Congress terms", async () => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+  process.env.SUPABASE_SECRET_KEY = "test-secret";
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    async json() {
+      return [{
+        id: "B001323",
+        slug: "nicholas-j-begich-iii",
+        name: "Nicholas J. Begich III",
+        title: "US Representative",
+        party: "Republican",
+        state: "Alaska",
+        district: null,
+        biography: "At-large House member.",
+        born: "",
+        education: "",
+        occupation: "",
+        website: "https://begich.house.gov",
+        office_phone: "202-225-5765",
+        office_address: "153 Cannon House Office Building",
+        next_election: "",
+        stats: {
+          votesWithParty: 93,
+          votesAgainstParty: 5,
+          attendance: 99,
+          billsIntroduced: 3,
+          billsPassed: 0,
+          amendmentsOffered: 0,
+        },
+        ideology: {},
+        source: "congress_sync",
+        source_system: "congress",
+        source_id: "B001323",
+        jurisdiction_type: "federal",
+        state_code: "AK",
+        session_id: null,
+        synced_at: "2026-07-10T00:00:00.000Z",
+        raw_payload: null,
+        raw_member: {
+          firstName: "Nicholas",
+          lastName: "Begich",
+          terms: [
+            { chamber: "House of Representatives", memberType: "Representative", startYear: 2025 },
+          ],
+        },
+      }];
+    },
+  });
+
+  try {
+    const politicians = await listStoredPoliticians();
+    assert.equal(politicians.length, 1);
+    assert.equal(politicians[0].title, "US Representative");
+    assert.equal(politicians[0].district, "AK-AL");
+    assert.equal(politicians[0].stats.attendance, 99);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("getPoliticiansData fills known vacant federal house seats with explicit placeholders", async () => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+  process.env.SUPABASE_SECRET_KEY = "test-secret";
+
+  const originalFetch = global.fetch;
+  global.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("/rest/v1/politicians")) {
+      return {
+        ok: true,
+        async json() {
+          return [
+            {
+              id: "G000605",
+              slug: "adam-gray",
+              name: "Adam Gray",
+              title: "US Representative",
+              party: "Democratic",
+              state: "California",
+              district: "CA-13",
+              biography: "",
+              born: "",
+              education: "",
+              occupation: "",
+              website: "",
+              office_phone: "",
+              office_address: "",
+              next_election: "",
+              stats: {
+                votesWithParty: 84,
+                votesAgainstParty: 16,
+                attendance: 96,
+                billsIntroduced: 7,
+                billsPassed: 0,
+                amendmentsOffered: 0,
+              },
+              ideology: {},
+              source: "congress_sync",
+              source_system: "congress",
+              source_id: "G000605",
+              jurisdiction_type: "federal",
+              state_code: "CA",
+              session_id: null,
+              synced_at: "2026-07-10T00:00:00.000Z",
+              raw_payload: null,
+              raw_member: {
+                firstName: "Adam",
+                lastName: "Gray",
+              },
+            },
+          ];
+        },
+      };
+    }
+
+    if (url.includes("/rest/v1/bills")) {
+      return { ok: true, async json() { return []; } };
+    }
+
+    if (url.includes("/rest/v1/sync_runs")) {
+      return { ok: true, async json() { return []; } };
+    }
+
+    throw new Error(`Unexpected fetch in test: ${url}`);
+  };
+
+  try {
+    const result = await getPoliticiansData();
+    const vacancies = result.politicians.filter((politician) => politician.party === "Vacant");
+    const ca14 = vacancies.find((politician) => politician.district === "CA-14");
+    const tx23 = vacancies.find((politician) => politician.district === "TX-23");
+
+    assert.ok(ca14);
+    assert.ok(tx23);
+    assert.match(ca14.biography, /vacant since April 17, 2026/i);
+    assert.match(tx23.biography, /Tony Gonzales/i);
   } finally {
     global.fetch = originalFetch;
   }

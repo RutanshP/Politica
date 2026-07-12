@@ -13,13 +13,14 @@ This setup makes Politica DB-backed for:
 
 Congress.gov is now intended for sync jobs, not normal page rendering.
 
-## 1. Create the tables
+## 1. Create the tables and indexes
 
-In the Supabase SQL Editor, run all three files:
+In the Supabase SQL Editor, run all four files:
 
 - `supabase/sql/001_politica_politicians.sql`
 - `supabase/sql/002_politica_legislation.sql`
 - `supabase/sql/003_politica_platform.sql`
+- `supabase/sql/004_politica_civic_read_indexes.sql`
 
 ## 2. Copy project keys
 

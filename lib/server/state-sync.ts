@@ -11,7 +11,7 @@ import {
 } from "@/lib/adapters/openstates";
 import { replaceStoredBillActions, replaceStoredBillVersions } from "@/lib/supabase/bills";
 import { replaceStoredCommitteeMemberships } from "@/lib/supabase/committees";
-import { upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
+import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import { replaceStoredVotes } from "@/lib/supabase/votes";
 import { buildUpdatedPoliticianRowsFromVotePositions } from "@/lib/server/vote-stats";
 import { normalizeOfficeTitle, normalizePersonLookup, normalizeStateLabel, slugifySegment } from "@/lib/utils";
@@ -31,6 +31,12 @@ const OPENSTATES_MAX_ROWS = 75;
 const OPENSTATES_DEFAULT_STATE_CODES = [
   "ca", "ny", "tx", "fl", "il", "pa", "oh", "ga", "mi", "nc",
 ] as const;
+
+function buildQuotedInFilter(values: string[]) {
+  return values
+    .map((value) => `"${value.replace(/"/g, '\\"')}"`)
+    .join(",");
+}
 
 function displayDate(value?: string) {
   if (!value) return "Unknown";
@@ -147,6 +153,16 @@ export async function syncStateLegislationFromOpenStates(states: string | string
   const stateCodes = (Array.isArray(states) ? states : [states])
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
+  const normalizedStateCodes = new Set(stateCodes.map((value) => value.toUpperCase()));
+  const existingStateBillRows = await fetchSupabaseRows<BillRow>("bills", "jurisdiction_type=eq.state", {
+    cache: "no-store",
+    paginateAll: true,
+  }).catch(() => []);
+  const existingVoteRows = await fetchSupabaseRows<Pick<VoteRow, "bill_id">>("votes", undefined, {
+    cache: "no-store",
+    select: "bill_id",
+    paginateAll: true,
+  }).catch(() => []);
 
   const politicianMap = new Map<string, PoliticianRow>();
   const committeeMap = new Map<string, CommitteeRow>();
@@ -507,6 +523,27 @@ export async function syncStateLegislationFromOpenStates(states: string | string
     replaceStoredVotes(voteRows.map((row) => row.id), voteRows, uniqueVotePositionRows),
   ]);
 
+  const activeStateBillIds = new Set(billRows.map((row) => row.id));
+  const voteBackedBillIds = new Set(existingVoteRows.map((row) => row.bill_id));
+  const staleStateBillIds = existingStateBillRows
+    .filter((row) =>
+      row.jurisdiction_type === "state"
+      && normalizedStateCodes.has((row.state_code || row.state || "").toUpperCase())
+      && (row.source_system || "").toLowerCase() === "openstates"
+      && !activeStateBillIds.has(row.id)
+      && !voteBackedBillIds.has(row.id))
+    .map((row) => row.id);
+
+  if (staleStateBillIds.length > 0) {
+    for (let index = 0; index < staleStateBillIds.length; index += 100) {
+      const chunk = staleStateBillIds.slice(index, index + 100);
+      const filter = buildQuotedInFilter(chunk);
+      await deleteSupabaseRows("bill_actions", `bill_id=in.(${filter})`);
+      await deleteSupabaseRows("bill_versions", `bill_id=in.(${filter})`);
+      await deleteSupabaseRows("bills", `id=in.(${filter})`);
+    }
+  }
+
   if (politicianMap.size === 0 && billMap.size === 0 && committeeMap.size === 0) {
     const detail = stateFailures[0]?.error || "OpenStates sync produced no records";
     throw new Error(detail);
@@ -514,6 +551,7 @@ export async function syncStateLegislationFromOpenStates(states: string | string
 
   return {
     synced: finalizedPoliticianRows.length + billRows.length + committeeRows.length + voteRows.length,
+    staleBillsDeleted: staleStateBillIds.length,
     statesSynced: stateCodes.length,
     stateFailures,
     at: new Date().toISOString(),

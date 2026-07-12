@@ -13,8 +13,23 @@ export async function POST(request: Request) {
   }
 
   try {
+    const url = new URL(request.url);
+    const targetBillIds = (url.searchParams.get("billIds") || "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+    const syncVotes = /^(1|true|yes)$/i.test(url.searchParams.get("syncVotes") || "");
+    const syncCommittees = /^(1|true|yes)$/i.test(url.searchParams.get("syncCommittees") || "");
+    const listOffset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
+    const listLimit = Number.parseInt(url.searchParams.get("limit") || "0", 10);
     const result = await runPipeline("federal_legislation_sync", async () => {
-      const sync = await syncLegislationFromCongress();
+      const sync = await syncLegislationFromCongress({
+        targetBillIds,
+        syncVotes,
+        syncCommittees,
+        listOffset: Number.isFinite(listOffset) && listOffset >= 0 ? listOffset : 0,
+        listLimit: Number.isFinite(listLimit) && listLimit > 0 ? listLimit : undefined,
+      });
       return {
         recordCount: sync.billsSynced + sync.committeesSynced + sync.votesSynced,
         metadata: sync,
@@ -23,6 +38,10 @@ export async function POST(request: Request) {
 
     revalidatePath("/");
     revalidatePath("/bills");
+    revalidatePath("/bills/[billId]", "page");
+    revalidatePath("/bills/[billId]/timeline", "page");
+    revalidatePath("/bills/[billId]/text", "page");
+    revalidatePath("/bills/[billId]/votes", "page");
     revalidatePath("/committees");
     revalidatePath("/issues");
     revalidatePath("/news");

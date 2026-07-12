@@ -27,6 +27,59 @@ function titleFromListBill(bill: CongressBillListItem) {
   return bill.title?.trim() || `${String(bill.type || "").toUpperCase()} ${bill.number}`;
 }
 
+function isGenericCongressTitle(value?: string) {
+  const normalized = (value || "").trim();
+  return /^([A-Z]+\.?\s*)\d+$/i.test(normalized);
+}
+
+function rankCongressTitleType(value?: string) {
+  const normalized = (value || "").toLowerCase();
+  if (normalized.includes("short")) return 0;
+  if (normalized.includes("popular")) return 1;
+  if (normalized.includes("official")) return 2;
+  return 3;
+}
+
+function extractTitleFromSummary(summary?: string) {
+  const strongMatch = summary?.match(/<strong>(.*?)<\/strong>/i);
+  if (strongMatch?.[1]?.trim()) {
+    return strongMatch[1].trim();
+  }
+
+  return undefined;
+}
+
+export function chooseCongressBillTitle(
+  titles: Array<{ title?: string; titleType?: string }>,
+  fallbackTitle: string,
+  summaryText?: string,
+) {
+  const rankedTitles = titles
+    .map((entry) => ({
+      title: entry.title?.trim(),
+      rank: rankCongressTitleType(entry.titleType),
+    }))
+    .filter((entry): entry is { title: string; rank: number } => Boolean(entry.title))
+    .sort((left, right) => left.rank - right.rank);
+
+  const preferredNonGenericTitle = rankedTitles.find((entry) => !isGenericCongressTitle(entry.title))?.title;
+  if (preferredNonGenericTitle) {
+    return preferredNonGenericTitle;
+  }
+
+  const summaryTitle = extractTitleFromSummary(summaryText);
+  if (summaryTitle) {
+    return summaryTitle;
+  }
+
+  const fallback = fallbackTitle.trim();
+  if (!isGenericCongressTitle(fallback)) {
+    return fallback;
+  }
+
+  return rankedTitles[0]?.title || fallback;
+}
+
 function sponsorNameFromListBill(bill: CongressBillListItem) {
   const sponsor = bill.sponsors?.[0];
   return sponsor?.fullName || [sponsor?.firstName, sponsor?.lastName].filter(Boolean).join(" ") || "Congress Sponsor";
@@ -57,6 +110,18 @@ function actionTypeFromText(text?: string): BillAction["type"] {
   if (lower.includes("president") || lower.includes("signed")) return "executive";
   if (lower.includes("passed") || lower.includes("agreed to")) return "floor";
   return "milestone";
+}
+
+function asArray<T>(value: T[] | T | null | undefined) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (value == null) {
+    return [] as T[];
+  }
+
+  return [value];
 }
 
 export function normalizeCongressBillListItem(bill: CongressBillListItem): Bill {
@@ -120,17 +185,21 @@ export function mergeCongressBillDetail(
   const detail = detailPayload.bill;
   if (!detail) return seed;
 
-  const titles = detail.titles ?? [];
-  const officialTitle = titles.find((title) => title.titleType?.toLowerCase().includes("official"))?.title
-    || titles[0]?.title
-    || seed.title;
+  const titles = asArray(detail.titles);
+  const officialTitle = chooseCongressBillTitle(titles, seed.title);
 
-  const actions = (actionsPayload?.actions ?? []).map((action) => ({
-    date: formatDisplayDate(action.actionDate),
-    label: action.type || "Action",
-    detail: action.text || "No action detail available",
-    type: actionTypeFromText(action.text),
-  }));
+  const actions = [...(actionsPayload?.actions ?? [])]
+    .sort((left, right) => {
+      const leftTime = left.actionDate ? Date.parse(left.actionDate) : 0;
+      const rightTime = right.actionDate ? Date.parse(right.actionDate) : 0;
+      return leftTime - rightTime;
+    })
+    .map((action) => ({
+      date: formatDisplayDate(action.actionDate),
+      label: action.type || "Action",
+      detail: action.text || "No action detail available",
+      type: actionTypeFromText(action.text),
+    }));
 
   const versions: BillVersion[] = (textPayload?.textVersions ?? []).map((version, index) => ({
     id: `${seed.id}-text-${index + 1}`,

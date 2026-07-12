@@ -11,20 +11,13 @@ import { Timeline } from "@/components/timeline";
 import { WatchButton } from "@/components/watch-button";
 import {
   getBillData,
-  getBillRouteParams,
-  getBillsData,
   getBillsSourceLabel,
   isLiveBillsSource,
 } from "@/lib/data/bills";
-import { getCommitteesData } from "@/lib/data/committees";
+import { listStoredBillsByIds } from "@/lib/supabase/bills";
 import { getNewsData } from "@/lib/data/news";
-import { getPoliticiansData } from "@/lib/data/politicians";
-import { findPoliticianForBillSponsor } from "@/lib/politician-links";
-import { slugifySegment } from "@/lib/utils";
-
-export async function generateStaticParams() {
-  return getBillRouteParams();
-}
+import { getStoredCommitteeById } from "@/lib/supabase/committees";
+import { getStoredPoliticianById } from "@/lib/supabase/politicians";
 
 export const revalidate = 21600;
 
@@ -34,23 +27,20 @@ export default async function BillDetailPage({
   params: Promise<{ billId: string }>;
 }) {
   const { billId } = await params;
-  const [{ bill, source }, { bills }, { politicians }, { committees }, { news }] = await Promise.all([
+  const [{ bill, source }, { news }] = await Promise.all([
     getBillData(billId),
-    getBillsData(),
-    getPoliticiansData(),
-    getCommitteesData(),
     getNewsData(),
   ]);
 
   if (!bill) notFound();
   const live = isLiveBillsSource(source);
-  const sponsor = findPoliticianForBillSponsor(bill, politicians);
-  const committee =
-    committees.find((item) => item.id === bill.committeeId)
-    || committees.find((item) => item.slug === slugifySegment(bill.committeeName));
-  const relatedBills = bills.filter((candidate) => bill.relatedBillIds.includes(candidate.id));
+  const [sponsor, committee, relatedBills] = await Promise.all([
+    bill.sponsorId ? getStoredPoliticianById(bill.sponsorId).catch(() => undefined) : undefined,
+    bill.committeeId ? getStoredCommitteeById(bill.committeeId).catch(() => undefined) : undefined,
+    listStoredBillsByIds(bill.relatedBillIds).catch(() => []),
+  ]);
   const relatedNews = news.filter((item) => item.relatedIds.includes(bill.id));
-  const chronologicalActions = [...bill.actions].reverse();
+  const chronologicalActions = bill.actions;
 
   const statCards = [
     ["Amendments", bill.stats.amendments],

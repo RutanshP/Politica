@@ -1,16 +1,32 @@
 import { emptyResult, withData } from "@/lib/data/result";
-import { listStoredBills } from "@/lib/supabase/bills";
+import { listStoredBillsBySponsor } from "@/lib/supabase/bills";
 import { listStoredCommitteeMembershipsByPoliticianId } from "@/lib/supabase/committees";
 import { getStoredPoliticianBySlug, listStoredPoliticians } from "@/lib/supabase/politicians";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
 import { listStoredVotePositionContextByPoliticianId } from "@/lib/supabase/votes";
 import { buildUpdatedPoliticianRowsFromVotePositions } from "@/lib/server/vote-stats";
-import { normalizeDistrictSeat, normalizePersonLookup, normalizeStateCode, slugifySegment } from "@/lib/utils";
+import { normalizeDistrictSeat, normalizePersonLookup, normalizeStateCode, normalizeStateLabel, slugifySegment, sortLabelsAlphabetically } from "@/lib/utils";
 import type { Bill, Politician } from "@/types/civic";
 import type { PoliticianRow } from "@/types/supabase";
 
 export type PoliticianDataSource = "supabase" | "unconfigured" | "unavailable";
+export const POLITICIAN_DIRECTORY_PAGE_SIZE = 20;
+
+export interface PoliticiansDirectorySearchParams {
+  page?: string;
+  q?: string;
+  office?: string;
+  level?: string;
+  party?: string;
+  state?: string;
+  sort?: string;
+}
+
+function parsePositiveInt(value?: string, fallback = 1) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
 
 const FEDERAL_HOUSE_DISTRICT_COUNTS: Record<string, number> = {
   AL: 7, AK: 1, AS: 1, AZ: 9, AR: 4, CA: 52, CO: 8, CT: 5, DC: 1, DE: 1,
@@ -28,6 +44,29 @@ export const FEDERAL_HOUSE_OFFICE_KEYS = Object.entries(FEDERAL_HOUSE_DISTRICT_C
       : Array.from({ length: count }, (_, index) => `${stateCode}-${index + 1}`),
   )
   .sort((left, right) => left.localeCompare(right, "en-US", { numeric: true, sensitivity: "base" }));
+
+const FEDERAL_HOUSE_VACANCIES: Record<string, { vacantSince: string; previousRepresentative: string; note: string }> = {
+  "CA-14": {
+    vacantSince: "2026-04-17",
+    previousRepresentative: "Eric Swalwell",
+    note: "Vacant pending a special election.",
+  },
+  "FL-20": {
+    vacantSince: "2026-04-21",
+    previousRepresentative: "Sheila Cherfilus-McCormick",
+    note: "Vacant pending a special election.",
+  },
+  "GA-13": {
+    vacantSince: "2026-04-22",
+    previousRepresentative: "David Scott",
+    note: "Vacant pending a special election.",
+  },
+  "TX-23": {
+    vacantSince: "2026-04-14",
+    previousRepresentative: "Tony Gonzales",
+    note: "Vacant pending a special election.",
+  },
+};
 
 function enhancePoliticianStats(politicians: Politician[], bills: Bill[]) {
   const billsByPolitician = new Map<string, Bill[]>();
@@ -112,6 +151,18 @@ function getDisplayOfficeBucket(politician: Politician) {
   if (politician.title === "US Senator") return "us-senate";
   if (politician.title === "US Representative") return "us-house";
   return "other";
+}
+
+function getDisplayOfficeLabel(politician: Politician) {
+  if (politician.jurisdictionType === "federal") {
+    if (politician.title === "US Senator") return "US Senate";
+    if (politician.title === "US Representative") return "US House";
+    return "Other federal";
+  }
+
+  if (politician.title.includes("Senator")) return "State Senate";
+  if (politician.title.includes("Representative")) return "State House";
+  return "Other state";
 }
 
 function getDisplayDistrictKey(politician: Politician) {
@@ -212,7 +263,6 @@ function enforceRenderedOfficeUniqueness(politicians: Politician[]) {
     .flatMap((group) => group.sort(compareDisplayPoliticians).slice(0, 2));
 
   const representativeByDistrict = new Map<string, Politician>();
-  const representativeFallbacks: Politician[] = [];
   usRepresentatives.forEach((politician) => {
     const districtKey = getDisplayDistrictKey(politician);
     if (!districtKey) {
@@ -232,6 +282,72 @@ function enforceRenderedOfficeUniqueness(politicians: Politician[]) {
     .sort((left, right) => left.name.localeCompare(right.name, "en-US", { sensitivity: "base" }));
 }
 
+function buildVacancyPlaceholder(officeKey: string) {
+  const vacancy = FEDERAL_HOUSE_VACANCIES[officeKey];
+  if (!vacancy) {
+    return undefined;
+  }
+
+  const [stateCode, districtSuffix] = officeKey.split("-");
+  const state = normalizeStateLabel(stateCode);
+  const district = districtSuffix === "AL" ? `${state} at-large seat` : `${state}'s ${districtSuffix} Congressional District`;
+  const vacantSinceLabel = new Date(`${vacancy.vacantSince}T00:00:00Z`).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+
+  return {
+    id: `vacant-${officeKey.toLowerCase()}`,
+    slug: `vacant-${officeKey.toLowerCase()}`,
+    name: `${district} vacancy`,
+    title: "US Representative",
+    party: "Vacant",
+    state,
+    district: officeKey,
+    biography: `${district} has been vacant since ${vacantSinceLabel}. Previously represented by ${vacancy.previousRepresentative}. ${vacancy.note}`,
+    born: "Seat currently vacant",
+    education: "Seat currently vacant",
+    occupation: "Vacant office",
+    website: "",
+    officePhone: "",
+    officeAddress: "",
+    nextElection: "Special election pending",
+    jurisdictionType: "federal",
+    stats: {
+      votesWithParty: 0,
+      votesAgainstParty: 0,
+      attendance: 0,
+      billsIntroduced: 0,
+      billsPassed: 0,
+      amendmentsOffered: 0,
+    },
+    ideology: {},
+    sourceMetadata: {
+      sourceSystem: "congress_vacancy",
+      sourceId: officeKey,
+      rawAvailable: false,
+    },
+  } satisfies Politician;
+}
+
+function fillFederalHouseVacancies(politicians: Politician[]) {
+  const occupied = new Set(
+    politicians
+      .filter((politician) => politician.title === "US Representative")
+      .map((politician) => politician.district)
+      .filter(Boolean),
+  );
+
+  const vacancyRows = Object.keys(FEDERAL_HOUSE_VACANCIES)
+    .filter((officeKey) => !occupied.has(officeKey))
+    .map(buildVacancyPlaceholder)
+    .filter(Boolean) as Politician[];
+
+  return [...politicians, ...vacancyRows];
+}
+
 export async function getPoliticiansData() {
   if (!isSupabaseConfigured()) {
     return {
@@ -241,14 +357,15 @@ export async function getPoliticiansData() {
   }
 
   try {
-    const [politicians, bills, federalMembersRun, federalLegislationRun, stateRun] = await Promise.all([
+    const [politicians, federalMembersRun, federalLegislationRun, stateRun] = await Promise.all([
       listStoredPoliticians(),
-      listStoredBills().catch(() => []),
       getLatestSyncRun("federal_members_sync").catch(() => undefined),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
       getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
-    const enrichedPoliticians = enforceRenderedOfficeUniqueness(enhancePoliticianStats(politicians, bills));
+    const enrichedPoliticians = fillFederalHouseVacancies(
+      enforceRenderedOfficeUniqueness(politicians),
+    );
     const latestRun = [federalMembersRun, federalLegislationRun, stateRun]
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
@@ -271,6 +388,147 @@ export async function getPoliticiansData() {
   }
 }
 
+export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirectorySearchParams) {
+  if (!isSupabaseConfigured()) {
+    return {
+      ...emptyResult("unconfigured", "federal_members_sync", [] as Politician[], "unconfigured"),
+      politicians: [] as Politician[],
+      total: 0,
+      page: 1,
+      pageSize: POLITICIAN_DIRECTORY_PAGE_SIZE,
+      filters: {
+        query: "",
+        office: "All chambers",
+        level: "All levels",
+        party: "All parties",
+        state: "All states",
+        sortBy: "Name",
+      },
+      options: {
+        offices: ["All chambers"],
+        levels: ["All levels"],
+        parties: ["All parties"],
+        states: ["All states"],
+        sortOptions: ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"],
+      },
+    };
+  }
+
+  const page = parsePositiveInt(searchParams.page, 1);
+  const filters = {
+    query: (searchParams.q || "").trim(),
+    office: searchParams.office || "All chambers",
+    level: searchParams.level || "All levels",
+    party: searchParams.party || "All parties",
+    state: searchParams.state || "All states",
+    sortBy: searchParams.sort || "Name",
+  };
+
+  try {
+    const [politicians, federalMembersRun, federalLegislationRun, stateRun] = await Promise.all([
+      listStoredPoliticians(),
+      getLatestSyncRun("federal_members_sync").catch(() => undefined),
+      getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
+      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
+    ]);
+
+    const enrichedPoliticians = fillFederalHouseVacancies(
+      enforceRenderedOfficeUniqueness(politicians),
+    );
+
+    const filtered = enrichedPoliticians
+      .filter((politician) => {
+        const normalizedQuery = filters.query.toLowerCase();
+        const matchesQuery =
+          normalizedQuery.length === 0
+          || [
+            politician.name,
+            politician.title,
+            politician.party,
+            politician.state,
+          ].some((value) => value.toLowerCase().includes(normalizedQuery));
+
+        const office = getDisplayOfficeLabel(politician);
+        const level = politician.jurisdictionType === "state" ? "State" : "Federal";
+
+        return matchesQuery
+          && (filters.office === "All chambers" || office === filters.office)
+          && (filters.level === "All levels" || level === filters.level)
+          && (filters.party === "All parties" || politician.party === filters.party)
+          && (filters.state === "All states" || politician.state === filters.state);
+      })
+      .sort((left, right) => {
+        if (filters.sortBy === "Attendance") return right.stats.attendance - left.stats.attendance;
+        if (filters.sortBy === "Bills introduced") return right.stats.billsIntroduced - left.stats.billsIntroduced;
+        if (filters.sortBy === "Party alignment") return right.stats.votesWithParty - left.stats.votesWithParty;
+        if (filters.sortBy === "Recent activity") return right.stats.amendmentsOffered - left.stats.amendmentsOffered;
+        return left.name.localeCompare(right.name, "en-US", { sensitivity: "base" });
+      });
+
+    const total = filtered.length;
+    const pageCount = Math.max(1, Math.ceil(total / POLITICIAN_DIRECTORY_PAGE_SIZE));
+    const safePage = Math.min(page, pageCount);
+    const pageRows = filtered.slice((safePage - 1) * POLITICIAN_DIRECTORY_PAGE_SIZE, safePage * POLITICIAN_DIRECTORY_PAGE_SIZE);
+
+    const presentOffices = new Set(enrichedPoliticians.map(getDisplayOfficeLabel));
+    const options = {
+      offices: [
+        "All chambers",
+        "US House",
+        "US Senate",
+        ...(presentOffices.has("State House") ? ["State House"] : []),
+        ...(presentOffices.has("State Senate") ? ["State Senate"] : []),
+        ...(presentOffices.has("Other state") ? ["Other state"] : []),
+      ],
+      levels: ["All levels", ...sortLabelsAlphabetically(enrichedPoliticians.map((politician) => politician.jurisdictionType === "state" ? "State" : "Federal"))],
+      parties: ["All parties", ...sortLabelsAlphabetically(enrichedPoliticians.map((politician) => politician.party))],
+      states: ["All states", ...sortLabelsAlphabetically(enrichedPoliticians.map((politician) => politician.state))],
+      sortOptions: ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"],
+    };
+
+    const latestRun = [federalMembersRun, federalLegislationRun, stateRun]
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
+    const result = withData(
+      total > 0 ? "supabase" : "unavailable",
+      "federal_members_sync",
+      pageRows,
+      latestRun?.finished_at || latestRun?.started_at,
+      {
+        availability: total > 0 ? "live" : "empty",
+        detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
+      },
+    );
+
+    return {
+      ...result,
+      source: result.source as PoliticianDataSource,
+      politicians: pageRows,
+      total,
+      page: safePage,
+      pageSize: POLITICIAN_DIRECTORY_PAGE_SIZE,
+      filters,
+      options,
+    };
+  } catch (error) {
+    return {
+      ...emptyResult("unavailable", "federal_members_sync", [] as Politician[], "unavailable", error instanceof Error ? error.message : "Stored politician read failed"),
+      politicians: [] as Politician[],
+      total: 0,
+      page,
+      pageSize: POLITICIAN_DIRECTORY_PAGE_SIZE,
+      filters,
+      options: {
+        offices: ["All chambers"],
+        levels: ["All levels"],
+        parties: ["All parties"],
+        states: ["All states"],
+        sortOptions: ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"],
+      },
+    };
+  }
+}
+
 export async function getPoliticianData(slug: string) {
   if (!isSupabaseConfigured()) {
     return {
@@ -280,17 +538,13 @@ export async function getPoliticianData(slug: string) {
   }
 
   try {
-    const [politician, bills, federalMembersRun, federalLegislationRun] = await Promise.all([
+    const [politician, federalMembersRun, federalLegislationRun] = await Promise.all([
       getStoredPoliticianBySlug(slug),
-      listStoredBills().catch(() => []),
       getLatestSyncRun("federal_members_sync").catch(() => undefined),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
     ]);
-    const enrichedPolitician = politician
-      ? enhancePoliticianStats([politician], bills)[0]
-      : undefined;
-    const hydratedPolitician = enrichedPolitician
-      ? await hydratePoliticianVoteStats(enrichedPolitician)
+    const hydratedPolitician = politician
+      ? await hydratePoliticianVoteStats(politician)
       : undefined;
     const latestRun = [federalMembersRun, federalLegislationRun]
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
@@ -320,19 +574,17 @@ export async function getPoliticianRouteParams() {
 }
 
 export async function getSponsoredBillsForPolitician(slug: string) {
-  const [bills, { politician }] = await Promise.all([
-    listStoredBills().catch(() => []),
-    getPoliticianData(slug),
-  ]);
+  const { politician } = await getPoliticianData(slug);
 
   if (!politician) return [];
 
+  const bills = await listStoredBillsBySponsor(politician.id, politician.slug, politician.name).catch(() => []);
   const normalizedPoliticianName = normalizePersonLookup(politician.name);
   return bills.filter((bill) =>
-    bill.sponsorId === politician.id || slugifySegment(bill.sponsorName) === politician.slug,
-  ).concat(
-    bills.filter((bill) => normalizePersonLookup(bill.sponsorName) === normalizedPoliticianName),
-  ).filter((bill, index, items) => items.findIndex((candidate) => candidate.id === bill.id) === index);
+    bill.sponsorId === politician.id
+    || slugifySegment(bill.sponsorName) === politician.slug
+    || normalizePersonLookup(bill.sponsorName) === normalizedPoliticianName,
+  );
 }
 
 export async function getCommitteeMembershipsForPolitician(slug: string) {

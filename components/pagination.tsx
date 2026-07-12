@@ -1,11 +1,15 @@
+import Link from "next/link";
+
 export function Pagination({
   page,
   pageSize,
   total,
+  buildHref,
 }: {
   page: number;
   pageSize: number;
   total: number;
+  buildHref?: (page: number) => string;
 }) {
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
@@ -17,6 +21,26 @@ export function Pagination({
         Showing {start}-{end} of {total}
       </p>
       <div className="flex items-center gap-2">
+        {buildHref ? (
+          <>
+            <Link
+              href={buildHref(Math.max(1, page - 1))}
+              className={`rounded-full border border-[var(--line)] bg-white px-3 py-1.5 ${
+                page <= 1 ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              Previous
+            </Link>
+            <Link
+              href={buildHref(Math.min(pageCount, page + 1))}
+              className={`rounded-full border border-[var(--line)] bg-white px-3 py-1.5 ${
+                page >= pageCount ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              Next
+            </Link>
+          </>
+        ) : null}
         <span className="rounded-full border border-[var(--line)] bg-white px-3 py-1.5">
           Page {page}
         </span>

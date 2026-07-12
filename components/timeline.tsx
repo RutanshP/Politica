@@ -5,7 +5,7 @@ export function Timeline({ items }: { items: BillAction[] }) {
   return (
     <div className="space-y-4">
       {items.map((item, index) => (
-        <div key={`${item.date}-${item.label}`} className="flex gap-4">
+        <div key={`${item.date}-${item.label}-${item.detail}-${index}`} className="flex gap-4">
           <div className="flex flex-col items-center">
             <span
               className={cn(

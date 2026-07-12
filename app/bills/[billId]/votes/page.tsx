@@ -10,7 +10,6 @@ import { Tabs } from "@/components/tabs";
 import { VoteBarChart } from "@/components/trend-charts";
 import {
   getBillData,
-  getBillRouteParams,
   getBillsSourceLabel,
   isLiveBillsSource,
 } from "@/lib/data/bills";
@@ -19,10 +18,6 @@ import {
   getVotesDataForBill,
   isLiveVoteSource,
 } from "@/lib/data/votes";
-
-export async function generateStaticParams() {
-  return getBillRouteParams();
-}
 
 export const revalidate = 21600;
 
@@ -69,6 +64,7 @@ export default async function BillVotesPage({
       <Tabs
         items={[
           { label: "Overview", href: `/bills/${bill.id}` },
+          { label: "Timeline", href: `/bills/${bill.id}/timeline` },
           { label: "Text", href: `/bills/${bill.id}/text` },
           { label: "Votes", href: `/bills/${bill.id}/votes`, active: true },
         ]}

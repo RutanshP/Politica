@@ -109,7 +109,10 @@ export function mapRowToBill(
         type: action.type,
       })),
     versions: versions
-      .sort((left, right) => left.sort_order - right.sort_order)
+      .sort((left, right) =>
+        parseDateLabel(right.date) - parseDateLabel(left.date)
+        || right.sort_order - left.sort_order,
+      )
       .map((version) => ({
         id: version.version_id,
         label: version.label,

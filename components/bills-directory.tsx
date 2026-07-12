@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { DataTable } from "@/components/data-table";
@@ -8,24 +9,7 @@ import { FilterBar } from "@/components/filter-bar";
 import { Pagination } from "@/components/pagination";
 import { StatusPill } from "@/components/status-pill";
 import { WatchButton } from "@/components/watch-button";
-import { normalizePersonLookup, sortLabelsAlphabetically } from "@/lib/utils";
-import type { Bill, Committee, Politician } from "@/types/civic";
-
-const PAGE_SIZE = 20;
-
-function normalizeBillLevel(bill: Bill) {
-  return bill.jurisdictionType === "state" || bill.jurisdiction === "State" ? "State" : "Federal";
-}
-
-function getSponsorSlug(bill: Bill, politicians: Politician[]) {
-  const normalizedSponsorName = normalizePersonLookup(bill.sponsorName);
-  const sponsor =
-    politicians.find((politician) => politician.id === bill.sponsorId)
-    || politicians.find((politician) => normalizePersonLookup(politician.name) === normalizedSponsorName)
-    || politicians.find((politician) => politician.name === bill.sponsorName);
-
-  return sponsor?.slug;
-}
+import type { Bill, Committee } from "@/types/civic";
 
 function getCommitteeSlug(bill: Bill, committees: Committee[]) {
   const committee = committees.find((item) => item.id === bill.committeeId || item.name === bill.committeeName);
@@ -34,124 +18,122 @@ function getCommitteeSlug(bill: Bill, committees: Committee[]) {
 
 export function BillsDirectory({
   bills,
-  politicians,
   committees: linkedCommittees,
+  total,
+  page,
+  pageSize,
+  filters,
+  options,
 }: {
   bills: Bill[];
-  politicians: Politician[];
   committees: Committee[];
+  total: number;
+  page: number;
+  pageSize: number;
+  filters: {
+    query: string;
+    level: string;
+    state: string;
+    chamber: string;
+    status: string;
+    session: string;
+    topic: string;
+    sponsor: string;
+    committee: string;
+    sortBy: string;
+  };
+  options: {
+    levels: string[];
+    states: string[];
+    chambers: string[];
+    statuses: string[];
+    sessions: string[];
+    topics: string[];
+    sponsors: string[];
+    committees: string[];
+    sortOptions: string[];
+  };
 }) {
-  const sessions = useMemo(() => ["All sessions", ...sortLabelsAlphabetically(bills.map((bill) => bill.session))], [bills]);
-  const topics = useMemo(() => ["All topics", ...sortLabelsAlphabetically(bills.map((bill) => bill.topic))], [bills]);
-  const sponsors = useMemo(() => ["Any sponsor", ...sortLabelsAlphabetically(bills.map((bill) => bill.sponsorName))], [bills]);
-  const committees = useMemo(() => ["Any committee", ...sortLabelsAlphabetically(bills.map((bill) => bill.committeeName))], [bills]);
-  const states = useMemo(
-    () => ["All states", ...sortLabelsAlphabetically(bills.map((bill) => bill.state).filter(Boolean) as string[])],
-    [bills],
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [query, setQuery] = useState(filters.query);
+
+  const buildHref = useMemo(
+    () => (nextPage: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (nextPage <= 1) {
+        params.delete("page");
+      } else {
+        params.set("page", String(nextPage));
+      }
+      const queryString = params.toString();
+      return queryString ? `${pathname}?${queryString}` : pathname;
+    },
+    [pathname, searchParams],
   );
-  const levels = useMemo(() => ["All levels", ...sortLabelsAlphabetically(bills.map(normalizeBillLevel))], [bills]);
-  const chambers = useMemo(() => ["Both", ...sortLabelsAlphabetically(bills.map((bill) => bill.chamber))], [bills]);
-  const statuses = useMemo(() => ["All statuses", ...sortLabelsAlphabetically(bills.map((bill) => bill.status))], [bills]);
 
-  const [query, setQuery] = useState("");
-  const [level, setLevel] = useState("All levels");
-  const [state, setState] = useState("All states");
-  const [chamber, setChamber] = useState("Both");
-  const [status, setStatus] = useState("All statuses");
-  const [session, setSession] = useState("All sessions");
-  const [topic, setTopic] = useState("All topics");
-  const [sponsor, setSponsor] = useState("Any sponsor");
-  const [committee, setCommittee] = useState("Any committee");
-  const [sortBy, setSortBy] = useState("Recent activity");
-  const [page, setPage] = useState(1);
-
-  const filtered = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    return bills
-      .filter((bill) => {
-        const matchesQuery =
-          normalizedQuery.length === 0
-          || [
-            bill.number,
-            bill.title,
-            bill.topic,
-            bill.sponsorName,
-            bill.committeeName,
-          ].some((value) => value.toLowerCase().includes(normalizedQuery));
-
-        return matchesQuery
-          && (level === "All levels" || normalizeBillLevel(bill) === level)
-          && (state === "All states" || bill.state === state)
-          && (chamber === "Both" || bill.chamber === chamber)
-          && (status === "All statuses" || bill.status === status)
-          && (session === "All sessions" || bill.session === session)
-          && (topic === "All topics" || bill.topic === topic)
-          && (sponsor === "Any sponsor" || bill.sponsorName === sponsor)
-          && (committee === "Any committee" || bill.committeeName === committee);
-      })
-      .sort((left, right) => {
-        if (sortBy === "Bill number") {
-          return left.number.localeCompare(right.number, "en-US", { numeric: true, sensitivity: "base" });
-        }
-        if (sortBy === "Title") {
-          return left.title.localeCompare(right.title, "en-US", { sensitivity: "base" });
-        }
-        if (sortBy === "Level") {
-          return normalizeBillLevel(left).localeCompare(normalizeBillLevel(right), "en-US", { sensitivity: "base" })
-            || (left.state || "").localeCompare(right.state || "", "en-US", { sensitivity: "base" })
-            || left.number.localeCompare(right.number, "en-US", { numeric: true, sensitivity: "base" });
-        }
-
-        return (right.lastActionAt || "").localeCompare(left.lastActionAt || "", "en-US", { sensitivity: "base" });
-      });
-  }, [bills, chamber, committee, level, query, session, sortBy, sponsor, state, status, topic]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-  const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  function updateParams(updates: Record<string, string>) {
+    const params = new URLSearchParams(searchParams.toString());
+    Object.entries(updates).forEach(([key, value]) => {
+      if (!value || value.startsWith("All ") || value === "Both" || value === "Any sponsor" || value === "Any committee" || (key === "sort" && value === "Recent activity")) {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+    });
+    params.delete("page");
+    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
+  }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-[28px] border border-[var(--line)] bg-white p-5">
+      <form
+        className="rounded-[28px] border border-[var(--line)] bg-white p-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          updateParams({ q: query });
+        }}
+      >
         <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
           Search bills
         </label>
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setPage(1);
-          }}
-          placeholder="Search bill numbers, sponsors, topics, committees..."
-          className="mt-3 w-full rounded-full border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-700 outline-none"
-        />
-      </div>
+        <div className="mt-3 flex gap-3">
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search bill numbers, sponsors, topics, committees..."
+            className="w-full rounded-full border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-700 outline-none"
+          />
+          <button type="submit" className="rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white">
+            Apply
+          </button>
+        </div>
+      </form>
 
       <FilterBar
         filters={[
-          { label: "Level", value: level, options: levels },
-          { label: "State", value: state, options: states },
-          { label: "Chamber", value: chamber, options: chambers },
-          { label: "Status", value: status, options: statuses },
-          { label: "Session", value: session, options: sessions },
-          { label: "Topic", value: topic, options: topics },
-          { label: "Sponsor", value: sponsor, options: sponsors },
-          { label: "Committee", value: committee, options: committees },
-          { label: "Sort by", value: sortBy, options: ["Recent activity", "Bill number", "Title", "Level"] },
+          { label: "Level", value: filters.level, options: options.levels },
+          { label: "State", value: filters.state, options: options.states },
+          { label: "Chamber", value: filters.chamber, options: options.chambers },
+          { label: "Status", value: filters.status, options: options.statuses },
+          { label: "Session", value: filters.session, options: options.sessions },
+          { label: "Topic", value: filters.topic, options: options.topics },
+          { label: "Sponsor", value: filters.sponsor, options: options.sponsors },
+          { label: "Committee", value: filters.committee, options: options.committees },
+          { label: "Sort by", value: filters.sortBy, options: options.sortOptions },
         ]}
         onChange={(label, value) => {
-          setPage(1);
-          if (label === "Level") setLevel(value);
-          if (label === "State") setState(value);
-          if (label === "Chamber") setChamber(value);
-          if (label === "Status") setStatus(value);
-          if (label === "Session") setSession(value);
-          if (label === "Topic") setTopic(value);
-          if (label === "Sponsor") setSponsor(value);
-          if (label === "Committee") setCommittee(value);
-          if (label === "Sort by") setSortBy(value);
+          if (label === "Level") updateParams({ level: value });
+          if (label === "State") updateParams({ state: value });
+          if (label === "Chamber") updateParams({ chamber: value });
+          if (label === "Status") updateParams({ status: value });
+          if (label === "Session") updateParams({ session: value });
+          if (label === "Topic") updateParams({ topic: value });
+          if (label === "Sponsor") updateParams({ sponsor: value });
+          if (label === "Committee") updateParams({ committee: value });
+          if (label === "Sort by") updateParams({ sort: value });
         }}
       />
 
@@ -167,8 +149,7 @@ export function BillsDirectory({
           "Committee",
           "Watch",
         ]}
-        rows={pageRows.map((bill) => {
-          const sponsorSlug = getSponsorSlug(bill, politicians);
+        rows={bills.map((bill) => {
           const committeeSlug = getCommitteeSlug(bill, linkedCommittees);
 
           return [
@@ -186,13 +167,7 @@ export function BillsDirectory({
               <p>{bill.latestAction}</p>
               <p className="mt-1 text-[var(--muted)]">{bill.lastActionAt}</p>
             </div>,
-            sponsorSlug ? (
-              <Link key={`${bill.id}-sponsor`} href={`/politicians/${sponsorSlug}`} className="text-[var(--accent)]">
-                {bill.sponsorName}
-              </Link>
-            ) : (
-              bill.sponsorName
-            ),
+            bill.sponsorName,
             committeeSlug ? (
               <Link key={`${bill.id}-committee`} href={`/committees/${committeeSlug}`} className="text-[var(--accent)]">
                 {bill.committeeName}
@@ -205,7 +180,7 @@ export function BillsDirectory({
         })}
       />
 
-      <Pagination page={currentPage} pageSize={PAGE_SIZE} total={filtered.length} />
+      <Pagination page={page} pageSize={pageSize} total={total} buildHref={buildHref} />
     </div>
   );
 }

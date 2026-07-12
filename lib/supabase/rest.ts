@@ -57,14 +57,85 @@ export async function fetchSupabaseRows<T>(
   options?: {
     cache?: "default" | "no-store";
     select?: string;
+    paginateAll?: boolean;
+    pageSize?: number;
   },
 ) {
   if (!isSupabaseConfigured()) {
     throw new Error("Supabase is not configured");
   }
 
-  const response = await fetch(buildRestUrl(pathname, query, options?.select), {
+  const fetchOptions = {
     headers: buildHeaders(),
+    ...(options?.cache === "no-store"
+      ? { cache: "no-store" as const }
+      : { next: { revalidate: 21600 } }),
+  };
+
+  if (!options?.paginateAll) {
+    const response = await fetch(buildRestUrl(pathname, query, options?.select), fetchOptions);
+
+    if (!response.ok) {
+      throw new Error(`Supabase read failed: ${response.status} ${response.statusText}`);
+    }
+
+    return (await response.json()) as T[];
+  }
+
+  if (query && /(^|&)limit=|(^|&)offset=/.test(query)) {
+    throw new Error("Supabase paginated reads cannot be combined with explicit limit/offset query params");
+  }
+
+  const rows: T[] = [];
+  const pageSize = Math.max(1, options.pageSize || 250);
+
+  for (let offset = 0; ; offset += pageSize) {
+    const pagedQuery = [query, `offset=${offset}`, `limit=${pageSize}`]
+      .filter(Boolean)
+      .join("&");
+    const response = await fetch(buildRestUrl(pathname, pagedQuery, options?.select), fetchOptions);
+
+    if (!response.ok) {
+      throw new Error(`Supabase read failed: ${response.status} ${response.statusText}`);
+    }
+
+    const pageRows = (await response.json()) as T[];
+    rows.push(...pageRows);
+
+    if (pageRows.length < pageSize) {
+      break;
+    }
+  }
+
+  return rows;
+}
+
+export async function fetchSupabasePage<T>(
+  pathname: string,
+  query?: string,
+  options?: {
+    cache?: "default" | "no-store";
+    select?: string;
+    limit: number;
+    offset: number;
+  },
+) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase is not configured");
+  }
+
+  const limit = Math.max(1, options?.limit || 20);
+  const offset = Math.max(0, options?.offset || 0);
+  const pagedQuery = [query, `offset=${offset}`, `limit=${limit}`]
+    .filter(Boolean)
+    .join("&");
+
+  const response = await fetch(buildRestUrl(pathname, pagedQuery, options?.select), {
+    headers: buildHeaders({
+      Prefer: "count=exact",
+      Range: `${offset}-${offset + limit - 1}`,
+      "Range-Unit": "items",
+    }),
     ...(options?.cache === "no-store"
       ? { cache: "no-store" as const }
       : { next: { revalidate: 21600 } }),
@@ -74,7 +145,15 @@ export async function fetchSupabaseRows<T>(
     throw new Error(`Supabase read failed: ${response.status} ${response.statusText}`);
   }
 
-  return (await response.json()) as T[];
+  const rows = (await response.json()) as T[];
+  const contentRange = response.headers.get("content-range") || "";
+  const totalText = contentRange.split("/")[1] || "";
+  const total = Number(totalText);
+
+  return {
+    rows,
+    total: Number.isFinite(total) ? total : rows.length,
+  };
 }
 
 export async function upsertSupabaseRows<T extends object>(

@@ -8,14 +8,9 @@ import { Tabs } from "@/components/tabs";
 import { Timeline } from "@/components/timeline";
 import {
   getBillData,
-  getBillRouteParams,
   getBillsSourceLabel,
   isLiveBillsSource,
 } from "@/lib/data/bills";
-
-export async function generateStaticParams() {
-  return getBillRouteParams();
-}
 
 export const revalidate = 21600;
 
@@ -27,7 +22,7 @@ export default async function BillTimelinePage({
   const { billId } = await params;
   const { bill, source } = await getBillData(billId);
   if (!bill) notFound();
-  const chronologicalActions = [...bill.actions].reverse();
+  const chronologicalActions = bill.actions;
 
   return (
     <div className="space-y-6">
@@ -52,7 +47,7 @@ export default async function BillTimelinePage({
         ) : (
           <EmptyState
             title="No stored timeline actions yet"
-            description="This bill record exists, but detailed action history has not been stored for it in the current dataset."
+            description="This bill record exists, but detailed action history has not been stored for it yet."
           />
         )}
       </SectionCard>

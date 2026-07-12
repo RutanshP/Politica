@@ -3,6 +3,12 @@ import type { PoliticianRow } from "@/types/supabase";
 import { fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
 import { normalizeDistrictSeat, normalizeOfficeTitle, normalizePartyLabel, normalizePersonLookup, normalizeStateCode, normalizeStateLabel } from "@/lib/utils";
 
+type RawCongressTerm = {
+  chamber?: string;
+  district?: string | number;
+  memberType?: string | number;
+};
+
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -47,26 +53,60 @@ function getRawMemberRecord(row: PoliticianRow) {
   return (row.raw_member ?? row.raw_payload ?? {}) as Record<string, unknown>;
 }
 
+function getRawCongressTerms(row: PoliticianRow) {
+  const rawMember = getRawMemberRecord(row);
+  const rawTerms = rawMember.terms;
+
+  if (Array.isArray(rawTerms)) {
+    return rawTerms.filter(Boolean) as RawCongressTerm[];
+  }
+
+  if (rawTerms && typeof rawTerms === "object" && "item" in rawTerms) {
+    const item = (rawTerms as { item?: RawCongressTerm[] | RawCongressTerm }).item;
+    if (Array.isArray(item)) {
+      return item.filter(Boolean);
+    }
+    if (item) {
+      return [item];
+    }
+  }
+
+  return [] as RawCongressTerm[];
+}
+
+function inferAtLargeDistrict(row: PoliticianRow, term?: RawCongressTerm) {
+  const chamber = String(term?.chamber || "").toLowerCase();
+  const memberType = String(term?.memberType || "").toLowerCase();
+  if (
+    chamber.includes("house")
+    || memberType.includes("representative")
+    || memberType.includes("delegate")
+    || memberType.includes("resident commissioner")
+  ) {
+    return normalizeDistrictSeat(row.state_code || row.state, "AL") || null;
+  }
+
+  return null;
+}
+
 function readRawCongressDistrict(row: PoliticianRow) {
   const rawMember = getRawMemberRecord(row);
   const directDistrict = typeof rawMember.district === "string" || typeof rawMember.district === "number"
     ? rawMember.district
     : undefined;
-  const terms = rawMember.terms;
-  const termItem = terms && typeof terms === "object" && "item" in terms
-    ? (terms as { item?: Array<{ district?: number | string }> | { district?: number | string } }).item
+  const terms = getRawCongressTerms(row);
+  const latestTerm = terms.at(-1);
+  const latestTermDistrict = typeof latestTerm?.district === "string" || typeof latestTerm?.district === "number"
+    ? latestTerm.district
     : undefined;
-  const firstTerm = Array.isArray(termItem) ? termItem[0] : termItem;
-  const firstTermDistrict = typeof firstTerm?.district === "string" || typeof firstTerm?.district === "number"
-    ? firstTerm.district
-    : undefined;
-  const candidate = directDistrict ?? firstTermDistrict;
+  const candidate = directDistrict ?? latestTermDistrict;
 
   if (candidate === undefined || candidate === null || candidate === "") {
-    return null;
+    return inferAtLargeDistrict(row, latestTerm);
   }
 
-  return normalizeDistrictSeat(row.state_code || row.state, candidate) || null;
+  return normalizeDistrictSeat(row.state_code || row.state, candidate)
+    || inferAtLargeDistrict(row, latestTerm);
 }
 
 function getResolvedDistrict(row: PoliticianRow) {
@@ -453,6 +493,7 @@ function mapRowToPolitician(row: PoliticianRow): Politician {
 export async function listStoredPoliticians() {
   const rows = await fetchSupabaseRows<PoliticianRow>("politicians", "order=name.asc", {
     cache: "no-store",
+    paginateAll: true,
   });
   return enforceFederalOfficeUniqueness(mergeDuplicatePoliticianRows(rows))
     .filter((row) => row.jurisdiction_type !== "federal" || ["US Senator", "US Representative"].includes(getResolvedOfficeTitle(row)))
@@ -460,10 +501,20 @@ export async function listStoredPoliticians() {
 }
 
 export async function getStoredPoliticianBySlug(slug: string) {
+  const exactRows = await fetchSupabaseRows<PoliticianRow>(
+    "politicians",
+    `slug=eq.${encodeURIComponent(slug)}&limit=1`,
+    { cache: "no-store" },
+  );
+  const exactRow = exactRows[0];
+  if (exactRow) {
+    return mapRowToPolitician(exactRow);
+  }
+
   const rows = await fetchSupabaseRows<PoliticianRow>(
     "politicians",
     "order=name.asc",
-    { cache: "no-store" },
+    { cache: "no-store", paginateAll: true },
   );
   const mergedRows = enforceFederalOfficeUniqueness(mergeDuplicatePoliticianRows(rows))
     .filter((row) => row.jurisdiction_type !== "federal" || ["US Senator", "US Representative"].includes(getResolvedOfficeTitle(row)));
@@ -480,6 +531,16 @@ export async function getStoredPoliticianBySlug(slug: string) {
   const identityKey = getPoliticianIdentityKey(rawMatch);
   const mergedMatch = mergedRows.find((row) => getPoliticianIdentityKey(row) === identityKey);
   return mergedMatch ? mapRowToPolitician(mergedMatch) : undefined;
+}
+
+export async function getStoredPoliticianById(id: string) {
+  const rows = await fetchSupabaseRows<PoliticianRow>(
+    "politicians",
+    `id=eq.${encodeURIComponent(id)}&limit=1`,
+    { cache: "no-store" },
+  );
+  const row = rows[0];
+  return row ? mapRowToPolitician(row) : undefined;
 }
 
 export async function upsertStoredPoliticians(rows: PoliticianRow[]) {

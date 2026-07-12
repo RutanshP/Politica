@@ -8,14 +8,9 @@ import { SourceBadge } from "@/components/source-badge";
 import { Tabs } from "@/components/tabs";
 import {
   getBillData,
-  getBillRouteParams,
   getBillsSourceLabel,
   isLiveBillsSource,
 } from "@/lib/data/bills";
-
-export async function generateStaticParams() {
-  return getBillRouteParams();
-}
 
 export const revalidate = 21600;
 
@@ -32,6 +27,7 @@ export default async function BillTextPage({
   const versions = bill.versions.length > 0 ? bill.versions : [];
   const latestVersion = versions[0];
   const comparisonReady = versions.filter((version) => version.isFullTextAvailable).length > 1;
+  const latestVersionHasBody = Boolean(latestVersion?.content?.length);
 
   return (
     <div className="space-y-6">
@@ -44,6 +40,7 @@ export default async function BillTextPage({
       <Tabs
         items={[
           { label: "Overview", href: `/bills/${bill.id}` },
+          { label: "Timeline", href: `/bills/${bill.id}/timeline` },
           { label: "Text", href: `/bills/${bill.id}/text`, active: true },
           { label: "Votes", href: `/bills/${bill.id}/votes` },
           { label: "News", href: "/news" },
@@ -92,17 +89,24 @@ export default async function BillTextPage({
           </div>
           <div className="rounded-[28px] border border-[var(--line)] bg-white px-6 py-8">
             {latestVersion ? (
-              <div className="space-y-6">
-                {latestVersion.content.map((paragraph) => (
-                  <p key={paragraph} className="text-sm leading-7 text-slate-700">
-                    {paragraph}
-                  </p>
-                ))}
-              </div>
+              latestVersionHasBody ? (
+                <div className="space-y-6">
+                  {latestVersion.content.map((paragraph) => (
+                    <p key={paragraph} className="text-sm leading-7 text-slate-700">
+                      {paragraph}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  title="Version metadata stored"
+                  description="This bill version is synced with official source links and history metadata, but the full body text was skipped during sync to keep bill coverage broad and fast."
+                />
+              )
             ) : (
               <EmptyState
                 title="No stored text versions yet"
-                description="This bill is stored, but detailed text versions have not been synced into the current dataset yet."
+                description="This bill is stored, but detailed text versions have not been synced into stored bill history yet."
               />
             )}
           </div>

@@ -3,6 +3,7 @@ import type { OpenStatesBill, OpenStatesCommittee, OpenStatesPerson, OpenStatesV
 const OPENSTATES_API_BASE = process.env.POLITICA_OPENSTATES_API_BASE_URL?.trim()
   || "https://v3.openstates.org";
 const OPENSTATES_PER_PAGE = 20;
+const OPENSTATES_MAX_PAGES = 5;
 
 function getOpenStatesApiKey() {
   return process.env.POLITICA_OPENSTATES_API_KEY?.trim() || "";
@@ -73,21 +74,38 @@ async function fetchOpenStatesWithJurisdictionFallback<T>(
   throw lastError instanceof Error ? lastError : new Error("OpenStates request failed");
 }
 
-export async function fetchOpenStatesPeople(state?: string) {
-  const payload = await fetchOpenStatesWithJurisdictionFallback<{ results?: OpenStatesPerson[] }>("/people", state, {
-    per_page: OPENSTATES_PER_PAGE,
-  });
+async function fetchOpenStatesPaginatedResults<T>(
+  pathname: string,
+  state: string | undefined,
+  params?: Record<string, string | number | undefined>,
+) {
+  const results: T[] = [];
 
-  return payload.results ?? [];
+  for (let page = 1; page <= OPENSTATES_MAX_PAGES; page += 1) {
+    const payload = await fetchOpenStatesWithJurisdictionFallback<{ results?: T[] }>(pathname, state, {
+      ...params,
+      page,
+      per_page: OPENSTATES_PER_PAGE,
+    });
+    const pageResults = payload.results ?? [];
+    results.push(...pageResults);
+
+    if (pageResults.length < OPENSTATES_PER_PAGE) {
+      break;
+    }
+  }
+
+  return results;
+}
+
+export async function fetchOpenStatesPeople(state?: string) {
+  return fetchOpenStatesPaginatedResults<OpenStatesPerson>("/people", state);
 }
 
 export async function fetchOpenStatesBills(state?: string) {
-  const payload = await fetchOpenStatesWithJurisdictionFallback<{ results?: OpenStatesBill[] }>("/bills", state, {
-    per_page: OPENSTATES_PER_PAGE,
+  return fetchOpenStatesPaginatedResults<OpenStatesBill>("/bills", state, {
     sort: "updated_desc",
   });
-
-  return payload.results ?? [];
 }
 
 export async function fetchOpenStatesBillDetail(billId: string) {
@@ -95,11 +113,7 @@ export async function fetchOpenStatesBillDetail(billId: string) {
 }
 
 export async function fetchOpenStatesCommittees(state?: string) {
-  const payload = await fetchOpenStatesWithJurisdictionFallback<{ results?: OpenStatesCommittee[] }>("/committees", state, {
-    per_page: OPENSTATES_PER_PAGE,
-  });
-
-  return payload.results ?? [];
+  return fetchOpenStatesPaginatedResults<OpenStatesCommittee>("/committees", state);
 }
 
 export async function fetchOpenStatesCommitteeDetail(committeeId: string) {
@@ -107,10 +121,9 @@ export async function fetchOpenStatesCommitteeDetail(committeeId: string) {
 }
 
 export async function fetchOpenStatesVotes(state?: string): Promise<OpenStatesVote[]> {
-  const payload = await fetchOpenStatesWithJurisdictionFallback<{ results?: OpenStatesVote[] }>("/votes", state, {
-    per_page: OPENSTATES_PER_PAGE,
+  const results = await fetchOpenStatesPaginatedResults<OpenStatesVote>("/votes", state, {
     sort: "updated_desc",
-  }).catch(() => ({ results: [] }));
+  }).catch(() => []);
 
-  return payload.results ?? [];
+  return results;
 }

@@ -118,9 +118,15 @@ export async function fetchCongressBillActions(input: {
   congress: string;
   billType: string;
   billNumber: string;
+  limit?: number;
+  offset?: number;
 }) {
   return fetchCongressJson<CongressBillActionPayload>(
     `/bill/${input.congress}/${input.billType}/${input.billNumber}/actions`,
+    {
+      limit: input.limit,
+      offset: input.offset,
+    },
   );
 }
 
@@ -128,9 +134,15 @@ export async function fetchCongressBillSummaries(input: {
   congress: string;
   billType: string;
   billNumber: string;
+  limit?: number;
+  offset?: number;
 }) {
   return fetchCongressJson<CongressBillSummaryPayload>(
     `/bill/${input.congress}/${input.billType}/${input.billNumber}/summaries`,
+    {
+      limit: input.limit,
+      offset: input.offset,
+    },
   );
 }
 

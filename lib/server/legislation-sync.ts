@@ -21,38 +21,60 @@ import {
 import {
   mapBillActionToRow,
   mapBillToRow,
+  mapRowToBill,
   mapBillVersionToRow,
   mapCommitteeToRow,
 } from "@/lib/normalizers/legislation";
 import {
+  chooseCongressBillTitle,
   mergeCongressBillDetail,
   normalizeCongressBillListItem,
   parseBillId,
 } from "@/lib/normalizers/bills";
 import {
-  replaceStoredBillActions,
-  replaceStoredBillVersions,
+  appendStoredBillActions,
+  appendStoredBillVersions,
+  listStoredBillActionRowsByBillIds,
+  listStoredBillVersionRowsByBillIds,
   upsertStoredBills,
 } from "@/lib/supabase/bills";
 import { replaceStoredCommitteeMemberships, upsertStoredCommittees } from "@/lib/supabase/committees";
-import { fetchSupabaseRows } from "@/lib/supabase/rest";
-import { replaceStoredVotes } from "@/lib/supabase/votes";
+import { deleteSupabaseRows, fetchSupabaseRows } from "@/lib/supabase/rest";
+import { appendStoredVotes, listStoredVoteHeaders, listStoredVotePositionsByVoteIds } from "@/lib/supabase/votes";
 import { buildUpdatedPoliticianRowsFromVotePositions } from "@/lib/server/vote-stats";
 import { normalizePersonLookup, slugifySegment } from "@/lib/utils";
 import type { Bill, Committee } from "@/types/civic";
 import type { CongressCommitteeListItem } from "@/types/congress";
-import type { BillRow, CommitteeMemberRow, PoliticianRow, VotePositionRow, VoteRow } from "@/types/supabase";
+import type { BillActionRow, BillRow, BillVersionRow, CommitteeMemberRow, PoliticianRow, VotePositionRow, VoteRow } from "@/types/supabase";
 
 const LEGISLATION_PAGE_SIZE = Number.parseInt(
   process.env.POLITICA_LEGISLATION_PAGE_SIZE?.trim() || "50",
   10,
 );
 const LEGISLATION_MAX_BILLS = Number.parseInt(
-  process.env.POLITICA_LEGISLATION_MAX_BILLS?.trim() || "40",
+  process.env.POLITICA_LEGISLATION_MAX_BILLS?.trim() || "0",
+  10,
+);
+const LEGISLATION_DETAIL_CONCURRENCY = Number.parseInt(
+  process.env.POLITICA_LEGISLATION_DETAIL_CONCURRENCY?.trim() || "2",
+  10,
+);
+const LEGISLATION_TEXT_VERSION_CONTENT_LIMIT = Number.parseInt(
+  process.env.POLITICA_LEGISLATION_TEXT_VERSION_CONTENT_LIMIT?.trim() || "0",
   10,
 );
 const LEGISLATION_MAX_COMMITTEES = Number.parseInt(
   process.env.POLITICA_LEGISLATION_MAX_COMMITTEES?.trim() || "20",
+  10,
+);
+const LEGISLATION_SYNC_COMMITTEES = /^(1|true|yes)$/i.test(
+  process.env.POLITICA_LEGISLATION_SYNC_COMMITTEES?.trim() || "false",
+);
+const LEGISLATION_SYNC_VOTES = /^(1|true|yes)$/i.test(
+  process.env.POLITICA_LEGISLATION_SYNC_VOTES?.trim() || "false",
+);
+const CONGRESS_DETAIL_PAGE_SIZE = Number.parseInt(
+  process.env.POLITICA_CONGRESS_DETAIL_PAGE_SIZE?.trim() || "250",
   10,
 );
 const FEDERAL_VOTE_BATCH_SIZE = Number.parseInt(
@@ -64,7 +86,7 @@ const FEDERAL_VOTE_MAX_CONSECUTIVE_MISSES = Number.parseInt(
   10,
 );
 const FEDERAL_VOTE_MAX_PER_SESSION = Number.parseInt(
-  process.env.POLITICA_FEDERAL_VOTE_MAX_PER_SESSION?.trim() || "120",
+  process.env.POLITICA_FEDERAL_VOTE_MAX_PER_SESSION?.trim() || "600",
   10,
 );
 
@@ -80,12 +102,35 @@ function uniqueByKey<T>(items: T[], getKey: (item: T) => string) {
   });
 }
 
+async function mapWithConcurrency<TInput, TOutput>(
+  items: TInput[],
+  concurrency: number,
+  mapper: (item: TInput, index: number) => Promise<TOutput>,
+) {
+  const results = new Array<TOutput>(items.length);
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  let nextIndex = 0;
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  }));
+
+  return results;
+}
+
 function buildPlaceholderCommittee(bill: Bill) {
   return {
     committeeId: bill.committeeId,
     committeeName: bill.committeeName,
   };
 }
+
+const CONGRESS_PLACEHOLDER_SUMMARY = "Live Congress.gov bill imported. Rich summaries can be layered in from stored detail records or generated briefs later.";
+const FEDERAL_VOTE_PLACEHOLDER_SUMMARY = "Stored federal vote metadata is available even though the linked bill metadata has not been synced yet.";
 
 function stripMarkup(value: string) {
   return value
@@ -106,6 +151,19 @@ function splitIntoParagraphs(value: string) {
     .map((paragraph) => stripMarkup(paragraph))
     .filter(Boolean)
     .slice(0, 24);
+}
+
+function hasMeaningfulBillSummary(summary?: string) {
+  const normalized = (summary || "").trim();
+  return Boolean(normalized)
+    && normalized !== CONGRESS_PLACEHOLDER_SUMMARY
+    && normalized !== FEDERAL_VOTE_PLACEHOLDER_SUMMARY;
+}
+
+function hasStoredBillDetail(bill: Bill) {
+  return hasMeaningfulBillSummary(bill.summary)
+    || bill.actions.length > 1
+    || bill.versions.length > 0;
 }
 
 async function loadBillVersionContent(
@@ -157,6 +215,24 @@ async function loadBillVersionContent(
   }
 }
 
+function buildMetadataOnlyVersionContent(
+  formats: Array<{ type?: string; url?: string }> | undefined,
+) {
+  const normalizedFormats = (formats ?? [])
+    .filter((format): format is { type: string; url: string } => Boolean(format?.type && format?.url))
+    .map((format) => ({
+      type: format.type,
+      url: format.url,
+    }));
+
+  return {
+    content: [] as string[],
+    isFullTextAvailable: false,
+    sourceUrl: normalizedFormats[0]?.url,
+    formats: normalizedFormats,
+  };
+}
+
 function chooseBestSummary(
   summaries: Awaited<ReturnType<typeof fetchCongressBillSummaries>> | undefined,
 ) {
@@ -167,12 +243,83 @@ function chooseBestSummary(
     .sort((left, right) => right.length - left.length)[0];
 }
 
-async function fetchAllCongressBills() {
-  const bills = [];
-  const pageSize = LEGISLATION_PAGE_SIZE;
+async function fetchAllCongressBillActions(
+  congress: string,
+  billType: string,
+  billNumber: string,
+) {
+  const actions = [];
   let offset = 0;
 
-  while (bills.length < LEGISLATION_MAX_BILLS) {
+  while (true) {
+    const payload = await fetchCongressBillActions({
+      congress,
+      billType,
+      billNumber,
+      limit: CONGRESS_DETAIL_PAGE_SIZE,
+      offset,
+    });
+    const page = payload.actions ?? [];
+    actions.push(...page);
+
+    if (page.length < CONGRESS_DETAIL_PAGE_SIZE || page.length === 0) {
+      break;
+    }
+
+    offset += CONGRESS_DETAIL_PAGE_SIZE;
+  }
+
+  return {
+    actions: uniqueByKey(actions, (action) => `${action.actionDate || ""}|${action.text || ""}|${action.type || ""}`),
+  };
+}
+
+async function fetchAllCongressBillSummaries(
+  congress: string,
+  billType: string,
+  billNumber: string,
+) {
+  const summaries = [];
+  let offset = 0;
+
+  while (true) {
+    const payload = await fetchCongressBillSummaries({
+      congress,
+      billType,
+      billNumber,
+      limit: CONGRESS_DETAIL_PAGE_SIZE,
+      offset,
+    });
+    const page = payload.summaries ?? [];
+    summaries.push(...page);
+
+    if (page.length < CONGRESS_DETAIL_PAGE_SIZE || page.length === 0) {
+      break;
+    }
+
+    offset += CONGRESS_DETAIL_PAGE_SIZE;
+  }
+
+  return {
+    summaries: uniqueByKey(summaries, (summary) => `${summary.updateDate || ""}|${summary.versionCode || ""}|${summary.text || ""}`),
+  };
+}
+
+async function fetchAllCongressBills(options?: {
+  offset?: number;
+  limit?: number;
+}) {
+  const bills = [];
+  const pageSize = LEGISLATION_PAGE_SIZE;
+  const requestedLimit = options?.limit;
+  const maxBills = requestedLimit && requestedLimit > 0
+    ? requestedLimit
+    : LEGISLATION_MAX_BILLS > 0
+      ? LEGISLATION_MAX_BILLS
+      : Number.POSITIVE_INFINITY;
+  let offset = options?.offset ?? 0;
+
+  while (bills.length < maxBills) {
     const page = await fetchCongressBills({
       congress: getDefaultCongress(),
       limit: pageSize,
@@ -187,15 +334,71 @@ async function fetchAllCongressBills() {
     offset += pageSize;
   }
 
-  return bills.slice(0, LEGISLATION_MAX_BILLS);
+  return bills.slice(0, maxBills);
+}
+
+function buildCongressListItemFromDetail(
+  detailPayload: Awaited<ReturnType<typeof fetchCongressBillDetail>>,
+): NonNullable<Awaited<ReturnType<typeof fetchCongressBills>>[number]> | null {
+  const detail = detailPayload.bill;
+  if (!detail?.type || !detail.number) {
+    return null;
+  }
+
+  const sponsor = Array.isArray(detail.sponsors) ? detail.sponsors[0] : undefined;
+  const titles = Array.isArray(detail.titles)
+    ? detail.titles
+    : detail.titles
+      ? [detail.titles]
+      : [];
+
+  return {
+    congress: detail.congress,
+    type: detail.type,
+    number: detail.number,
+    title: titles[0]?.title,
+    originChamber: detail.originChamber,
+    latestAction: detail.latestAction,
+    policyArea: detail.policyArea,
+    sponsors: sponsor ? [sponsor] : [],
+  };
+}
+
+async function fetchTargetCongressBills(
+  congress: string,
+  targetBillIds: string[],
+) {
+  const results = await Promise.all(
+    uniqueByKey(targetBillIds, (value) => value).map(async (billId) => {
+      const parsed = parseBillId(billId);
+      if (!parsed) {
+        throw new Error(`Invalid target bill id: ${billId}`);
+      }
+
+      const detail = await fetchCongressBillDetail({
+        congress,
+        billType: parsed.billType,
+        billNumber: parsed.billNumber,
+      });
+      const listItem = buildCongressListItemFromDetail(detail);
+      if (!listItem) {
+        throw new Error(`Congress detail payload missing bill fields for ${billId}`);
+      }
+
+      return listItem;
+    }),
+  );
+
+  return results;
 }
 
 async function fetchAllCommitteeBills(url: string) {
   const bills = [];
   const pageSize = LEGISLATION_PAGE_SIZE;
+  const maxBills = LEGISLATION_MAX_BILLS > 0 ? LEGISLATION_MAX_BILLS : Number.POSITIVE_INFINITY;
   let offset = 0;
 
-  while (bills.length < LEGISLATION_MAX_BILLS) {
+  while (bills.length < maxBills) {
     const page = await fetchCongressBillsByUrl(url, {
       limit: pageSize,
       offset,
@@ -209,7 +412,240 @@ async function fetchAllCommitteeBills(url: string) {
     offset += pageSize;
   }
 
-  return bills.slice(0, LEGISLATION_MAX_BILLS);
+  return bills.slice(0, maxBills);
+}
+
+function buildQuotedInFilter(values: string[]) {
+  return values
+    .map((value) => `"${value.replace(/"/g, '\\"')}"`)
+    .join(",");
+}
+
+function isCongressSourceBillRow(row: BillRow) {
+  const sourceSystem = (row.source_system || "").trim().toLowerCase();
+  const source = (row.source || "").trim().toLowerCase();
+  return sourceSystem === "congress" || source === "congress_sync";
+}
+
+async function fetchRowsByBillIdsInChunks<TRow>(
+  pathname: string,
+  billIds: string[],
+  orderQuery?: string,
+) {
+  if (billIds.length === 0) {
+    return [] as TRow[];
+  }
+
+  const chunkSize = 100;
+  const rows: TRow[] = [];
+
+  for (let index = 0; index < billIds.length; index += chunkSize) {
+    const chunk = billIds.slice(index, index + chunkSize);
+    const filter = buildQuotedInFilter(chunk);
+    const query = [
+      `bill_id=in.(${filter})`,
+      orderQuery,
+    ].filter(Boolean).join("&");
+    const result = await fetchSupabaseRows<TRow>(pathname, query, { cache: "no-store", paginateAll: true });
+    rows.push(...result);
+  }
+
+  return rows;
+}
+
+async function loadExistingStoredBills(congressSession: string) {
+  const billSelect = [
+    "id",
+    "slug",
+    "number",
+    "title",
+    "summary",
+    "jurisdiction",
+    "country",
+    "state",
+    "chamber",
+    "status",
+    "topic",
+    "sponsor_id",
+    "sponsor_name",
+    "committee_id",
+    "committee_name",
+    "latest_action",
+    "last_action_at",
+    "introduced_at",
+    "session",
+    "chance_of_passing",
+    "stats",
+    "related_bill_ids",
+    "source",
+    "source_system",
+    "source_id",
+    "jurisdiction_type",
+    "state_code",
+    "session_id",
+    "synced_at",
+    "raw_bill",
+  ].join(",");
+
+  const billRows = await fetchSupabaseRows<BillRow>(
+    "bills",
+    `jurisdiction_type=eq.federal&session=eq.${encodeURIComponent(congressSession)}&order=id.asc`,
+    { cache: "no-store", select: billSelect, paginateAll: true },
+  );
+
+  const billIds = billRows.map((row) => row.id);
+  const [actionRows, versionRows, voteRows] = await Promise.all([
+    fetchRowsByBillIdsInChunks<BillActionRow>("bill_actions", billIds, "order=bill_id.asc,sort_order.asc"),
+    fetchRowsByBillIdsInChunks<BillVersionRow>("bill_versions", billIds, "order=bill_id.asc,sort_order.asc"),
+    fetchRowsByBillIdsInChunks<Pick<VoteRow, "bill_id">>("votes", billIds, "order=bill_id.asc"),
+  ]);
+
+  const actionsByBillId = new Map<string, BillActionRow[]>();
+  for (const row of actionRows) {
+    const items = actionsByBillId.get(row.bill_id) || [];
+    items.push(row);
+    actionsByBillId.set(row.bill_id, items);
+  }
+
+  const versionsByBillId = new Map<string, BillVersionRow[]>();
+  for (const row of versionRows) {
+    const items = versionsByBillId.get(row.bill_id) || [];
+    items.push(row);
+    versionsByBillId.set(row.bill_id, items);
+  }
+
+  const billsById = new Map<string, Bill>();
+  const billRowsById = new Map<string, BillRow>();
+  billRows.forEach((row) => {
+    billsById.set(row.id, mapRowToBill(row, actionsByBillId.get(row.id) || [], versionsByBillId.get(row.id) || []));
+    billRowsById.set(row.id, row);
+  });
+
+  return {
+    billRows,
+    billRowsById,
+    billsById,
+    voteBillIds: new Set(voteRows.map((row) => row.bill_id)),
+  };
+}
+
+async function loadStoredBillsByIds(billIds: string[]) {
+  const uniqueBillIds = [...new Set(billIds.filter(Boolean))];
+  if (uniqueBillIds.length === 0) {
+    return {
+      billRows: [] as BillRow[],
+      billRowsById: new Map<string, BillRow>(),
+      billsById: new Map<string, Bill>(),
+      voteBillIds: new Set<string>(),
+    };
+  }
+
+  const billSelect = [
+    "id",
+    "slug",
+    "number",
+    "title",
+    "summary",
+    "jurisdiction",
+    "country",
+    "state",
+    "chamber",
+    "status",
+    "topic",
+    "sponsor_id",
+    "sponsor_name",
+    "committee_id",
+    "committee_name",
+    "latest_action",
+    "last_action_at",
+    "introduced_at",
+    "session",
+    "chance_of_passing",
+    "stats",
+    "related_bill_ids",
+    "source",
+    "source_system",
+    "source_id",
+    "jurisdiction_type",
+    "state_code",
+    "session_id",
+    "synced_at",
+    "raw_bill",
+  ].join(",");
+
+  const chunkSize = 100;
+  const billRows: BillRow[] = [];
+  for (let index = 0; index < uniqueBillIds.length; index += chunkSize) {
+    const chunk = uniqueBillIds.slice(index, index + chunkSize);
+    const filter = buildQuotedInFilter(chunk);
+    const result = await fetchSupabaseRows<BillRow>(
+      "bills",
+      `id=in.(${filter})&order=id.asc`,
+      { cache: "no-store", select: billSelect, paginateAll: true },
+    );
+    billRows.push(...result);
+  }
+
+  const [actionRows, versionRows] = await Promise.all([
+    fetchRowsByBillIdsInChunks<BillActionRow>("bill_actions", uniqueBillIds, "order=bill_id.asc,sort_order.asc"),
+    fetchRowsByBillIdsInChunks<BillVersionRow>("bill_versions", uniqueBillIds, "order=bill_id.asc,sort_order.asc"),
+  ]);
+
+  const actionsByBillId = new Map<string, BillActionRow[]>();
+  for (const row of actionRows) {
+    const items = actionsByBillId.get(row.bill_id) || [];
+    items.push(row);
+    actionsByBillId.set(row.bill_id, items);
+  }
+
+  const versionsByBillId = new Map<string, BillVersionRow[]>();
+  for (const row of versionRows) {
+    const items = versionsByBillId.get(row.bill_id) || [];
+    items.push(row);
+    versionsByBillId.set(row.bill_id, items);
+  }
+
+  const billsById = new Map<string, Bill>();
+  const billRowsById = new Map<string, BillRow>();
+  billRows.forEach((row) => {
+    billsById.set(row.id, mapRowToBill(row, actionsByBillId.get(row.id) || [], versionsByBillId.get(row.id) || []));
+    billRowsById.set(row.id, row);
+  });
+
+  return {
+    billRows,
+    billRowsById,
+    billsById,
+    voteBillIds: new Set<string>(),
+  };
+}
+
+function buildStaleCongressBillIds(
+  existingBillRows: BillRow[],
+  canonicalBillIds: Set<string>,
+  voteBillIds: Set<string>,
+  congressSession: string,
+) {
+  return existingBillRows
+    .filter((row) =>
+      row.jurisdiction_type === "federal"
+      && row.session === congressSession
+      && isCongressSourceBillRow(row)
+      && !canonicalBillIds.has(row.id)
+      && !voteBillIds.has(row.id))
+    .map((row) => row.id);
+}
+
+async function deleteBillArtifacts(billIds: string[]) {
+  const chunkSize = 100;
+
+  for (let index = 0; index < billIds.length; index += chunkSize) {
+    const chunk = billIds.slice(index, index + chunkSize);
+    const filter = buildQuotedInFilter(chunk);
+    await deleteSupabaseRows("bill_actions", `bill_id=in.(${filter})`);
+    await deleteSupabaseRows("bill_versions", `bill_id=in.(${filter})`);
+    await deleteSupabaseRows("bills", `id=in.(${filter})`);
+  }
 }
 
 function getErrorMessage(error: unknown) {
@@ -350,7 +786,7 @@ async function collectFederalHouseVotes(congress: string) {
   const years = [startYear, startYear + 1];
   const votes = [];
 
-  for (const year of years) {
+  for (const [index, year] of years.entries()) {
     let nextRollCall = 1;
     let consecutiveMisses = 0;
 
@@ -379,6 +815,129 @@ async function collectFederalSenateVotes(congress: string) {
 
   for (const session of [1, 2] as const) {
     let nextVote = 1;
+    let consecutiveMisses = 0;
+
+    while (nextVote <= FEDERAL_VOTE_MAX_PER_SESSION && consecutiveMisses < FEDERAL_VOTE_MAX_CONSECUTIVE_MISSES) {
+      const batch = Array.from({ length: FEDERAL_VOTE_BATCH_SIZE }, (_, index) => nextVote + index);
+      const results = await Promise.all(batch.map((voteNumber) => fetchSenateRollCallVote(congress, session, voteNumber)));
+
+      for (const result of results) {
+        if (result) {
+          votes.push(result);
+          consecutiveMisses = 0;
+        } else {
+          consecutiveMisses += 1;
+        }
+      }
+
+      nextVote += FEDERAL_VOTE_BATCH_SIZE;
+    }
+  }
+
+  return votes;
+}
+
+function parseStoredHouseVoteId(voteId: string) {
+  const match = voteId.match(/^house-(\d+)-(\d+)-(\d+)$/i);
+  if (!match) return null;
+  return {
+    congress: match[1],
+    session: Number.parseInt(match[2], 10),
+    rollCall: Number.parseInt(match[3], 10),
+  };
+}
+
+function parseStoredSenateVoteId(voteId: string) {
+  const match = voteId.match(/^senate-(\d+)-(\d+)-(\d+)$/i);
+  if (!match) return null;
+  return {
+    congress: match[1],
+    session: Number.parseInt(match[2], 10),
+    voteNumber: Number.parseInt(match[3], 10),
+  };
+}
+
+function buildExistingFederalVoteCursor(
+  congress: string,
+  existingVoteRows: Array<Pick<VoteRow, "id" | "source_system">>,
+) {
+  const houseBySession = new Map<number, number>();
+  const senateBySession = new Map<number, number>();
+
+  existingVoteRows.forEach((row) => {
+    if (row.source_system === "house_clerk") {
+      const parsed = parseStoredHouseVoteId(row.id);
+      if (!parsed || parsed.congress !== congress) {
+        return;
+      }
+
+      houseBySession.set(
+        parsed.session,
+        Math.max(houseBySession.get(parsed.session) || 0, parsed.rollCall),
+      );
+      return;
+    }
+
+    if (row.source_system === "senate_lis") {
+      const parsed = parseStoredSenateVoteId(row.id);
+      if (!parsed || parsed.congress !== congress) {
+        return;
+      }
+
+      senateBySession.set(
+        parsed.session,
+        Math.max(senateBySession.get(parsed.session) || 0, parsed.voteNumber),
+      );
+    }
+  });
+
+  return {
+    houseBySession,
+    senateBySession,
+  };
+}
+
+async function collectIncrementalFederalHouseVotes(
+  congress: string,
+  cursor: ReturnType<typeof buildExistingFederalVoteCursor>,
+) {
+  const startYear = getCongressStartYear(congress);
+  const years = [startYear, startYear + 1];
+  const votes = [];
+
+  for (const [index, year] of years.entries()) {
+    const session = index + 1;
+    let nextRollCall = (cursor.houseBySession.get(session) || 0) + 1;
+    let consecutiveMisses = 0;
+
+    while (nextRollCall <= FEDERAL_VOTE_MAX_PER_SESSION && consecutiveMisses < FEDERAL_VOTE_MAX_CONSECUTIVE_MISSES) {
+      const batch = Array.from({ length: FEDERAL_VOTE_BATCH_SIZE }, (_, batchIndex) => nextRollCall + batchIndex);
+      const results = await Promise.all(batch.map((rollCallNumber) => fetchHouseRollCallVote(year, rollCallNumber)));
+
+      for (const result of results) {
+        if (result) {
+          votes.push(result);
+          consecutiveMisses = 0;
+        } else {
+          consecutiveMisses += 1;
+        }
+      }
+
+      nextRollCall += FEDERAL_VOTE_BATCH_SIZE;
+    }
+  }
+
+  return votes;
+}
+
+async function collectIncrementalFederalSenateVotes(
+  congress: string,
+  cursor: ReturnType<typeof buildExistingFederalVoteCursor>,
+) {
+  const votes = [];
+
+  for (const session of [1, 2] as const) {
+    let nextVote = (cursor.senateBySession.get(session) || 0) + 1;
     let consecutiveMisses = 0;
 
     while (nextVote <= FEDERAL_VOTE_MAX_PER_SESSION && consecutiveMisses < FEDERAL_VOTE_MAX_CONSECUTIVE_MISSES) {
@@ -608,17 +1167,53 @@ function buildFederalCommitteeMembershipRows(
   return uniqueByKey(rows, (row) => `${row.committee_id}:${row.politician_id}`);
 }
 
-export async function syncLegislationFromCongress() {
+export async function syncLegislationFromCongress(options?: {
+  targetBillIds?: string[];
+  syncCommittees?: boolean;
+  syncVotes?: boolean;
+  listOffset?: number;
+  listLimit?: number;
+}) {
   if (!isCongressBillsConfigured()) {
     throw new Error("Congress API is not configured");
   }
 
   try {
     const congress = getDefaultCongress();
-    const listBills = await fetchAllCongressBills();
+    const congressSession = `${congress}th Congress`;
+    const syncCommittees = options?.syncCommittees ?? LEGISLATION_SYNC_COMMITTEES;
+    const syncVotes = options?.syncVotes ?? LEGISLATION_SYNC_VOTES;
+    const listBills = options?.targetBillIds?.length
+      ? await fetchTargetCongressBills(congress, options.targetBillIds)
+      : await fetchAllCongressBills({
+        offset: options?.listOffset,
+        limit: options?.listLimit,
+      });
+    const shouldPruneStaleBills = !options?.targetBillIds?.length && !options?.listLimit && !options?.listOffset;
+    const requestedBillIds = [...new Set(listBills.map((bill) => normalizeCongressBillListItem(bill).id))];
+    const existingStored = shouldPruneStaleBills
+      ? await loadExistingStoredBills(congressSession)
+      : await loadStoredBillsByIds(requestedBillIds);
+    const existingDetailedBillsById = new Map<string, Bill>();
+    existingStored.billRows
+      .filter((row) =>
+        row.jurisdiction_type === "federal"
+        && row.session === congressSession
+        && isCongressSourceBillRow(row))
+      .forEach((row) => {
+        const existingBill = existingStored.billsById.get(row.id);
+        if (existingBill && hasStoredBillDetail(existingBill)) {
+          existingDetailedBillsById.set(row.id, existingBill);
+        }
+      });
+    const detailFailures: Array<{ billId: string; reason: string }> = [];
+    let detailedBillsSynced = 0;
+    let preservedBills = 0;
 
-    const billResults = await Promise.all(
-      listBills.map(async (listBill) => {
+    const billResults = await mapWithConcurrency(
+      listBills,
+      LEGISLATION_DETAIL_CONCURRENCY,
+      async (listBill) => {
         const seed = normalizeCongressBillListItem(listBill);
         const parsed = parseBillId(seed.id);
 
@@ -626,6 +1221,7 @@ export async function syncLegislationFromCongress() {
           return {
             bill: seed,
             rawBill: listBill,
+            status: "seed" as const,
           };
         }
 
@@ -636,16 +1232,16 @@ export async function syncLegislationFromCongress() {
               billType: parsed.billType,
               billNumber: parsed.billNumber,
             }),
-            fetchCongressBillActions({
+            fetchAllCongressBillActions(
               congress,
-              billType: parsed.billType,
-              billNumber: parsed.billNumber,
-            }).catch(() => undefined),
-            fetchCongressBillSummaries({
+              parsed.billType,
+              parsed.billNumber,
+            ).catch(() => undefined),
+            fetchAllCongressBillSummaries(
               congress,
-              billType: parsed.billType,
-              billNumber: parsed.billNumber,
-            }).catch(() => undefined),
+              parsed.billType,
+              parsed.billNumber,
+            ).catch(() => undefined),
             fetchCongressBillTextVersions({
               congress,
               billType: parsed.billType,
@@ -660,7 +1256,10 @@ export async function syncLegislationFromCongress() {
           const hydratedVersions = await Promise.all(
             merged.versions.map(async (version, index) => {
               const rawVersion = textVersions?.textVersions?.[index];
-              const loaded = await loadBillVersionContent(rawVersion?.formats);
+              const shouldFetchBody = index < Math.max(0, LEGISLATION_TEXT_VERSION_CONTENT_LIMIT);
+              const loaded = shouldFetchBody
+                ? await loadBillVersionContent(rawVersion?.formats)
+                : buildMetadataOnlyVersionContent(rawVersion?.formats);
 
               return {
                 ...version,
@@ -678,57 +1277,101 @@ export async function syncLegislationFromCongress() {
                 committeeName: linkedCommittee.name || "Congressional Committee",
               }
             : buildPlaceholderCommittee(merged);
+          const bestSummary = chooseBestSummary(summaries);
+          const resolvedTitle = chooseCongressBillTitle(
+            Array.isArray(detail.bill?.titles)
+              ? detail.bill.titles
+              : detail.bill?.titles
+                ? [detail.bill.titles]
+                : [],
+            merged.title,
+            bestSummary,
+          );
 
+          detailedBillsSynced += 1;
           return {
             bill: {
               ...merged,
-              summary: chooseBestSummary(summaries) || merged.summary,
+              title: resolvedTitle,
+              summary: bestSummary || merged.summary,
               versions: hydratedVersions,
               ...committeeData,
             },
             rawBill: detail.bill || listBill,
+            status: "detailed" as const,
           };
-        } catch {
+        } catch (error) {
+          detailFailures.push({
+            billId: seed.id,
+            reason: getErrorMessage(error),
+          });
+
+          const existingDetailed = existingDetailedBillsById.get(seed.id);
+          if (existingDetailed) {
+            preservedBills += 1;
+            return {
+              bill: existingDetailed,
+              rawBill: existingStored.billRowsById.get(seed.id)?.raw_bill || listBill,
+              status: "preserved" as const,
+            };
+          }
+
           return {
             bill: seed,
             rawBill: listBill,
+            status: "seed" as const,
           };
         }
-      }),
+      },
     );
 
-    const committeeLists = await Promise.all([
-      fetchCongressCommittees({ congress, chamber: "senate", limit: LEGISLATION_MAX_COMMITTEES }),
-      fetchCongressCommittees({ congress, chamber: "house", limit: LEGISLATION_MAX_COMMITTEES }),
-      fetchCongressCommittees({ congress, chamber: "joint", limit: 10 }).catch(() => []),
-    ]);
+    if (detailedBillsSynced === 0) {
+      const sampleReasons = detailFailures
+        .slice(0, 3)
+        .map((entry) => `${entry.billId}: ${entry.reason}`)
+        .join(" | ");
+      throw new Error(
+        sampleReasons
+          ? `No canonical detailed Congress bills were refreshed during this sync run. Sample failures: ${sampleReasons}`
+          : "No canonical detailed Congress bills were refreshed during this sync run.",
+      );
+    }
 
-    const committees = await Promise.all(
-      committeeLists.flat().slice(0, LEGISLATION_MAX_COMMITTEES).map(async (committee) => {
-        try {
-          const detail = await fetchCongressCommitteeDetail({
-            congress,
-            chamber: committee.chamber || "house",
-            systemCode: committee.systemCode || slugifySegment(committee.name || "committee"),
-          });
-          const activeBillIds = detail.committee?.bills?.url
-            ? (await fetchAllCommitteeBills(detail.committee.bills.url))
-              .map(normalizeCongressBillListItem)
-              .map((bill) => bill.id)
-            : [];
+    const committees = syncCommittees
+      ? await Promise.all(
+        (await Promise.all([
+          fetchCongressCommittees({ congress, chamber: "senate", limit: LEGISLATION_MAX_COMMITTEES }),
+          fetchCongressCommittees({ congress, chamber: "house", limit: LEGISLATION_MAX_COMMITTEES }),
+          fetchCongressCommittees({ congress, chamber: "joint", limit: 10 }).catch(() => []),
+        ]))
+          .flat()
+          .slice(0, LEGISLATION_MAX_COMMITTEES)
+          .map(async (committee) => {
+            try {
+              const detail = await fetchCongressCommitteeDetail({
+                congress,
+                chamber: committee.chamber || "house",
+                systemCode: committee.systemCode || slugifySegment(committee.name || "committee"),
+              });
+              const activeBillIds = detail.committee?.bills?.url
+                ? (await fetchAllCommitteeBills(detail.committee.bills.url))
+                  .map(normalizeCongressBillListItem)
+                  .map((bill) => bill.id)
+                : [];
 
-          return {
-            committee: normalizeCommitteeRecord(committee, detail, activeBillIds),
-            rawCommittee: detail.committee || committee,
-          };
-        } catch {
-          return {
-            committee: normalizeCommitteeRecord(committee, undefined, []),
-            rawCommittee: committee,
-          };
-        }
-      }),
-    );
+              return {
+                committee: normalizeCommitteeRecord(committee, detail, activeBillIds),
+                rawCommittee: detail.committee || committee,
+              };
+            } catch {
+              return {
+                committee: normalizeCommitteeRecord(committee, undefined, []),
+                rawCommittee: committee,
+              };
+            }
+          }),
+      )
+      : [];
 
     const committeeByBillId = new Map<string, Committee>();
     for (const entry of committees) {
@@ -776,11 +1419,21 @@ export async function syncLegislationFromCongress() {
       };
     });
 
-    const storedPoliticianRows = await fetchSupabaseRows<PoliticianRow>(
-      "politicians",
-      "jurisdiction_type=eq.federal&order=name.asc",
-      { cache: "no-store" },
-    ).catch(() => []);
+    const storedPoliticianRows = syncVotes
+      ? await fetchSupabaseRows<PoliticianRow>(
+        "politicians",
+        "jurisdiction_type=eq.federal&order=name.asc",
+        { cache: "no-store" },
+      ).catch(() => [])
+      : [];
+    const existingFederalVoteRows = syncVotes
+      ? await listStoredVoteHeaders().catch(() => [])
+      : [];
+    const existingFederalVoteCursor = buildExistingFederalVoteCursor(
+      congress,
+      existingFederalVoteRows
+        .filter((row) => row.source_system === "house_clerk" || row.source_system === "senate_lis"),
+    );
     const politicianLookup = buildFederalPoliticianLookup(storedPoliticianRows);
     let voteRows: VoteRow[] = [];
     let positionRows: VotePositionRow[] = [];
@@ -788,29 +1441,38 @@ export async function syncLegislationFromCongress() {
     let placeholderPoliticianRows: PoliticianRow[] = [];
     let voteSyncWarning: string | undefined;
 
-    try {
-      const federalVotes = uniqueByKey(
-        [
-          ...(await collectFederalHouseVotes(congress)),
-          ...(await collectFederalSenateVotes(congress)),
-        ],
-        (vote) => vote.id,
-      );
+    if (syncVotes) {
+      try {
+        const federalVotes = uniqueByKey(
+          [
+            ...(await collectIncrementalFederalHouseVotes(congress, existingFederalVoteCursor)),
+            ...(await collectIncrementalFederalSenateVotes(congress, existingFederalVoteCursor)),
+          ],
+          (vote) => vote.id,
+        );
 
-      const voteBundle = buildFederalVoteRows(
-        federalVotes,
-        finalizedBills.map(({ bill }) => bill),
-        politicianLookup,
-      );
-      voteRows = voteBundle.voteRows;
-      positionRows = voteBundle.positionRows;
-      updatedPoliticianRows = buildUpdatedPoliticianRowsFromVotePositions(
-        storedPoliticianRows.filter((row) => row.jurisdiction_type === "federal"),
-        positionRows,
-      );
-      placeholderPoliticianRows = buildMissingFederalPoliticianRows(storedPoliticianRows, positionRows);
-    } catch (error) {
-      voteSyncWarning = getErrorMessage(error);
+        const voteBundle = buildFederalVoteRows(
+          federalVotes,
+          finalizedBills.map(({ bill }) => bill),
+          politicianLookup,
+        );
+        voteRows = voteBundle.voteRows;
+        positionRows = voteBundle.positionRows;
+
+        const existingPositionRows = await listStoredVotePositionsByVoteIds(
+          existingFederalVoteRows
+            .filter((row) => row.source_system === "house_clerk" || row.source_system === "senate_lis")
+            .map((row) => row.id),
+        ).catch(() => []);
+        const combinedPositionRows = [...existingPositionRows, ...positionRows];
+        updatedPoliticianRows = buildUpdatedPoliticianRowsFromVotePositions(
+          storedPoliticianRows.filter((row) => row.jurisdiction_type === "federal"),
+          combinedPositionRows,
+        );
+        placeholderPoliticianRows = buildMissingFederalPoliticianRows(storedPoliticianRows, combinedPositionRows);
+      } catch (error) {
+        voteSyncWarning = getErrorMessage(error);
+      }
     }
     const allFederalPoliticianRows = uniqueByKey(
       [...storedPoliticianRows, ...updatedPoliticianRows, ...placeholderPoliticianRows],
@@ -861,36 +1523,86 @@ export async function syncLegislationFromCongress() {
     }
 
     try {
-      await replaceStoredBillActions(
-        finalizedBills.map(({ bill }) => bill.id),
-        actionRows,
+      const billIds = finalizedBills.map(({ bill }) => bill.id);
+      const existingActionRows = await listStoredBillActionRowsByBillIds(billIds);
+      const existingActionSignatureByBillId = new Map<string, Set<string>>();
+      const nextActionSortOrderByBillId = new Map<string, number>();
+
+      existingActionRows.forEach((row) => {
+        const signature = `${row.date}|${row.label}|${row.detail}|${row.type}`;
+        const signatures = existingActionSignatureByBillId.get(row.bill_id) || new Set<string>();
+        signatures.add(signature);
+        existingActionSignatureByBillId.set(row.bill_id, signatures);
+        nextActionSortOrderByBillId.set(
+          row.bill_id,
+          Math.max(nextActionSortOrderByBillId.get(row.bill_id) || 0, row.sort_order + 1),
+        );
+      });
+
+      const appendedActionRows = finalizedBills.flatMap(({ bill }) =>
+        bill.actions.flatMap((action) => {
+          const signature = `${action.date}|${action.label}|${action.detail}|${action.type}`;
+          const existingSignatures = existingActionSignatureByBillId.get(bill.id) || new Set<string>();
+          if (existingSignatures.has(signature)) {
+            return [];
+          }
+
+          const nextSortOrder = nextActionSortOrderByBillId.get(bill.id) || 0;
+          nextActionSortOrderByBillId.set(bill.id, nextSortOrder + 1);
+          existingSignatures.add(signature);
+          existingActionSignatureByBillId.set(bill.id, existingSignatures);
+
+          return [mapBillActionToRow(bill.id, action, nextSortOrder)];
+        }),
       );
+
+      await appendStoredBillActions(appendedActionRows);
     } catch (error) {
       throw new Error(`Bill actions write failed: ${getErrorMessage(error)}`);
     }
 
     try {
-      await replaceStoredBillVersions(
-        finalizedBills.map(({ bill }) => bill.id),
-        versionRows,
-      );
+      const billIds = finalizedBills.map(({ bill }) => bill.id);
+      const existingVersionRows = await listStoredBillVersionRowsByBillIds(billIds);
+      const existingVersionIdsByBillId = new Map<string, Set<string>>();
+
+      existingVersionRows.forEach((row) => {
+        const ids = existingVersionIdsByBillId.get(row.bill_id) || new Set<string>();
+        ids.add(row.version_id);
+        existingVersionIdsByBillId.set(row.bill_id, ids);
+      });
+
+      const appendedVersionRows = versionRows.filter((row) => {
+        const ids = existingVersionIdsByBillId.get(row.bill_id) || new Set<string>();
+        if (ids.has(row.version_id)) {
+          return false;
+        }
+
+        ids.add(row.version_id);
+        existingVersionIdsByBillId.set(row.bill_id, ids);
+        return true;
+      });
+
+      await appendStoredBillVersions(appendedVersionRows);
     } catch (error) {
       throw new Error(`Bill versions write failed: ${getErrorMessage(error)}`);
     }
 
-    try {
-      await upsertStoredCommittees(committeeRows);
-    } catch (error) {
-      throw new Error(`Committees write failed: ${getErrorMessage(error)}`);
-    }
+    if (syncCommittees) {
+      try {
+        await upsertStoredCommittees(committeeRows);
+      } catch (error) {
+        throw new Error(`Committees write failed: ${getErrorMessage(error)}`);
+      }
 
-    try {
-      await replaceStoredCommitteeMemberships(
-        committeeRows.map((row) => row.id),
-        committeeMembershipRows,
-      );
-    } catch (error) {
-      throw new Error(`Committee membership write failed: ${getErrorMessage(error)}`);
+      try {
+        await replaceStoredCommitteeMemberships(
+          committeeRows.map((row) => row.id),
+          committeeMembershipRows,
+        );
+      } catch (error) {
+        throw new Error(`Committee membership write failed: ${getErrorMessage(error)}`);
+      }
     }
 
     if (updatedPoliticianRows.length > 0 || placeholderPoliticianRows.length > 0) {
@@ -904,8 +1616,7 @@ export async function syncLegislationFromCongress() {
 
     if (!voteSyncWarning && voteRows.length > 0) {
       try {
-        await replaceStoredVotes(
-          voteRows.map((row) => row.id),
+        await appendStoredVotes(
           voteRows,
           positionRows,
         );
@@ -914,10 +1625,30 @@ export async function syncLegislationFromCongress() {
       }
     }
 
+    const staleBillsDeleted = shouldPruneStaleBills
+      ? buildStaleCongressBillIds(
+        existingStored.billRows,
+        new Set(syncedBillRows.map((row) => row.id)),
+        new Set([...existingStored.voteBillIds, ...voteRows.map((row) => row.bill_id)]),
+        congressSession,
+      )
+      : [];
+    if (staleBillsDeleted.length > 0) {
+      await deleteBillArtifacts(staleBillsDeleted);
+    }
+
     return {
       billsSynced: billRows.length,
+      detailedBillsSynced,
       committeesSynced: committeeRows.length,
       votesSynced: voteRows.length,
+      committeesEnabled: syncCommittees,
+      votesEnabled: syncVotes,
+      requestedOffset: options?.listOffset ?? 0,
+      requestedLimit: options?.listLimit ?? null,
+      preservedBills,
+      detailFailures,
+      staleBillsDeleted: staleBillsDeleted.length,
       voteSyncWarning,
       at: new Date().toISOString(),
     };

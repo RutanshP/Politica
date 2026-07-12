@@ -19,6 +19,10 @@ export async function POST(request: Request) {
 
   revalidatePath("/");
   revalidatePath("/bills");
+  revalidatePath("/bills/[billId]", "page");
+  revalidatePath("/bills/[billId]/timeline", "page");
+  revalidatePath("/bills/[billId]/text", "page");
+  revalidatePath("/bills/[billId]/votes", "page");
   revalidatePath("/committees");
   revalidatePath("/politicians");
 

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const jiti = require("../support/jiti.cjs");
 
 const {
+  chooseCongressBillTitle,
   parseBillId,
   normalizeCongressBillListItem,
   mergeCongressBillDetail,
@@ -101,4 +102,42 @@ test("mergeCongressBillDetail keeps the full action timeline and version metadat
   assert.equal(merged.actions[1].type, "committee");
   assert.equal(merged.versions[0].sourceUrl, "https://example.com/text.txt");
   assert.equal(merged.versions[0].formats[0].type, "Formatted Text");
+});
+
+test("mergeCongressBillDetail tolerates non-array title payloads", () => {
+  const seed = normalizeCongressBillListItem({
+    congress: "119",
+    type: "hr",
+    number: "134",
+    title: "Seed Title",
+    originChamber: "House",
+  });
+
+  const merged = mergeCongressBillDetail(
+    seed,
+    {
+      bill: {
+        number: "134",
+        type: "hr",
+        titles: {
+          title: "Object-Shaped Official Title",
+          titleType: "Official Title as Introduced",
+        },
+      },
+    },
+  );
+
+  assert.equal(merged.title, "Object-Shaped Official Title");
+});
+
+test("chooseCongressBillTitle avoids generic bill-number-only titles", () => {
+  const chosen = chooseCongressBillTitle(
+    [
+      { title: "HR 493", titleType: "Official Title as Introduced" },
+    ],
+    "HR 493",
+    "<p><strong>Federal Adjustment of Income Rates Act or the FAIR Act</strong></p>",
+  );
+
+  assert.equal(chosen, "Federal Adjustment of Income Rates Act or the FAIR Act");
 });

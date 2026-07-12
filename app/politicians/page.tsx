@@ -4,14 +4,22 @@ import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import {
   getPoliticianSourceLabel,
-  getPoliticiansData,
+  getPoliticiansDirectoryData,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
 
 export const revalidate = 21600;
 
-export default async function PoliticiansPage() {
-  const { politicians, source } = await getPoliticiansData();
+export default async function PoliticiansPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const normalizedSearchParams = Object.fromEntries(
+    Object.entries(resolvedSearchParams).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value]),
+  );
+  const { politicians, source, total, page, pageSize, filters, options } = await getPoliticiansDirectoryData(normalizedSearchParams);
 
   return (
     <div className="space-y-6">
@@ -27,7 +35,14 @@ export default async function PoliticiansPage() {
         }
       />
       <SectionCard title="Member directory" description="Search, filter, and sort the stored member records.">
-        <PoliticiansDirectory politicians={politicians} />
+        <PoliticiansDirectory
+          politicians={politicians}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          filters={filters}
+          options={options}
+        />
       </SectionCard>
     </div>
   );

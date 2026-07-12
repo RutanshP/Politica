@@ -102,6 +102,29 @@ test("normalizeCongressMemberToPolitician prefers the latest term for chamber an
   assert.equal(politician.state, "DE");
 });
 
+test("normalizeCongressMemberToPolitician reads array-shaped Congress terms and restores at-large seats", () => {
+  const politician = normalizeCongressMemberToPolitician(
+    {
+      bioguideId: "B001323",
+      firstName: "Nicholas",
+      lastName: "Begich",
+      state: "Alaska",
+      terms: [
+        {
+          chamber: "House of Representatives",
+          memberType: "Representative",
+          startYear: 2025,
+        },
+      ],
+    },
+    undefined,
+  );
+
+  assert.equal(politician.title, "US Representative");
+  assert.equal(politician.district, "AK-AL");
+  assert.equal(politician.state, "Alaska");
+});
+
 test("mapPoliticianToRow stores a normalized federal state code", () => {
   const row = mapPoliticianToRow({
     id: "X000002",

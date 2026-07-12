@@ -27,6 +27,7 @@ function mapRowToCommitteeMembership(row: CommitteeMemberRow): CommitteeMembersh
 export async function listStoredCommittees() {
   const rows = await fetchSupabaseRows<CommitteeRow>("committees", undefined, {
     cache: "no-store",
+    paginateAll: true,
   });
   return rows.map(mapRowToCommittee).sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -41,6 +42,16 @@ export async function getStoredCommitteeBySlug(slug: string) {
   return row ? mapRowToCommittee(row) : undefined;
 }
 
+export async function getStoredCommitteeById(id: string) {
+  const rows = await fetchSupabaseRows<CommitteeRow>(
+    "committees",
+    `id=eq.${encodeURIComponent(id)}&limit=1`,
+    { cache: "no-store" },
+  );
+  const row = rows[0];
+  return row ? mapRowToCommittee(row) : undefined;
+}
+
 export async function upsertStoredCommittees(rows: CommitteeRow[]) {
   return upsertSupabaseRows("committees", rows, "id");
 }
@@ -49,7 +60,7 @@ export async function listStoredCommitteeMemberships() {
   const rows = await fetchSupabaseRows<CommitteeMemberRow>(
     "committee_members",
     "order=committee_id.asc,sort_order.asc",
-    { cache: "no-store" },
+    { cache: "no-store", paginateAll: true },
   );
   return rows.map(mapRowToCommitteeMembership);
 }
@@ -58,7 +69,7 @@ export async function listStoredCommitteeMembershipsByCommitteeId(committeeId: s
   const rows = await fetchSupabaseRows<CommitteeMemberRow>(
     "committee_members",
     `committee_id=eq.${encodeURIComponent(committeeId)}&order=sort_order.asc`,
-    { cache: "no-store" },
+    { cache: "no-store", paginateAll: true },
   );
   return rows.map(mapRowToCommitteeMembership);
 }
@@ -67,7 +78,7 @@ export async function listStoredCommitteeMembershipsByPoliticianId(politicianId:
   const rows = await fetchSupabaseRows<CommitteeMemberRow>(
     "committee_members",
     `politician_id=eq.${encodeURIComponent(politicianId)}&order=sort_order.asc`,
-    { cache: "no-store" },
+    { cache: "no-store", paginateAll: true },
   );
   return rows.map(mapRowToCommitteeMembership);
 }

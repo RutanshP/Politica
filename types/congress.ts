@@ -112,14 +112,26 @@ export interface CongressMemberListItem {
   lastName?: string;
   partyName?: string;
   state?: string;
-  terms?: {
+  terms?: Array<{
+    chamber?: string;
+    district?: number | string;
+    memberType?: string | number;
+    startYear?: number | string;
+    endYear?: number | string;
+  }> | {
     item?: Array<{
       chamber?: string;
       district?: number | string;
-      memberType?: string;
+      memberType?: string | number;
       startYear?: number | string;
       endYear?: number | string;
-    }>;
+    }> | {
+      chamber?: string;
+      district?: number | string;
+      memberType?: string | number;
+      startYear?: number | string;
+      endYear?: number | string;
+    };
   };
   updateDate?: string;
 }

@@ -9,7 +9,6 @@ import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import {
   getPoliticianData,
-  getPoliticianRouteParams,
   getPoliticianSourceLabel,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
@@ -19,10 +18,6 @@ import {
   isLiveVoteSource,
 } from "@/lib/data/votes";
 import { hasVotePerformanceStats } from "@/lib/utils";
-
-export async function generateStaticParams() {
-  return getPoliticianRouteParams();
-}
 
 export const revalidate = 21600;
 

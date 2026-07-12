@@ -13,17 +13,12 @@ import { getNewsData } from "@/lib/data/news";
 import {
   getCommitteeMembershipsForPolitician,
   getPoliticianData,
-  getPoliticianRouteParams,
   getPoliticianSourceLabel,
   getSponsoredBillsForPolitician,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
 import type { Bill, Committee, FundingEdge, NewsItem } from "@/types/civic";
 import { hasVotePerformanceStats, initials } from "@/lib/utils";
-
-export async function generateStaticParams() {
-  return getPoliticianRouteParams();
-}
 
 export const revalidate = 21600;
 

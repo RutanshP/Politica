@@ -14,14 +14,9 @@ import {
 } from "@/lib/data/graph";
 import {
   getPoliticianData,
-  getPoliticianRouteParams,
   getPoliticianSourceLabel,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
-
-export async function generateStaticParams() {
-  return getPoliticianRouteParams();
-}
 
 export const revalidate = 21600;
 
