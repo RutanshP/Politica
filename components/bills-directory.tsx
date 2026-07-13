@@ -9,16 +9,11 @@ import { FilterBar } from "@/components/filter-bar";
 import { Pagination } from "@/components/pagination";
 import { StatusPill } from "@/components/status-pill";
 import { WatchButton } from "@/components/watch-button";
-import type { Bill, Committee } from "@/types/civic";
-
-function getCommitteeSlug(bill: Bill, committees: Committee[]) {
-  const committee = committees.find((item) => item.id === bill.committeeId || item.name === bill.committeeName);
-  return committee?.slug;
-}
+import type { Bill } from "@/types/civic";
 
 export function BillsDirectory({
   bills,
-  committees: linkedCommittees,
+  committeeSlugs,
   total,
   page,
   pageSize,
@@ -26,7 +21,8 @@ export function BillsDirectory({
   options,
 }: {
   bills: Bill[];
-  committees: Committee[];
+  /** Slug keyed by committee id and by committee name, for the committees on this page only. */
+  committeeSlugs: Record<string, string>;
   total: number;
   page: number;
   pageSize: number;
@@ -150,7 +146,7 @@ export function BillsDirectory({
           "Watch",
         ]}
         rows={bills.map((bill) => {
-          const committeeSlug = getCommitteeSlug(bill, linkedCommittees);
+          const committeeSlug = committeeSlugs[bill.committeeId] || committeeSlugs[bill.committeeName];
 
           return [
             <Link key={`${bill.id}-number`} href={`/bills/${bill.id}`} className="font-semibold text-[var(--accent)]">

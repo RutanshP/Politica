@@ -1,3 +1,6 @@
+import { cache } from "react";
+
+import { POLITICIANS_CACHE_TAG } from "@/lib/supabase/cache-tags";
 import type { Politician } from "@/types/civic";
 import type { PoliticianRow } from "@/types/supabase";
 import { fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
@@ -490,21 +493,63 @@ function mapRowToPolitician(row: PoliticianRow): Politician {
   };
 }
 
-export async function listStoredPoliticians() {
+/**
+ * Everything the read path maps, minus `raw_payload`.
+ *
+ * `raw_payload` and `raw_member` are byte-identical copies of the same Congress.gov member blob
+ * (433KB each per 250 rows). Every consumer reads them as `raw_member ?? raw_payload`, so the
+ * duplicate was pure wire cost -- roughly half of this table's payload.
+ */
+const POLITICIAN_LIST_SELECT = [
+  "id",
+  "slug",
+  "name",
+  "title",
+  "party",
+  "state",
+  "district",
+  "biography",
+  "born",
+  "education",
+  "occupation",
+  "website",
+  "office_phone",
+  "office_address",
+  "next_election",
+  "stats",
+  "ideology",
+  "source",
+  "source_system",
+  "source_id",
+  "jurisdiction_type",
+  "state_code",
+  "session_id",
+  "synced_at",
+  "raw_member",
+].join(",");
+
+/**
+ * @param options.fresh sync pipelines must observe current rows to compute diffs; the render
+ * path reads through the cache.
+ */
+export const listStoredPoliticians = cache(async (options?: { fresh?: boolean }) => {
   const rows = await fetchSupabaseRows<PoliticianRow>("politicians", "order=name.asc", {
-    cache: "no-store",
+    ...(options?.fresh
+      ? { cache: "no-store" as const }
+      : { tags: [POLITICIANS_CACHE_TAG] }),
+    select: POLITICIAN_LIST_SELECT,
     paginateAll: true,
   });
   return enforceFederalOfficeUniqueness(mergeDuplicatePoliticianRows(rows))
     .filter((row) => row.jurisdiction_type !== "federal" || ["US Senator", "US Representative"].includes(getResolvedOfficeTitle(row)))
     .map(mapRowToPolitician);
-}
+});
 
 export async function getStoredPoliticianBySlug(slug: string) {
   const exactRows = await fetchSupabaseRows<PoliticianRow>(
     "politicians",
     `slug=eq.${encodeURIComponent(slug)}&limit=1`,
-    { cache: "no-store" },
+    { select: POLITICIAN_LIST_SELECT, tags: [POLITICIANS_CACHE_TAG] },
   );
   const exactRow = exactRows[0];
   if (exactRow) {
@@ -514,7 +559,7 @@ export async function getStoredPoliticianBySlug(slug: string) {
   const rows = await fetchSupabaseRows<PoliticianRow>(
     "politicians",
     "order=name.asc",
-    { cache: "no-store", paginateAll: true },
+    { select: POLITICIAN_LIST_SELECT, tags: [POLITICIANS_CACHE_TAG], paginateAll: true },
   );
   const mergedRows = enforceFederalOfficeUniqueness(mergeDuplicatePoliticianRows(rows))
     .filter((row) => row.jurisdiction_type !== "federal" || ["US Senator", "US Representative"].includes(getResolvedOfficeTitle(row)));

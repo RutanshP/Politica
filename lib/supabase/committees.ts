@@ -1,3 +1,4 @@
+import { COMMITTEES_CACHE_TAG } from "@/lib/supabase/cache-tags";
 import type { Committee, CommitteeMembership } from "@/types/civic";
 import { mapRowToCommittee } from "@/lib/normalizers/legislation";
 import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
@@ -24,9 +25,23 @@ function mapRowToCommitteeMembership(row: CommitteeMemberRow): CommitteeMembersh
   };
 }
 
-export async function listStoredCommittees() {
+/**
+ * Excludes raw_committee / raw_payload -- duplicate copies of the source blob that nothing on
+ * the read path reads beyond a `rawAvailable` boolean. select=* on this table was ~562KB.
+ */
+const COMMITTEE_SELECT = [
+  "id", "slug", "name", "chamber", "jurisdiction", "chair", "ranking_member", "description",
+  "hearing", "active_bill_ids", "member_ids", "contact_url", "contact_phone", "contact_address",
+  "subcommittees", "source", "source_system", "source_id", "jurisdiction_type", "state_code",
+  "session_id", "synced_at",
+].join(",");
+
+const COMMITTEE_MEMBER_SELECT = "committee_id,politician_id,role,sort_order";
+
+export async function listStoredCommittees(options?: { fresh?: boolean }) {
   const rows = await fetchSupabaseRows<CommitteeRow>("committees", undefined, {
-    cache: "no-store",
+    ...(options?.fresh ? { cache: "no-store" as const } : { tags: [COMMITTEES_CACHE_TAG] }),
+    select: COMMITTEE_SELECT,
     paginateAll: true,
   });
   return rows.map(mapRowToCommittee).sort((left, right) => left.name.localeCompare(right.name));
@@ -36,7 +51,7 @@ export async function getStoredCommitteeBySlug(slug: string) {
   const rows = await fetchSupabaseRows<CommitteeRow>(
     "committees",
     `slug=eq.${encodeURIComponent(slug)}&limit=1`,
-    { cache: "no-store" },
+    { select: COMMITTEE_SELECT, tags: [COMMITTEES_CACHE_TAG] },
   );
   const row = rows[0];
   return row ? mapRowToCommittee(row) : undefined;
@@ -46,7 +61,7 @@ export async function getStoredCommitteeById(id: string) {
   const rows = await fetchSupabaseRows<CommitteeRow>(
     "committees",
     `id=eq.${encodeURIComponent(id)}&limit=1`,
-    { cache: "no-store" },
+    { select: COMMITTEE_SELECT, tags: [COMMITTEES_CACHE_TAG] },
   );
   const row = rows[0];
   return row ? mapRowToCommittee(row) : undefined;
@@ -60,7 +75,7 @@ export async function listStoredCommitteeMemberships() {
   const rows = await fetchSupabaseRows<CommitteeMemberRow>(
     "committee_members",
     "order=committee_id.asc,sort_order.asc",
-    { cache: "no-store", paginateAll: true },
+    { select: COMMITTEE_MEMBER_SELECT, tags: [COMMITTEES_CACHE_TAG], paginateAll: true },
   );
   return rows.map(mapRowToCommitteeMembership);
 }
@@ -69,7 +84,7 @@ export async function listStoredCommitteeMembershipsByCommitteeId(committeeId: s
   const rows = await fetchSupabaseRows<CommitteeMemberRow>(
     "committee_members",
     `committee_id=eq.${encodeURIComponent(committeeId)}&order=sort_order.asc`,
-    { cache: "no-store", paginateAll: true },
+    { select: COMMITTEE_MEMBER_SELECT, tags: [COMMITTEES_CACHE_TAG], paginateAll: true },
   );
   return rows.map(mapRowToCommitteeMembership);
 }
@@ -78,7 +93,7 @@ export async function listStoredCommitteeMembershipsByPoliticianId(politicianId:
   const rows = await fetchSupabaseRows<CommitteeMemberRow>(
     "committee_members",
     `politician_id=eq.${encodeURIComponent(politicianId)}&order=sort_order.asc`,
-    { cache: "no-store", paginateAll: true },
+    { select: COMMITTEE_MEMBER_SELECT, tags: [COMMITTEES_CACHE_TAG], paginateAll: true },
   );
   return rows.map(mapRowToCommitteeMembership);
 }

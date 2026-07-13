@@ -71,8 +71,8 @@ export async function rebuildIssuesFromStoredData() {
 export async function rebuildSearchIndexFromStoredData() {
   const [bills, politicians, committees, issues, news] = await Promise.all([
     listStoredBills(),
-    listStoredPoliticians(),
-    listStoredCommittees(),
+    listStoredPoliticians({ fresh: true }),
+    listStoredCommittees({ fresh: true }),
     listStoredBills().then(() => import("@/lib/supabase/issues")).then((module) => module.listStoredIssues()).catch(() => []),
     listStoredNewsItems().catch(() => []),
   ]);
@@ -161,8 +161,8 @@ export async function rebuildSearchIndexFromStoredData() {
 export async function rebuildEntitiesFromStoredData() {
   const [bills, politicians, committees, issues, news] = await Promise.all([
     listStoredBills(),
-    listStoredPoliticians(),
-    listStoredCommittees(),
+    listStoredPoliticians({ fresh: true }),
+    listStoredCommittees({ fresh: true }),
     import("@/lib/supabase/issues").then((module) => module.listStoredIssues()).catch(() => []),
     listStoredNewsItems().catch(() => []),
   ]);

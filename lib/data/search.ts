@@ -1,4 +1,4 @@
-import { listStoredSearchDocuments } from "@/lib/supabase/search";
+import { searchStoredSearchDocuments } from "@/lib/supabase/search";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { emptyResult, withData } from "@/lib/data/result";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
@@ -11,31 +11,23 @@ export async function searchPolitica(query: string) {
     };
   }
 
-  const [entities, latestRun] = await Promise.all([
-    listStoredSearchDocuments(),
+  const normalized = query.trim();
+
+  // Filtered and limited in Postgres. This previously downloaded every search_documents row and
+  // ran String.includes() over the whole array to return at most 24 results.
+  const [results, latestRun] = await Promise.all([
+    searchStoredSearchDocuments(normalized, normalized ? 24 : 12).catch(() => []),
     getLatestSyncRun("search_rebuild").catch(() => undefined),
   ]);
-  const normalized = query.trim().toLowerCase();
-
-  const results = (!normalized
-    ? entities.slice(0, 12)
-    : entities
-      .filter((entity) =>
-        [entity.label, entity.title, entity.description, entity.meta]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalized),
-      )
-      .slice(0, 24));
 
   return {
     ...withData(
-      entities.length > 0 ? "supabase" : "unavailable",
+      results.length > 0 ? "supabase" : "unavailable",
       "search_rebuild",
       results,
       latestRun?.finished_at || latestRun?.started_at,
       {
-        availability: entities.length > 0 ? "live" : "empty",
+        availability: results.length > 0 ? "live" : "empty",
         detail: latestRun?.status ? `Latest rebuild status: ${latestRun.status}` : "No search rebuild history yet",
       },
     ),

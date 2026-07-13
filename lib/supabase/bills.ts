@@ -1,6 +1,15 @@
 import { getDefaultCongress } from "@/lib/adapters/congress";
 import { mapRowToBill, sortBillsByActivity } from "@/lib/normalizers/legislation";
-import { deleteSupabaseRows, fetchSupabasePage, fetchSupabaseRows, upsertSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
+import { BILLS_CACHE_TAG, COMMITTEES_CACHE_TAG } from "@/lib/supabase/cache-tags";
+import {
+  deleteSupabaseRows,
+  fetchSupabasePage,
+  fetchSupabaseRows,
+  fetchSupabaseRpcRows,
+  upsertSupabaseRows,
+  upsertSupabaseRowsInChunks,
+} from "@/lib/supabase/rest";
+import type { Bill } from "@/types/civic";
 import type { BillActionRow, BillRow, BillVersionRow } from "@/types/supabase";
 
 const BILL_LIST_SELECT = [
@@ -102,7 +111,10 @@ function buildStoredBillsPageFilterQuery(filters: Omit<StoredBillsPageQuery, "pa
   const normalizedQuery = (filters.query || "").trim();
   if (normalizedQuery) {
     const escaped = escapeIlikeValue(normalizedQuery);
-    conditions.push(`or(number.ilike.*${escaped}*,title.ilike.*${escaped}*,topic.ilike.*${escaped}*,sponsor_name.ilike.*${escaped}*,committee_name.ilike.*${escaped}*)`);
+    // `search_text` is a generated column concatenating number/title/topic/sponsor/committee,
+    // backed by a GIN trigram index. The previous five separate ILIKE predicates each forced
+    // their own sequential scan.
+    conditions.push(`search_text.ilike.*${escaped}*`);
   }
 
   return `and=${encodeURIComponent(`(${conditions.join(",")})`)}`;
@@ -121,7 +133,9 @@ function buildStoredBillsOrder(sortBy?: string) {
     return "order=jurisdiction_type.asc,state.asc,number.asc";
   }
 
-  return "order=last_action_at.desc";
+  // last_action_at is a display string ("Mar 4, 2025"), so ordering by it sorts alphabetically
+  // -- September 2025 above June 2026. last_action_on is the parsed timestamptz.
+  return "order=last_action_on.desc.nullslast";
 }
 
 export async function listStoredBills(includeDetails = false) {
@@ -183,6 +197,10 @@ export async function getStoredBillsPage(query: StoredBillsPageQuery) {
       select: BILL_LIST_SELECT,
       limit: pageSize,
       offset,
+      // An exact count re-counts every matching row on each page view; the pager only needs
+      // enough precision to draw page links.
+      count: "planned",
+      tags: [BILLS_CACHE_TAG],
     },
   );
 
@@ -192,19 +210,120 @@ export async function getStoredBillsPage(query: StoredBillsPageQuery) {
   };
 }
 
+export interface BillDirectoryFacetRow {
+  facet: string;
+  value: string;
+}
+
+/**
+ * Distinct dropdown values for the bills directory.
+ *
+ * This previously paged through every bill row (17.8k rows over 36 sequential requests, ~20s
+ * measured, 4.4MB) and ran DISTINCT in JS. `bill_directory_facets` is a STABLE Postgres
+ * function doing the GROUP BY server-side and returning ~640 rows, fetched over GET so the
+ * result is cached.
+ */
 export async function listStoredBillDirectoryFacets() {
   const congressSession = `${getDefaultCongress()}th Congress`;
-  const rows = await fetchSupabaseRows<Pick<BillRow, "session" | "topic" | "sponsor_name" | "committee_name" | "state" | "chamber" | "status" | "jurisdiction_type">>(
-    "bills",
-    `or=${encodeURIComponent(`(and(jurisdiction_type.eq.federal,session.eq.${congressSession}),jurisdiction_type.eq.state)`)}`,
-    {
-      select: "session,topic,sponsor_name,committee_name,state,chamber,status,jurisdiction_type",
-      paginateAll: true,
-      pageSize: 500,
-    },
+  return fetchSupabaseRpcRows<BillDirectoryFacetRow>(
+    "bill_directory_facets",
+    { p_session: congressSession },
+    { tags: [BILLS_CACHE_TAG] },
+  );
+}
+
+/**
+ * Slug lookup for only the committees referenced by the bills on the current page, keyed by
+ * both id and name (the directory matches on either). The bills page previously loaded the
+ * entire committees table -- 562KB with select=* -- to resolve ~20 slugs.
+ */
+export async function getCommitteeSlugLookup(bills: Bill[]) {
+  const ids = [...new Set(bills.map((bill) => bill.committeeId).filter(Boolean))];
+  const names = [...new Set(bills.map((bill) => bill.committeeName).filter(Boolean))];
+
+  if (ids.length === 0 && names.length === 0) {
+    return {} as Record<string, string>;
+  }
+
+  const clauses = [
+    ids.length > 0 ? `id.in.(${buildQuotedInFilter(ids)})` : "",
+    names.length > 0 ? `name.in.(${buildQuotedInFilter(names)})` : "",
+  ].filter(Boolean);
+
+  const rows = await fetchSupabaseRows<{ id: string; name: string; slug: string }>(
+    "committees",
+    `or=(${clauses.join(",")})`,
+    { select: "id,name,slug", tags: [COMMITTEES_CACHE_TAG] },
   );
 
-  return rows;
+  const lookup: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.id) lookup[row.id] = row.slug;
+    if (row.name) lookup[row.name] = row.slug;
+  }
+
+  return lookup;
+}
+
+const BILL_CARD_SELECT = [
+  "id",
+  "slug",
+  "number",
+  "title",
+  "summary",
+  "jurisdiction",
+  "country",
+  "state",
+  "chamber",
+  "status",
+  "topic",
+  "sponsor_id",
+  "sponsor_name",
+  "committee_id",
+  "committee_name",
+  "latest_action",
+  "last_action_at",
+  "introduced_at",
+  "session",
+  "chance_of_passing",
+  "stats",
+  "related_bill_ids",
+  "source",
+  "source_system",
+  "source_id",
+  "jurisdiction_type",
+  "session_id",
+  "synced_at",
+].join(",");
+
+/**
+ * The handful of bills the dashboard actually renders.
+ *
+ * The dashboard previously called listStoredBills(), downloading every bill in the database
+ * (~17.8k rows across ~71 sequential requests, measured at 24s) and then doing .slice(0, 4)
+ * three times. These are ORDER BY ... LIMIT queries against the last_action_on index.
+ */
+export async function listRecentStoredBills(limit: number, statuses?: string[]) {
+  const congressSession = `${getDefaultCongress()}th Congress`;
+  const conditions = [
+    `or(jurisdiction_type.eq.state,and(jurisdiction_type.eq.federal,session.eq.${congressSession}))`,
+  ];
+
+  if (statuses?.length) {
+    conditions.push(`status.in.(${buildQuotedInFilter(statuses)})`);
+  }
+
+  const rows = await fetchSupabaseRows<BillRow>(
+    "bills",
+    [
+      `and=${encodeURIComponent(`(${conditions.join(",")})`)}`,
+      "order=last_action_on.desc.nullslast",
+      `limit=${limit}`,
+    ].join("&"),
+    { select: BILL_CARD_SELECT, tags: [BILLS_CACHE_TAG] },
+  );
+
+  return rows.map((row) => mapRowToBill(row, [], []));
 }
 
 export async function listStoredBillsByIds(billIds: string[], includeDetails = false) {
@@ -272,15 +391,48 @@ export async function listStoredBillsBySponsor(
   );
 }
 
-export async function getStoredBillById(billId: string) {
+const BILL_ACTION_SELECT = "bill_id,sort_order,date,label,detail,type";
+const BILL_VERSION_METADATA_SELECT = "bill_id,version_id,sort_order,label,date,type,source_url,formats,is_full_text_available";
+
+/**
+ * `includeVersionContent` pulls bill_versions.content -- the full bill text. Only /bills/[id]/text
+ * renders it; the overview, timeline and votes tabs were all downloading it via select=* and
+ * throwing it away, along with the raw_bill / raw_payload JSONB blobs.
+ */
+export async function getStoredBillById(
+  billId: string,
+  options?: { includeVersionContent?: boolean },
+) {
+  const encodedId = encodeURIComponent(billId);
+  const versionSelect = options?.includeVersionContent
+    ? `${BILL_VERSION_METADATA_SELECT},content`
+    : BILL_VERSION_METADATA_SELECT;
+
   const [billRows, actionRows, versionRows] = await Promise.all([
-    fetchSupabaseRows<BillRow>("bills", `id=eq.${encodeURIComponent(billId)}&limit=1`, { cache: "no-store" }),
-    fetchSupabaseRows<BillActionRow>("bill_actions", `bill_id=eq.${encodeURIComponent(billId)}&order=sort_order.asc`, { cache: "no-store", paginateAll: true }),
-    fetchSupabaseRows<BillVersionRow>("bill_versions", `bill_id=eq.${encodeURIComponent(billId)}&order=sort_order.asc`, { cache: "no-store", paginateAll: true }),
+    fetchSupabaseRows<BillRow>("bills", `id=eq.${encodedId}&limit=1`, {
+      select: BILL_LIST_SELECT,
+      tags: [BILLS_CACHE_TAG],
+    }),
+    fetchSupabaseRows<BillActionRow>("bill_actions", `bill_id=eq.${encodedId}&order=sort_order.asc`, {
+      select: BILL_ACTION_SELECT,
+      tags: [BILLS_CACHE_TAG],
+      paginateAll: true,
+    }),
+    fetchSupabaseRows<BillVersionRow>("bill_versions", `bill_id=eq.${encodedId}&order=sort_order.asc`, {
+      select: versionSelect,
+      tags: [BILLS_CACHE_TAG],
+      paginateAll: true,
+    }),
   ]);
 
   const row = billRows[0];
-  return row ? mapRowToBill(row, actionRows, versionRows) : undefined;
+  if (!row) return undefined;
+
+  return mapRowToBill(
+    row,
+    actionRows,
+    versionRows.map((version) => ({ ...version, content: version.content || [] })),
+  );
 }
 
 export async function upsertStoredBills(rows: BillRow[]) {

@@ -5,7 +5,6 @@ import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { Tabs } from "@/components/tabs";
-import { getBillData } from "@/lib/data/bills";
 import {
   getCommitteeData,
   getCommitteeRouteParams,
@@ -13,6 +12,7 @@ import {
   isLiveCommitteeSource,
 } from "@/lib/data/committees";
 import { getPoliticiansData } from "@/lib/data/politicians";
+import { listStoredBillsByIds } from "@/lib/supabase/bills";
 import { deriveCommitteeSector, normalizeCommitteeField } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
@@ -31,14 +31,14 @@ export default async function CommitteePage({
   const { committee, source } = await getCommitteeData(slug);
   if (!committee) notFound();
 
-  const { politicians } = await getPoliticiansData();
+  // One id=in.(...) read for the active bills instead of a getBillData() call per bill -- each
+  // of which was its own bill + actions + versions + 2 sync-run round trips.
+  const [{ politicians }, activeBills] = await Promise.all([
+    getPoliticiansData(),
+    listStoredBillsByIds(committee.activeBillIds).catch(() => [] as Bill[]),
+  ]);
   const members = politicians.filter((politician) => committee.memberIds.includes(politician.id));
   const sector = deriveCommitteeSector(committee);
-  const activeBills = (
-    await Promise.all(committee.activeBillIds.map((billId) => getBillData(billId)))
-  )
-    .map((result) => result.bill)
-    .filter((bill): bill is Bill => Boolean(bill));
 
   return (
     <div className="space-y-6">

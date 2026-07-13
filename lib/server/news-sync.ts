@@ -24,7 +24,7 @@ export async function syncNewsFromApi() {
 
   const [bills, politicians, issues] = await Promise.all([
     listStoredBills(),
-    listStoredPoliticians(),
+    listStoredPoliticians({ fresh: true }),
     listStoredIssues().catch(() => []),
   ]);
 

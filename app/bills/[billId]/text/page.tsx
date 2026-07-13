@@ -20,7 +20,8 @@ export default async function BillTextPage({
   params: Promise<{ billId: string }>;
 }) {
   const { billId } = await params;
-  const { bill, source } = await getBillData(billId);
+  // The only route that renders bill_versions.content, so the only one that fetches it.
+  const { bill, source } = await getBillData(billId, { includeVersionContent: true });
   if (!bill) notFound();
   const live = isLiveBillsSource(source);
 
