@@ -51,6 +51,11 @@ function buildRestMutationUrl(pathname: string, query?: string) {
   return applyRestQuery(new URL(`${base}/rest/v1/${pathname}`), query, false).toString();
 }
 
+function buildRpcUrl(functionName: string) {
+  const base = getSupabaseUrl();
+  return new URL(`${base}/rest/v1/rpc/${functionName}`).toString();
+}
+
 export async function fetchSupabaseRows<T>(
   pathname: string,
   query?: string,
@@ -214,4 +219,34 @@ export async function deleteSupabaseRows(pathname: string, query: string) {
   if (!response.ok) {
     throw new Error(`Supabase delete failed: ${response.status} ${response.statusText}`);
   }
+}
+
+export async function invokeSupabaseRpc<TResponse>(
+  functionName: string,
+  args?: Record<string, unknown>,
+  options?: {
+    cache?: "default" | "no-store";
+  },
+) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase is not configured");
+  }
+
+  const response = await fetch(buildRpcUrl(functionName), {
+    method: "POST",
+    headers: buildHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify(args || {}),
+    ...(options?.cache === "no-store"
+      ? { cache: "no-store" as const }
+      : { next: { revalidate: 21600 } }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Supabase rpc failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`);
+  }
+
+  return await response.json() as TResponse;
 }

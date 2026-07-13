@@ -40,8 +40,18 @@ import {
 } from "@/lib/supabase/bills";
 import { replaceStoredCommitteeMemberships, upsertStoredCommittees } from "@/lib/supabase/committees";
 import { deleteSupabaseRows, fetchSupabaseRows } from "@/lib/supabase/rest";
-import { appendStoredVotes, listStoredVoteHeaders, listStoredVotePositionsByVoteIds } from "@/lib/supabase/votes";
-import { buildUpdatedPoliticianRowsFromVotePositions } from "@/lib/server/vote-stats";
+import {
+  appendStoredVotes,
+  listStoredFederalVoteHeadersPage,
+  listStoredVoteHeaders,
+  listStoredVoteHeadersByBillIds,
+  listStoredVotePositionsByVoteIds,
+  listStoredVotePositionContextByPoliticianIds,
+  replaceStoredVotes,
+} from "@/lib/supabase/votes";
+import { applyBillSponsorStatDeltas, buildBillSponsorStatDeltas } from "@/lib/server/politician-stat-deltas";
+import { applyVotePositionDeltaToPoliticians, buildUpdatedPoliticianRowsFromVotePositions, hasStoredVoteStatCounters } from "@/lib/server/vote-stats";
+import { buildSourceFingerprint, classifyFreshness, normalizeSourceUpdatedAt } from "@/lib/server/sync-freshness";
 import { normalizePersonLookup, slugifySegment } from "@/lib/utils";
 import type { Bill, Committee } from "@/types/civic";
 import type { CongressCommitteeListItem } from "@/types/congress";
@@ -241,6 +251,28 @@ function chooseBestSummary(
     .map((item) => item.text?.trim())
     .filter((text): text is string => Boolean(text))
     .sort((left, right) => right.length - left.length)[0];
+}
+
+function buildCongressBillFreshness(
+  listBill: Awaited<ReturnType<typeof fetchCongressBills>>[number],
+  detail?: Awaited<ReturnType<typeof fetchCongressBillDetail>>,
+) {
+  const detailBill = detail?.bill;
+  return {
+    sourceUpdatedAt: normalizeSourceUpdatedAt(detailBill?.updateDate || listBill.updateDate),
+    sourceFingerprint: buildSourceFingerprint({
+      congress: detailBill?.congress || listBill.congress || null,
+      type: detailBill?.type || listBill.type || null,
+      number: detailBill?.number || listBill.number || null,
+      updateDate: detailBill?.updateDate || listBill.updateDate || null,
+      title: detailBill?.titles || listBill.title || null,
+      originChamber: detailBill?.originChamber || listBill.originChamber || null,
+      latestAction: detailBill?.latestAction || listBill.latestAction || null,
+      sponsors: detailBill?.sponsors || listBill.sponsors || null,
+      policyArea: detailBill?.policyArea || listBill.policyArea || null,
+      committees: detailBill?.committees || null,
+    }),
+  };
 }
 
 async function fetchAllCongressBillActions(
@@ -483,6 +515,12 @@ async function loadExistingStoredBills(congressSession: string) {
     "jurisdiction_type",
     "state_code",
     "session_id",
+    "source_updated_at",
+    "source_fingerprint",
+    "last_detail_synced_at",
+    "last_actions_synced_at",
+    "last_versions_synced_at",
+    "last_votes_synced_at",
     "synced_at",
     "raw_bill",
   ].join(",");
@@ -569,6 +607,12 @@ async function loadStoredBillsByIds(billIds: string[]) {
     "jurisdiction_type",
     "state_code",
     "session_id",
+    "source_updated_at",
+    "source_fingerprint",
+    "last_detail_synced_at",
+    "last_actions_synced_at",
+    "last_versions_synced_at",
+    "last_votes_synced_at",
     "synced_at",
     "raw_bill",
   ].join(",");
@@ -897,6 +941,41 @@ function buildExistingFederalVoteCursor(
   };
 }
 
+function buildVotePositionSignature(row: Pick<VotePositionRow, "vote_id" | "politician_id" | "name" | "party" | "state" | "vote">) {
+  return [
+    row.vote_id,
+    row.politician_id,
+    row.name,
+    row.party,
+    row.state,
+    row.vote,
+  ].join("|");
+}
+
+function haveVotePositionsChanged(
+  existingRows: Array<Pick<VotePositionRow, "vote_id" | "politician_id" | "name" | "party" | "state" | "vote">>,
+  nextRows: Array<Pick<VotePositionRow, "vote_id" | "politician_id" | "name" | "party" | "state" | "vote">>,
+) {
+  if (existingRows.length !== nextRows.length) {
+    return true;
+  }
+
+  const existingSignatures = existingRows
+    .map(buildVotePositionSignature)
+    .sort();
+  const nextSignatures = nextRows
+    .map(buildVotePositionSignature)
+    .sort();
+
+  for (let index = 0; index < existingSignatures.length; index += 1) {
+    if (existingSignatures[index] !== nextSignatures[index]) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function collectIncrementalFederalHouseVotes(
   congress: string,
   cursor: ReturnType<typeof buildExistingFederalVoteCursor>,
@@ -958,6 +1037,165 @@ async function collectIncrementalFederalSenateVotes(
   }
 
   return votes;
+}
+
+async function collectTargetedFederalVotes(
+  targetVoteRows: Array<Pick<VoteRow, "id" | "source_system">>,
+) {
+  const refreshedVotes = await Promise.all(targetVoteRows.map(async (row) => {
+    if (row.source_system === "house_clerk") {
+      const parsed = parseStoredHouseVoteId(row.id);
+      if (!parsed) return null;
+      const year = getCongressStartYear(parsed.congress) + (parsed.session - 1);
+      return fetchHouseRollCallVote(year, parsed.rollCall);
+    }
+
+    if (row.source_system === "senate_lis") {
+      const parsed = parseStoredSenateVoteId(row.id);
+      if (!parsed) return null;
+      return fetchSenateRollCallVote(parsed.congress, parsed.session as 1 | 2, parsed.voteNumber);
+    }
+
+    return null;
+  }));
+
+  return uniqueByKey(
+    refreshedVotes.filter((vote): vote is NonNullable<typeof vote> => Boolean(vote)),
+    (vote) => vote.id,
+  );
+}
+
+async function refreshStoredFederalVotes(options?: {
+  offset?: number;
+  limit?: number;
+}) {
+  const pageLimit = Number.isFinite(options?.limit) && (options?.limit ?? 0) > 0
+    ? options?.limit as number
+    : 25;
+  const pageOffset = Number.isFinite(options?.offset) && (options?.offset ?? 0) >= 0
+    ? options?.offset as number
+    : 0;
+  const votePage = await listStoredFederalVoteHeadersPage(pageLimit, pageOffset);
+  const targetVoteRows = votePage.rows;
+
+  if (targetVoteRows.length === 0) {
+    return {
+      billsSynced: 0,
+      detailedBillsSynced: 0,
+      committeesSynced: 0,
+      votesSynced: 0,
+      committeesEnabled: false,
+      votesEnabled: true,
+      mode: "incremental" as const,
+      requestedOffset: pageOffset,
+      requestedLimit: pageLimit,
+      newBills: 0,
+      changedBills: 0,
+      unchangedBillsSkipped: 0,
+      newActionsAppended: 0,
+      newVersionsAppended: 0,
+      newVotesAppended: 0,
+      derivedPoliticiansRecomputed: 0,
+      preservedBills: 0,
+      detailFailures: [] as Array<{ billId: string; reason: string }>,
+      staleBillsDeleted: 0,
+      totalStoredVotes: votePage.total,
+      refreshedVoteIds: [] as string[],
+      at: new Date().toISOString(),
+    };
+  }
+
+  const congress = getDefaultCongress();
+  const storedPoliticianRows = await fetchSupabaseRows<PoliticianRow>(
+    "politicians",
+    "jurisdiction_type=eq.federal&order=name.asc",
+    { cache: "no-store" },
+  ).catch(() => []);
+  const politicianLookup = buildFederalPoliticianLookup(storedPoliticianRows);
+  const refreshedVotes = await collectTargetedFederalVotes(targetVoteRows);
+  const billIds = [...new Set(targetVoteRows.map((row) => row.bill_id).filter(Boolean))];
+  const storedBills = await loadStoredBillsByIds(billIds);
+  const voteBundle = buildFederalVoteRows(
+    refreshedVotes,
+    [...storedBills.billsById.values()],
+    politicianLookup,
+  );
+  const existingPositionRows = await listStoredVotePositionsByVoteIds(targetVoteRows.map((row) => row.id)).catch(() => []);
+  const shouldRecomputeVoteStats = haveVotePositionsChanged(existingPositionRows, voteBundle.positionRows);
+  let derivedPoliticiansRecomputed = 0;
+
+  if (shouldRecomputeVoteStats && voteBundle.positionRows.length > 0) {
+    const placeholderPoliticianRows = buildMissingFederalPoliticianRows(storedPoliticianRows, voteBundle.positionRows);
+    const voteAffectedPoliticianIds = [...new Set(voteBundle.positionRows.map((row) => row.politician_id))];
+    const voteBaseRowById = new Map<string, PoliticianRow>();
+
+    [...storedPoliticianRows, ...placeholderPoliticianRows].forEach((row) => {
+      voteBaseRowById.set(row.id, row);
+    });
+
+    const voteAffectedRows = voteAffectedPoliticianIds
+      .map((politicianId) => voteBaseRowById.get(politicianId))
+      .filter((row): row is PoliticianRow => Boolean(row));
+    const rowsMissingVoteCounters = voteAffectedRows.filter((row) => !hasStoredVoteStatCounters(row.stats));
+
+    if (rowsMissingVoteCounters.length > 0) {
+      const existingVoteContextRows = await listStoredVotePositionContextByPoliticianIds(
+        rowsMissingVoteCounters.map((row) => row.id),
+      ).catch(() => []);
+      const backfilledRows = buildUpdatedPoliticianRowsFromVotePositions(
+        rowsMissingVoteCounters,
+        existingVoteContextRows,
+      );
+
+      backfilledRows.forEach((row) => {
+        voteBaseRowById.set(row.id, row);
+      });
+    }
+
+    const updatedPoliticianRows = applyVotePositionDeltaToPoliticians(
+      voteAffectedPoliticianIds
+        .map((politicianId) => voteBaseRowById.get(politicianId))
+        .filter((row): row is PoliticianRow => Boolean(row)),
+      voteBundle.positionRows,
+    );
+
+    if (updatedPoliticianRows.length > 0) {
+      const { upsertStoredPoliticians } = await import("@/lib/supabase/politicians");
+      await upsertStoredPoliticians(updatedPoliticianRows);
+      derivedPoliticiansRecomputed = updatedPoliticianRows.length;
+    }
+  }
+
+  await replaceStoredVotes(
+    voteBundle.voteRows.map((row) => row.id),
+    voteBundle.voteRows,
+    voteBundle.positionRows,
+  );
+
+  return {
+    billsSynced: 0,
+    detailedBillsSynced: 0,
+    committeesSynced: 0,
+    votesSynced: voteBundle.voteRows.length,
+    committeesEnabled: false,
+    votesEnabled: true,
+    mode: "incremental" as const,
+    requestedOffset: pageOffset,
+    requestedLimit: pageLimit,
+    newBills: 0,
+    changedBills: 0,
+    unchangedBillsSkipped: 0,
+    newActionsAppended: 0,
+    newVersionsAppended: 0,
+    newVotesAppended: voteBundle.voteRows.length,
+    derivedPoliticiansRecomputed,
+    preservedBills: 0,
+    detailFailures: [] as Array<{ billId: string; reason: string }>,
+    staleBillsDeleted: 0,
+    totalStoredVotes: votePage.total,
+    refreshedVoteIds: voteBundle.voteRows.map((row) => row.id),
+    at: new Date().toISOString(),
+  };
 }
 
 function buildFederalVoteRows(
@@ -1103,6 +1341,10 @@ function buildMissingFederalPoliticianRows(
           billsIntroduced: 0,
           billsPassed: 0,
           amendmentsOffered: 0,
+          totalVotes: 0,
+          castVotes: 0,
+          withPartyCount: 0,
+          againstPartyCount: 0,
         },
         ideology: {},
         source: "congress_sync",
@@ -1173,14 +1415,24 @@ export async function syncLegislationFromCongress(options?: {
   syncVotes?: boolean;
   listOffset?: number;
   listLimit?: number;
+  mode?: "incremental" | "full";
+  refreshStoredVotes?: boolean;
 }) {
   if (!isCongressBillsConfigured()) {
     throw new Error("Congress API is not configured");
   }
 
   try {
+    if (options?.refreshStoredVotes) {
+      return await refreshStoredFederalVotes({
+        offset: options.listOffset,
+        limit: options.listLimit,
+      });
+    }
+
     const congress = getDefaultCongress();
     const congressSession = `${congress}th Congress`;
+    const mode = options?.mode || "incremental";
     const syncCommittees = options?.syncCommittees ?? LEGISLATION_SYNC_COMMITTEES;
     const syncVotes = options?.syncVotes ?? LEGISLATION_SYNC_VOTES;
     const listBills = options?.targetBillIds?.length
@@ -1209,19 +1461,48 @@ export async function syncLegislationFromCongress(options?: {
     const detailFailures: Array<{ billId: string; reason: string }> = [];
     let detailedBillsSynced = 0;
     let preservedBills = 0;
+    let newBills = 0;
+    let changedBills = 0;
+    let unchangedBillsSkipped = 0;
 
     const billResults = await mapWithConcurrency(
       listBills,
       LEGISLATION_DETAIL_CONCURRENCY,
       async (listBill) => {
         const seed = normalizeCongressBillListItem(listBill);
+        const existingStoredRow = existingStored.billRowsById.get(seed.id);
+        const existingStoredBill = existingStored.billsById.get(seed.id);
+        const seedFreshness = buildCongressBillFreshness(listBill);
+        const initialClassification = mode === "full"
+          ? (existingStoredRow ? "changed" : "new")
+          : classifyFreshness(existingStoredRow, seedFreshness.sourceUpdatedAt, seedFreshness.sourceFingerprint);
+        const needsDetailFetch = !existingStoredBill || !hasStoredBillDetail(existingStoredBill) || initialClassification !== "unchanged";
+
+        if (!needsDetailFetch && existingStoredBill) {
+          unchangedBillsSkipped += 1;
+          return {
+            bill: existingStoredBill,
+            rawBill: existingStoredRow?.raw_bill || listBill,
+            status: "unchanged" as const,
+            sourceUpdatedAt: existingStoredRow?.source_updated_at || seedFreshness.sourceUpdatedAt,
+            sourceFingerprint: existingStoredRow?.source_fingerprint || seedFreshness.sourceFingerprint,
+          };
+        }
+
         const parsed = parseBillId(seed.id);
 
         if (!parsed) {
+          if (initialClassification === "new") {
+            newBills += 1;
+          } else if (initialClassification === "changed") {
+            changedBills += 1;
+          }
           return {
             bill: seed,
             rawBill: listBill,
             status: "seed" as const,
+            sourceUpdatedAt: seedFreshness.sourceUpdatedAt,
+            sourceFingerprint: seedFreshness.sourceFingerprint,
           };
         }
 
@@ -1287,6 +1568,16 @@ export async function syncLegislationFromCongress(options?: {
             merged.title,
             bestSummary,
           );
+          const freshness = buildCongressBillFreshness(listBill, detail);
+          const finalClassification = mode === "full"
+            ? (existingStoredRow ? "changed" : "new")
+            : classifyFreshness(existingStoredRow, freshness.sourceUpdatedAt, freshness.sourceFingerprint);
+
+          if (finalClassification === "new") {
+            newBills += 1;
+          } else {
+            changedBills += 1;
+          }
 
           detailedBillsSynced += 1;
           return {
@@ -1299,6 +1590,8 @@ export async function syncLegislationFromCongress(options?: {
             },
             rawBill: detail.bill || listBill,
             status: "detailed" as const,
+            sourceUpdatedAt: freshness.sourceUpdatedAt,
+            sourceFingerprint: freshness.sourceFingerprint,
           };
         } catch (error) {
           detailFailures.push({
@@ -1313,19 +1606,29 @@ export async function syncLegislationFromCongress(options?: {
               bill: existingDetailed,
               rawBill: existingStored.billRowsById.get(seed.id)?.raw_bill || listBill,
               status: "preserved" as const,
+              sourceUpdatedAt: existingStored.billRowsById.get(seed.id)?.source_updated_at || seedFreshness.sourceUpdatedAt,
+              sourceFingerprint: existingStored.billRowsById.get(seed.id)?.source_fingerprint || seedFreshness.sourceFingerprint,
             };
+          }
+
+          if (initialClassification === "new") {
+            newBills += 1;
+          } else if (initialClassification === "changed") {
+            changedBills += 1;
           }
 
           return {
             bill: seed,
             rawBill: listBill,
             status: "seed" as const,
+            sourceUpdatedAt: seedFreshness.sourceUpdatedAt,
+            sourceFingerprint: seedFreshness.sourceFingerprint,
           };
         }
       },
     );
 
-    if (detailedBillsSynced === 0) {
+    if (detailedBillsSynced === 0 && (mode === "full" || newBills > 0 || changedBills > 0)) {
       const sampleReasons = detailFailures
         .slice(0, 3)
         .map((entry) => `${entry.billId}: ${entry.reason}`)
@@ -1382,7 +1685,7 @@ export async function syncLegislationFromCongress(options?: {
       }
     }
 
-    const finalBills = billResults.map(({ bill, rawBill }) => {
+    const finalBills = billResults.map(({ bill, rawBill, status, sourceUpdatedAt, sourceFingerprint }) => {
       const committee = committeeByBillId.get(bill.id);
 
       return {
@@ -1394,6 +1697,9 @@ export async function syncLegislationFromCongress(options?: {
             }
           : bill,
         rawBill,
+        status,
+        sourceUpdatedAt,
+        sourceFingerprint,
       };
     });
 
@@ -1404,7 +1710,7 @@ export async function syncLegislationFromCongress(options?: {
       relatedByTopic.set(bill.topic, items);
     }
 
-    const finalizedBills = finalBills.map(({ bill, rawBill }) => {
+    const finalizedBills = finalBills.map(({ bill, rawBill, status, sourceUpdatedAt, sourceFingerprint }) => {
       const relatedBillIds = (relatedByTopic.get(bill.topic) || [])
         .filter((candidate) => candidate.id !== bill.id)
         .slice(0, 3)
@@ -1416,18 +1722,23 @@ export async function syncLegislationFromCongress(options?: {
           relatedBillIds,
         },
         rawBill,
+        status,
+        sourceUpdatedAt,
+        sourceFingerprint,
       };
     });
 
-    const storedPoliticianRows = syncVotes
-      ? await fetchSupabaseRows<PoliticianRow>(
-        "politicians",
-        "jurisdiction_type=eq.federal&order=name.asc",
-        { cache: "no-store" },
-      ).catch(() => [])
-      : [];
+    const storedPoliticianRows = await fetchSupabaseRows<PoliticianRow>(
+      "politicians",
+      "jurisdiction_type=eq.federal&order=name.asc",
+      { cache: "no-store" },
+    ).catch(() => []);
+    const storedPoliticiansById = new Map(storedPoliticianRows.map((row) => [row.id, row]));
     const existingFederalVoteRows = syncVotes
       ? await listStoredVoteHeaders().catch(() => [])
+      : [];
+    const existingTargetedVoteRows = syncVotes && options?.targetBillIds?.length
+      ? await listStoredVoteHeadersByBillIds(options.targetBillIds).catch(() => [])
       : [];
     const existingFederalVoteCursor = buildExistingFederalVoteCursor(
       congress,
@@ -1443,13 +1754,17 @@ export async function syncLegislationFromCongress(options?: {
 
     if (syncVotes) {
       try {
-        const federalVotes = uniqueByKey(
-          [
-            ...(await collectIncrementalFederalHouseVotes(congress, existingFederalVoteCursor)),
-            ...(await collectIncrementalFederalSenateVotes(congress, existingFederalVoteCursor)),
-          ],
-          (vote) => vote.id,
-        );
+        const federalVotes = options?.targetBillIds?.length
+          ? await collectTargetedFederalVotes(
+            existingTargetedVoteRows,
+          )
+          : uniqueByKey(
+            [
+              ...(await collectIncrementalFederalHouseVotes(congress, existingFederalVoteCursor)),
+              ...(await collectIncrementalFederalSenateVotes(congress, existingFederalVoteCursor)),
+            ],
+            (vote) => vote.id,
+          );
 
         const voteBundle = buildFederalVoteRows(
           federalVotes,
@@ -1458,24 +1773,115 @@ export async function syncLegislationFromCongress(options?: {
         );
         voteRows = voteBundle.voteRows;
         positionRows = voteBundle.positionRows;
+        const existingTargetedPositionRows = options?.targetBillIds?.length
+          ? await listStoredVotePositionsByVoteIds(existingTargetedVoteRows.map((row) => row.id)).catch(() => [])
+          : [];
+        const shouldRecomputeVoteStats = !options?.targetBillIds?.length
+          || haveVotePositionsChanged(existingTargetedPositionRows, positionRows);
 
-        const existingPositionRows = await listStoredVotePositionsByVoteIds(
-          existingFederalVoteRows
-            .filter((row) => row.source_system === "house_clerk" || row.source_system === "senate_lis")
-            .map((row) => row.id),
-        ).catch(() => []);
-        const combinedPositionRows = [...existingPositionRows, ...positionRows];
-        updatedPoliticianRows = buildUpdatedPoliticianRowsFromVotePositions(
-          storedPoliticianRows.filter((row) => row.jurisdiction_type === "federal"),
-          combinedPositionRows,
-        );
-        placeholderPoliticianRows = buildMissingFederalPoliticianRows(storedPoliticianRows, combinedPositionRows);
+        if (shouldRecomputeVoteStats) {
+          placeholderPoliticianRows = buildMissingFederalPoliticianRows(storedPoliticianRows, positionRows);
+          const voteAffectedPoliticianIds = [...new Set(positionRows.map((row) => row.politician_id))];
+          const voteBaseRowById = new Map<string, PoliticianRow>();
+
+          [...storedPoliticianRows, ...placeholderPoliticianRows].forEach((row) => {
+            voteBaseRowById.set(row.id, row);
+          });
+
+          const voteAffectedRows = voteAffectedPoliticianIds
+            .map((politicianId) => voteBaseRowById.get(politicianId))
+            .filter((row): row is PoliticianRow => Boolean(row));
+          const rowsMissingVoteCounters = voteAffectedRows.filter((row) => !hasStoredVoteStatCounters(row.stats));
+
+          if (rowsMissingVoteCounters.length > 0) {
+            const existingVoteContextRows = await listStoredVotePositionContextByPoliticianIds(
+              rowsMissingVoteCounters.map((row) => row.id),
+            ).catch(() => []);
+            const backfilledRows = buildUpdatedPoliticianRowsFromVotePositions(
+              rowsMissingVoteCounters,
+              existingVoteContextRows,
+            );
+
+            backfilledRows.forEach((row) => {
+              voteBaseRowById.set(row.id, row);
+            });
+          }
+
+          updatedPoliticianRows = applyVotePositionDeltaToPoliticians(
+            voteAffectedPoliticianIds
+              .map((politicianId) => voteBaseRowById.get(politicianId))
+              .filter((row): row is PoliticianRow => Boolean(row)),
+            positionRows,
+          );
+        }
       } catch (error) {
         voteSyncWarning = getErrorMessage(error);
       }
     }
+
+    const mutableFinalizedBills = finalizedBills.filter((entry) => entry.status !== "unchanged");
+    const mutationTimestamp = new Date().toISOString();
+    const syncedBillRows = uniqueByKey(
+      mutableFinalizedBills.map(({ bill, rawBill, sourceUpdatedAt, sourceFingerprint }) => mapBillToRow(
+        bill,
+        rawBill,
+        {
+          sourceUpdatedAt,
+          sourceFingerprint,
+          lastDetailSyncedAt: mutationTimestamp,
+          lastActionsSyncedAt: mutationTimestamp,
+          lastVersionsSyncedAt: mutationTimestamp,
+          lastVotesSyncedAt: syncVotes ? mutationTimestamp : null,
+        },
+      )),
+      (row) => row.id,
+    );
+    let derivedPoliticiansRecomputed = 0;
+    const billRows = uniqueByKey(
+      [
+        ...syncedBillRows,
+        ...buildFederalVotePlaceholderBillRows([...existingStored.billRows, ...syncedBillRows], voteRows),
+      ],
+      (row) => row.id,
+    );
+    const staleBillsDeleted = shouldPruneStaleBills
+      ? buildStaleCongressBillIds(
+        existingStored.billRows,
+        new Set(requestedBillIds),
+        new Set([...existingStored.voteBillIds, ...voteRows.map((row) => row.bill_id)]),
+        congressSession,
+      )
+      : [];
+    const removedBillRowsForStats = staleBillsDeleted
+      .map((billId) => existingStored.billRowsById.get(billId))
+      .filter((row): row is BillRow => Boolean(row));
+    const billSponsorStatDeltas = buildBillSponsorStatDeltas(
+      existingStored.billRows.filter((row) => row.jurisdiction_type === "federal"),
+      syncedBillRows.filter((row) => row.jurisdiction_type === "federal"),
+      removedBillRowsForStats,
+    );
+    const politicianRowsById = new Map<string, PoliticianRow>();
+    [...storedPoliticianRows, ...placeholderPoliticianRows, ...updatedPoliticianRows].forEach((row) => {
+      politicianRowsById.set(row.id, row);
+    });
+    [...billSponsorStatDeltas.keys()].forEach((politicianId) => {
+      const stored = storedPoliticiansById.get(politicianId);
+      if (stored && !politicianRowsById.has(politicianId)) {
+        politicianRowsById.set(politicianId, stored);
+      }
+    });
+    const voteUpdatedById = new Map(updatedPoliticianRows.map((row) => [row.id, row]));
+    const voteOrPlaceholderRows = [...politicianRowsById.values()].map((row) => voteUpdatedById.get(row.id) || row);
+    const billStatUpdatedRows = applyBillSponsorStatDeltas(voteOrPlaceholderRows, billSponsorStatDeltas);
+    const touchedPoliticianIds = new Set([
+      ...updatedPoliticianRows.map((row) => row.id),
+      ...placeholderPoliticianRows.map((row) => row.id),
+      ...billSponsorStatDeltas.keys(),
+    ]);
+    const politicianRowsToPersist = billStatUpdatedRows.filter((row) => touchedPoliticianIds.has(row.id));
+    derivedPoliticiansRecomputed = politicianRowsToPersist.length;
     const allFederalPoliticianRows = uniqueByKey(
-      [...storedPoliticianRows, ...updatedPoliticianRows, ...placeholderPoliticianRows],
+      [...storedPoliticianRows, ...billStatUpdatedRows],
       (row) => row.id,
     );
     const committeeMembershipRows = buildFederalCommitteeMembershipRows(
@@ -1493,31 +1899,24 @@ export async function syncLegislationFromCongress(options?: {
           .map((row) => row.politician_id),
       },
     }));
-
-    const syncedBillRows = uniqueByKey(
-      finalizedBills.map(({ bill, rawBill }) => mapBillToRow(bill, rawBill)),
-      (row) => row.id,
-    );
-    const billRows = uniqueByKey(
-      [
-        ...syncedBillRows,
-        ...buildFederalVotePlaceholderBillRows(syncedBillRows, voteRows),
-      ],
-      (row) => row.id,
-    );
-    const actionRows = uniqueByKey(finalizedBills.flatMap(({ bill }) =>
+    const actionRows = uniqueByKey(mutableFinalizedBills.flatMap(({ bill }) =>
       bill.actions.map((action, index) => mapBillActionToRow(bill.id, action, index)),
     ), (row) => `${row.bill_id}:${row.sort_order}`);
-    const versionRows = uniqueByKey(finalizedBills.flatMap(({ bill }) =>
+    const versionRows = uniqueByKey(mutableFinalizedBills.flatMap(({ bill }) =>
       bill.versions.map((version, index) => mapBillVersionToRow(bill.id, version, index)),
     ), (row) => `${row.bill_id}:${row.version_id}`);
     const committeeRows = uniqueByKey(
       committeesWithMembers.map(({ committee, rawCommittee }) => mapCommitteeToRow(committee, rawCommittee)),
       (row) => row.id,
     );
+    let newActionsAppended = 0;
+    let newVersionsAppended = 0;
+    let newVotesAppended = 0;
 
     try {
-      await upsertStoredBills(billRows);
+      if (billRows.length > 0) {
+        await upsertStoredBills(billRows);
+      }
     } catch (error) {
       throw new Error(`Bills write failed: ${getErrorMessage(error)}`);
     }
@@ -1556,6 +1955,7 @@ export async function syncLegislationFromCongress(options?: {
         }),
       );
 
+      newActionsAppended = appendedActionRows.length;
       await appendStoredBillActions(appendedActionRows);
     } catch (error) {
       throw new Error(`Bill actions write failed: ${getErrorMessage(error)}`);
@@ -1583,6 +1983,7 @@ export async function syncLegislationFromCongress(options?: {
         return true;
       });
 
+      newVersionsAppended = appendedVersionRows.length;
       await appendStoredBillVersions(appendedVersionRows);
     } catch (error) {
       throw new Error(`Bill versions write failed: ${getErrorMessage(error)}`);
@@ -1605,10 +2006,10 @@ export async function syncLegislationFromCongress(options?: {
       }
     }
 
-    if (updatedPoliticianRows.length > 0 || placeholderPoliticianRows.length > 0) {
+    if (politicianRowsToPersist.length > 0) {
       try {
         const { upsertStoredPoliticians } = await import("@/lib/supabase/politicians");
-        await upsertStoredPoliticians([...updatedPoliticianRows, ...placeholderPoliticianRows]);
+        await upsertStoredPoliticians(politicianRowsToPersist);
       } catch (error) {
         throw new Error(`Federal politician stats write failed: ${getErrorMessage(error)}`);
       }
@@ -1616,23 +2017,24 @@ export async function syncLegislationFromCongress(options?: {
 
     if (!voteSyncWarning && voteRows.length > 0) {
       try {
-        await appendStoredVotes(
-          voteRows,
-          positionRows,
-        );
+        if (options?.targetBillIds?.length) {
+          await replaceStoredVotes(
+            voteRows.map((row) => row.id),
+            voteRows,
+            positionRows,
+          );
+        } else {
+          await appendStoredVotes(
+            voteRows,
+            positionRows,
+          );
+        }
+        newVotesAppended = voteRows.length;
       } catch (error) {
         voteSyncWarning = `Federal votes write failed: ${getErrorMessage(error)}`;
       }
     }
 
-    const staleBillsDeleted = shouldPruneStaleBills
-      ? buildStaleCongressBillIds(
-        existingStored.billRows,
-        new Set(syncedBillRows.map((row) => row.id)),
-        new Set([...existingStored.voteBillIds, ...voteRows.map((row) => row.bill_id)]),
-        congressSession,
-      )
-      : [];
     if (staleBillsDeleted.length > 0) {
       await deleteBillArtifacts(staleBillsDeleted);
     }
@@ -1644,8 +2046,16 @@ export async function syncLegislationFromCongress(options?: {
       votesSynced: voteRows.length,
       committeesEnabled: syncCommittees,
       votesEnabled: syncVotes,
+      mode,
       requestedOffset: options?.listOffset ?? 0,
       requestedLimit: options?.listLimit ?? null,
+      newBills,
+      changedBills,
+      unchangedBillsSkipped,
+      newActionsAppended,
+      newVersionsAppended,
+      newVotesAppended,
+      derivedPoliticiansRecomputed,
       preservedBills,
       detailFailures,
       staleBillsDeleted: staleBillsDeleted.length,

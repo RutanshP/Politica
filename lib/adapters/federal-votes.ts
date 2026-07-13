@@ -68,6 +68,40 @@ function parseAttributes(source: string) {
   );
 }
 
+function countVotePositions(positions: Array<{ vote: VoteCast }>) {
+  return positions.reduce(
+    (totals, position) => {
+      if (position.vote === "Yea") totals.yea += 1;
+      else if (position.vote === "Nay") totals.nay += 1;
+      else if (position.vote === "Present") totals.present += 1;
+      else totals.notVoting += 1;
+      return totals;
+    },
+    { yea: 0, nay: 0, present: 0, notVoting: 0 },
+  );
+}
+
+function extractHouseVoteTotals(metadata: string, positions: Array<{ vote: VoteCast }>) {
+  const totalsBlocks = [...metadata.matchAll(/<totals-by-vote[^>]*>([\s\S]*?)<\/totals-by-vote>/gi)]
+    .map((match) => match[1]);
+  const totalsBlock = totalsBlocks.at(-1) || metadata;
+  const parsedTotals = {
+    yea: toNumber(getTagValue(totalsBlock, "yea-total")),
+    nay: toNumber(getTagValue(totalsBlock, "nay-total")),
+    present: toNumber(getTagValue(totalsBlock, "present-total")),
+    notVoting: toNumber(getTagValue(totalsBlock, "not-voting-total")),
+  };
+  const countedTotals = countVotePositions(positions);
+  const parsedTotalCount = parsedTotals.yea + parsedTotals.nay + parsedTotals.present + parsedTotals.notVoting;
+  const countedTotalCount = countedTotals.yea + countedTotals.nay + countedTotals.present + countedTotals.notVoting;
+
+  if (countedTotalCount > parsedTotalCount) {
+    return countedTotals;
+  }
+
+  return parsedTotals;
+}
+
 function normalizeVoteCast(value?: string | null): VoteCast {
   const normalized = (value || "").trim().toLowerCase();
 
@@ -144,6 +178,7 @@ export function parseHouseRollCallVoteXml(xml: string) {
         vote: normalizeVoteCast(match[3]),
       };
     });
+  const totals = extractHouseVoteTotals(metadata, positions);
 
   return {
     id: `house-${congress}-${session}-${rollcallNum.padStart(4, "0")}`,
@@ -154,10 +189,10 @@ export function parseHouseRollCallVoteXml(xml: string) {
     chamber: "House",
     dateLabel: getTagValue(metadata, "action-date"),
     result: getTagValue(metadata, "vote-result") || "Unknown",
-    yea: toNumber(getTagValue(metadata, "yea-total")),
-    nay: toNumber(getTagValue(metadata, "nay-total")),
-    present: toNumber(getTagValue(metadata, "present-total")),
-    notVoting: toNumber(getTagValue(metadata, "not-voting-total")),
+    yea: totals.yea,
+    nay: totals.nay,
+    present: totals.present,
+    notVoting: totals.notVoting,
     positions,
     sourceSystem: "house_clerk" as const,
     sourceId: `roll-${rollcallNum}`,

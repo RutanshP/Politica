@@ -62,6 +62,46 @@ test("parseHouseRollCallVoteXml parses official House vote XML into a federal vo
   assert.equal(vote.positions[0].vote, "Yea");
 });
 
+test("parseHouseRollCallVoteXml prefers chamber totals over nested subtotals", () => {
+  const vote = parseHouseRollCallVoteXml(`
+    <rollcall-vote>
+      <vote-metadata>
+        <congress>119</congress>
+        <session>1st</session>
+        <rollcall-num>203</rollcall-num>
+        <legis-num>H.R. 2035</legis-num>
+        <vote-question>On Passage</vote-question>
+        <vote-result>Passed</vote-result>
+        <action-date>09-Jun-2025</action-date>
+        <totals-by-party-header>
+          <totals-by-vote>
+            <yea-total>186</yea-total>
+            <nay-total>12</nay-total>
+            <present-total>0</present-total>
+            <not-voting-total>21</not-voting-total>
+          </totals-by-vote>
+        </totals-by-party-header>
+        <totals-by-vote>
+          <yea-total>218</yea-total>
+          <nay-total>206</nay-total>
+          <present-total>1</present-total>
+          <not-voting-total>10</not-voting-total>
+        </totals-by-vote>
+      </vote-metadata>
+      <vote-data>
+        <recorded-vote>
+          <legislator name-id="A000001" party="D" state="CA">Alpha</legislator>
+          <vote>Aye</vote>
+        </recorded-vote>
+      </vote-data>
+    </rollcall-vote>
+  `);
+
+  assert.equal(vote.yea, 218);
+  assert.equal(vote.nay, 206);
+  assert.equal(vote.notVoting, 10);
+});
+
 test("parseSenateRollCallVoteXml parses official Senate vote XML into a federal vote record", () => {
   const vote = parseSenateRollCallVoteXml(`
     <roll_call_vote>

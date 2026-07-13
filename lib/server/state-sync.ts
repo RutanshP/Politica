@@ -9,11 +9,18 @@ import {
   fetchOpenStatesVotes,
   isOpenStatesConfigured,
 } from "@/lib/adapters/openstates";
-import { replaceStoredBillActions, replaceStoredBillVersions } from "@/lib/supabase/bills";
+import {
+  appendStoredBillActions,
+  appendStoredBillVersions,
+  listStoredBillActionRowsByBillIds,
+  listStoredBillVersionRowsByBillIds,
+} from "@/lib/supabase/bills";
 import { replaceStoredCommitteeMemberships } from "@/lib/supabase/committees";
 import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
-import { replaceStoredVotes } from "@/lib/supabase/votes";
-import { buildUpdatedPoliticianRowsFromVotePositions } from "@/lib/server/vote-stats";
+import { appendStoredVotes, listStoredVoteHeaders, listStoredVotePositionContextByPoliticianIds } from "@/lib/supabase/votes";
+import { applyBillSponsorStatDeltas, buildBillSponsorStatDeltas } from "@/lib/server/politician-stat-deltas";
+import { applyVotePositionDeltaToPoliticians, buildUpdatedPoliticianRowsFromVotePositions, hasStoredVoteStatCounters } from "@/lib/server/vote-stats";
+import { buildSourceFingerprint, classifyFreshness, normalizeSourceUpdatedAt } from "@/lib/server/sync-freshness";
 import { normalizeOfficeTitle, normalizePersonLookup, normalizeStateLabel, slugifySegment } from "@/lib/utils";
 import type {
   BillActionRow,
@@ -87,6 +94,51 @@ function getOpenStatesStateCodes() {
     .filter(Boolean);
 }
 
+function buildOpenStatesBillFreshness(bill: OpenStatesBill) {
+  return {
+    sourceUpdatedAt: normalizeSourceUpdatedAt(bill.updated_at || bill.latest_action_date || bill.created_at),
+    sourceFingerprint: buildSourceFingerprint({
+      id: bill.id || null,
+      identifier: bill.identifier || null,
+      updated_at: bill.updated_at || null,
+      latest_action_date: bill.latest_action_date || null,
+      latest_action_description: bill.latest_action_description || null,
+      title: bill.title || null,
+      subjects: bill.subjects || [],
+      from_organization: bill.from_organization || null,
+      sponsorships: bill.sponsorships || [],
+    }),
+  };
+}
+
+function buildOpenStatesPersonFreshness(person: Awaited<ReturnType<typeof fetchOpenStatesPeople>>[number]) {
+  return {
+    sourceUpdatedAt: null,
+    sourceFingerprint: buildSourceFingerprint({
+      id: person.id || null,
+      name: person.name || null,
+      party: person.party || [],
+      given_name: person.given_name || null,
+      family_name: person.family_name || null,
+      current_role: person.current_role || null,
+      offices: person.offices || [],
+      links: person.links || [],
+    }),
+  };
+}
+
+function buildOpenStatesCommitteeFingerprint(committee: Awaited<ReturnType<typeof fetchOpenStatesCommittees>>[number]) {
+  return buildSourceFingerprint({
+    id: committee.id || null,
+    name: committee.name || null,
+    classification: committee.classification || null,
+    chamber: committee.chamber || null,
+    members: committee.members || [],
+    jurisdiction: committee.jurisdiction || null,
+    links: committee.links || [],
+  });
+}
+
 function buildSponsorFields(state: string, bill: OpenStatesBill) {
   const primarySponsor = bill.sponsorships?.find((item) => item.primary) || bill.sponsorships?.[0];
   const sponsorName = primarySponsor?.person?.name || primarySponsor?.name || "State sponsor unavailable";
@@ -145,11 +197,15 @@ function buildStateVoteRows(
   };
 }
 
-export async function syncStateLegislationFromOpenStates(states: string | string[] = getOpenStatesStateCodes()) {
+export async function syncStateLegislationFromOpenStates(
+  states: string | string[] = getOpenStatesStateCodes(),
+  options?: { mode?: "incremental" | "full" },
+) {
   if (!isOpenStatesConfigured()) {
     throw new Error("OpenStates API is not configured");
   }
 
+  const mode = options?.mode || "incremental";
   const stateCodes = (Array.isArray(states) ? states : [states])
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
@@ -163,6 +219,20 @@ export async function syncStateLegislationFromOpenStates(states: string | string
     select: "bill_id",
     paginateAll: true,
   }).catch(() => []);
+  const existingVoteHeaders = await listStoredVoteHeaders().catch(() => []);
+  const existingPoliticianRows = await fetchSupabaseRows<PoliticianRow>("politicians", "jurisdiction_type=eq.state&order=id.asc", {
+    cache: "no-store",
+    paginateAll: true,
+  }).catch(() => []);
+  const existingCommitteeRows = await fetchSupabaseRows<CommitteeRow>("committees", "jurisdiction_type=eq.state&order=id.asc", {
+    cache: "no-store",
+    paginateAll: true,
+  }).catch(() => []);
+  const existingBillRowsById = new Map(existingStateBillRows.map((row) => [row.id, row]));
+  const existingPoliticiansById = new Map(existingPoliticianRows.map((row) => [row.id, row]));
+  const existingCommitteesById = new Map(existingCommitteeRows.map((row) => [row.id, row]));
+  const existingVoteIds = new Set(existingVoteHeaders.map((row) => row.id));
+  const existingVoteCanonicalIds = new Set(existingVoteHeaders.map((row) => row.canonical_id).filter(Boolean));
 
   const politicianMap = new Map<string, PoliticianRow>();
   const committeeMap = new Map<string, CommitteeRow>();
@@ -173,6 +243,12 @@ export async function syncStateLegislationFromOpenStates(states: string | string
   const billVersionRows: BillVersionRow[] = [];
   const committeeMembershipRows: CommitteeMemberRow[] = [];
   const stateFailures: Array<{ state: string; error: string }> = [];
+  let newBills = 0;
+  let changedBills = 0;
+  let unchangedBillsSkipped = 0;
+  let newPoliticians = 0;
+  let changedPoliticians = 0;
+  let unchangedPoliticiansSkipped = 0;
 
   for (const state of stateCodes) {
     let people;
@@ -202,6 +278,22 @@ export async function syncStateLegislationFromOpenStates(states: string | string
         ? `${stateName} Senator`
         : `${stateName} Representative`;
       const id = person.id || `${state}-${slugifySegment(name)}`;
+      const existing = existingPoliticiansById.get(id);
+      const freshness = buildOpenStatesPersonFreshness(person);
+      const classification = mode === "full"
+        ? (existing ? "changed" : "new")
+        : classifyFreshness(existing, freshness.sourceUpdatedAt, freshness.sourceFingerprint);
+
+      if (classification === "unchanged") {
+        unchangedPoliticiansSkipped += 1;
+        return;
+      }
+
+      if (classification === "new") {
+        newPoliticians += 1;
+      } else {
+        changedPoliticians += 1;
+      }
 
       politicianMap.set(id, {
         id,
@@ -226,6 +318,10 @@ export async function syncStateLegislationFromOpenStates(states: string | string
           billsIntroduced: 0,
           billsPassed: 0,
           amendmentsOffered: 0,
+          totalVotes: 0,
+          castVotes: 0,
+          withPartyCount: 0,
+          againstPartyCount: 0,
         },
         ideology: {},
         source: "openstates_sync",
@@ -234,6 +330,10 @@ export async function syncStateLegislationFromOpenStates(states: string | string
         jurisdiction_type: "state",
         state_code: state.toUpperCase(),
         session_id: null,
+        source_updated_at: freshness.sourceUpdatedAt,
+        source_fingerprint: freshness.sourceFingerprint,
+        last_profile_synced_at: new Date().toISOString(),
+        last_stats_recomputed_at: existing?.last_stats_recomputed_at || null,
         synced_at: new Date().toISOString(),
         raw_payload: person,
         raw_member: person,
@@ -241,6 +341,17 @@ export async function syncStateLegislationFromOpenStates(states: string | string
     });
 
     for (const committee of committees.slice(0, OPENSTATES_MAX_ROWS)) {
+      const seedCommitteeName = committee.name || `${state.toUpperCase()} Legislature`;
+      const seedCommitteeId = `${state}-${committee.id || slugifySegment(seedCommitteeName)}`;
+      const existingCommittee = existingCommitteesById.get(seedCommitteeId);
+      const seedFingerprint = buildOpenStatesCommitteeFingerprint(committee);
+      const existingCommitteeFingerprint = existingCommittee
+        ? buildSourceFingerprint(existingCommittee.raw_committee || existingCommittee.raw_payload || {})
+        : null;
+      if (mode !== "full" && existingCommittee && existingCommitteeFingerprint === seedFingerprint) {
+        continue;
+      }
+
       let detail = committee;
       if (committee.id) {
         detail = await fetchOpenStatesCommitteeDetail(committee.id).catch(() => committee);
@@ -298,9 +409,33 @@ export async function syncStateLegislationFromOpenStates(states: string | string
     }
 
     for (const listBill of bills.slice(0, OPENSTATES_MAX_ROWS)) {
+      const seedId = listBill.id || `${state}-${slugifySegment(listBill.identifier || listBill.title || randomUUID())}`;
+      const existingBill = existingBillRowsById.get(seedId);
+      const seedFreshness = buildOpenStatesBillFreshness(listBill);
+      const initialClassification = mode === "full"
+        ? (existingBill ? "changed" : "new")
+        : classifyFreshness(existingBill, seedFreshness.sourceUpdatedAt, seedFreshness.sourceFingerprint);
+      if (initialClassification === "unchanged" && existingBill) {
+        unchangedBillsSkipped += 1;
+        continue;
+      }
+
       const detail = listBill.id
         ? await fetchOpenStatesBillDetail(listBill.id).catch(() => listBill)
         : listBill;
+      const freshness = buildOpenStatesBillFreshness(detail);
+      const classification = mode === "full"
+        ? (existingBill ? "changed" : "new")
+        : classifyFreshness(existingBill, freshness.sourceUpdatedAt, freshness.sourceFingerprint);
+      if (classification === "unchanged" && existingBill) {
+        unchangedBillsSkipped += 1;
+        continue;
+      }
+      if (classification === "new") {
+        newBills += 1;
+      } else {
+        changedBills += 1;
+      }
       const committeeName = detail.from_organization?.name || `${state.toUpperCase()} Legislature`;
       const committeeId = `${state}-${detail.from_organization?.name ? detail.from_organization.name : slugifySegment(committeeName)}`;
       const sponsorFields = buildSponsorFields(state, detail);
@@ -340,7 +475,10 @@ export async function syncStateLegislationFromOpenStates(states: string | string
         committeeRow.active_bill_ids.push(id);
       }
 
-      const existingSponsor = politicianMap.get(sponsorFields.sponsorId);
+      const existingSponsor = politicianMap.get(sponsorFields.sponsorId) || existingPoliticiansById.get(sponsorFields.sponsorId);
+      if (!politicianMap.has(sponsorFields.sponsorId) && existingSponsor) {
+        politicianMap.set(sponsorFields.sponsorId, existingSponsor);
+      }
       if (!existingSponsor && sponsorFields.sponsorName) {
         politicianMap.set(sponsorFields.sponsorId, {
           id: sponsorFields.sponsorId,
@@ -368,6 +506,10 @@ export async function syncStateLegislationFromOpenStates(states: string | string
             billsIntroduced: 0,
             billsPassed: 0,
             amendmentsOffered: 0,
+            totalVotes: 0,
+            castVotes: 0,
+            withPartyCount: 0,
+            againstPartyCount: 0,
           },
           ideology: {},
           source: "openstates_sync",
@@ -376,6 +518,10 @@ export async function syncStateLegislationFromOpenStates(states: string | string
           jurisdiction_type: "state",
           state_code: state.toUpperCase(),
           session_id: null,
+          source_updated_at: null,
+          source_fingerprint: null,
+          last_profile_synced_at: null,
+          last_stats_recomputed_at: null,
           synced_at: new Date().toISOString(),
           raw_payload: detail.sponsorships?.[0] || detail,
           raw_member: detail.sponsorships?.[0] || detail,
@@ -416,6 +562,12 @@ export async function syncStateLegislationFromOpenStates(states: string | string
         jurisdiction_type: "state",
         state_code: state.toUpperCase(),
         session_id: null,
+        source_updated_at: freshness.sourceUpdatedAt,
+        source_fingerprint: freshness.sourceFingerprint,
+        last_detail_synced_at: new Date().toISOString(),
+        last_actions_synced_at: new Date().toISOString(),
+        last_versions_synced_at: new Date().toISOString(),
+        last_votes_synced_at: null,
         synced_at: new Date().toISOString(),
         raw_payload: detail,
         raw_bill: detail,
@@ -459,6 +611,9 @@ export async function syncStateLegislationFromOpenStates(states: string | string
 
       (detail.votes ?? []).forEach((vote) => {
         const { voteRow, positionRows } = buildStateVoteRows(state, vote, id);
+        if (existingVoteIds.has(voteRow.id) || (voteRow.canonical_id && existingVoteCanonicalIds.has(voteRow.canonical_id))) {
+          return;
+        }
         voteMap.set(voteRow.id, voteRow);
         votePositionRows.push(...positionRows);
       });
@@ -468,6 +623,9 @@ export async function syncStateLegislationFromOpenStates(states: string | string
       const linkedBill = [...billMap.values()].find((billRow) =>
         billRow.state === state.toUpperCase() && billRow.number === vote.bill?.identifier);
       const { voteRow, positionRows } = buildStateVoteRows(state, vote, linkedBill?.id);
+      if (existingVoteIds.has(voteRow.id) || (voteRow.canonical_id && existingVoteCanonicalIds.has(voteRow.canonical_id))) {
+        return;
+      }
       voteMap.set(voteRow.id, voteRow);
       votePositionRows.push(...positionRows);
     });
@@ -475,28 +633,12 @@ export async function syncStateLegislationFromOpenStates(states: string | string
 
   const uniqueVotePositionRows = votePositionRows.filter((row, index, items) =>
     items.findIndex((candidate) => candidate.vote_id === row.vote_id && candidate.politician_id === row.politician_id) === index);
-  const basePoliticianRows = [...politicianMap.values()];
-  const updatedPoliticianRows = buildUpdatedPoliticianRowsFromVotePositions(basePoliticianRows, uniqueVotePositionRows);
-  const updatedPoliticianMap = new Map(updatedPoliticianRows.map((row) => [row.id, row]));
-  const politicianRows = basePoliticianRows.map((row) => updatedPoliticianMap.get(row.id) || row);
-
-  const sponsoredBillCounts = new Map<string, number>();
-  const passedBillCounts = new Map<string, number>();
-  [...billMap.values()].forEach((bill) => {
-    sponsoredBillCounts.set(bill.sponsor_id, (sponsoredBillCounts.get(bill.sponsor_id) || 0) + 1);
-    if (bill.status === "Passed Chamber" || bill.status === "Signed") {
-      passedBillCounts.set(bill.sponsor_id, (passedBillCounts.get(bill.sponsor_id) || 0) + 1);
+  const affectedPoliticianIdsFromVotes = [...new Set(uniqueVotePositionRows.map((row) => row.politician_id))];
+  affectedPoliticianIdsFromVotes.forEach((politicianId) => {
+    if (!politicianMap.has(politicianId) && existingPoliticiansById.has(politicianId)) {
+      politicianMap.set(politicianId, existingPoliticiansById.get(politicianId)!);
     }
   });
-  const finalizedPoliticianRows = politicianRows.map((row) => ({
-    ...row,
-    stats: {
-      ...row.stats,
-      billsIntroduced: sponsoredBillCounts.get(row.id) || row.stats.billsIntroduced,
-      billsPassed: passedBillCounts.get(row.id) || row.stats.billsPassed,
-    },
-  }));
-
   const billRows = [...billMap.values()];
   const voteRows = [...voteMap.values()];
   const committeeRows = [...committeeMap.values()].map((committee) => ({
@@ -506,6 +648,107 @@ export async function syncStateLegislationFromOpenStates(states: string | string
       .sort((left, right) => left.sort_order - right.sort_order)
       .map((row) => row.politician_id),
   }));
+  const activeStateBillIds = new Set(billRows.map((row) => row.id));
+  const voteBackedBillIds = new Set(existingVoteRows.map((row) => row.bill_id));
+  const staleStateBillIds = mode === "full"
+    ? existingStateBillRows
+    .filter((row) =>
+      row.jurisdiction_type === "state"
+      && normalizedStateCodes.has((row.state_code || row.state || "").toUpperCase())
+      && (row.source_system || "").toLowerCase() === "openstates"
+      && !activeStateBillIds.has(row.id)
+      && !voteBackedBillIds.has(row.id))
+    .map((row) => row.id)
+    : [];
+  const removedBillRowsForStats = staleStateBillIds
+    .map((billId) => existingBillRowsById.get(billId))
+    .filter((row): row is BillRow => Boolean(row));
+  const politicianRowsById = new Map<string, PoliticianRow>();
+  [...politicianMap.values()].forEach((row) => {
+    politicianRowsById.set(row.id, row);
+  });
+  const basePoliticianRows = [...politicianRowsById.values()];
+  const rowsMissingVoteCounters = basePoliticianRows
+    .filter((row) => affectedPoliticianIdsFromVotes.includes(row.id))
+    .filter((row) => !hasStoredVoteStatCounters(row.stats));
+  if (rowsMissingVoteCounters.length > 0) {
+    const existingVoteContextRows = await listStoredVotePositionContextByPoliticianIds(
+      rowsMissingVoteCounters.map((row) => row.id),
+    ).catch(() => []);
+    const backfilledRows = buildUpdatedPoliticianRowsFromVotePositions(
+      rowsMissingVoteCounters,
+      existingVoteContextRows,
+    );
+    backfilledRows.forEach((row) => {
+      politicianRowsById.set(row.id, row);
+    });
+  }
+  const voteUpdatedRows = applyVotePositionDeltaToPoliticians(
+    affectedPoliticianIdsFromVotes
+      .map((politicianId) => politicianRowsById.get(politicianId))
+      .filter((row): row is PoliticianRow => Boolean(row)),
+    uniqueVotePositionRows,
+  );
+  voteUpdatedRows.forEach((row) => {
+    politicianRowsById.set(row.id, row);
+  });
+  const billSponsorStatDeltas = buildBillSponsorStatDeltas(
+    existingStateBillRows,
+    billRows,
+    removedBillRowsForStats,
+  );
+  [...billSponsorStatDeltas.keys()].forEach((politicianId) => {
+    if (!politicianRowsById.has(politicianId) && existingPoliticiansById.has(politicianId)) {
+      politicianRowsById.set(politicianId, existingPoliticiansById.get(politicianId)!);
+    }
+  });
+  const finalizedPoliticianRows = applyBillSponsorStatDeltas(
+    [...politicianRowsById.values()],
+    billSponsorStatDeltas,
+  ).filter((row) =>
+    politicianMap.has(row.id)
+    || affectedPoliticianIdsFromVotes.includes(row.id)
+    || billSponsorStatDeltas.has(row.id));
+  const changedBillIds = billRows.map((row) => row.id);
+  const changedCommitteeIds = committeeRows.map((row) => row.id);
+  const existingActionRows = await listStoredBillActionRowsByBillIds(changedBillIds);
+  const existingActionSignaturesByBillId = new Map<string, Set<string>>();
+  const nextActionSortOrderByBillId = new Map<string, number>();
+  existingActionRows.forEach((row) => {
+    const signatures = existingActionSignaturesByBillId.get(row.bill_id) || new Set<string>();
+    signatures.add(`${row.date}|${row.label}|${row.detail}|${row.type}`);
+    existingActionSignaturesByBillId.set(row.bill_id, signatures);
+    nextActionSortOrderByBillId.set(row.bill_id, Math.max(nextActionSortOrderByBillId.get(row.bill_id) || 0, row.sort_order + 1));
+  });
+  const appendedActionRows = billActionRows.flatMap((row) => {
+    const signatures = existingActionSignaturesByBillId.get(row.bill_id) || new Set<string>();
+    const signature = `${row.date}|${row.label}|${row.detail}|${row.type}`;
+    if (signatures.has(signature)) {
+      return [];
+    }
+    const sortOrder = nextActionSortOrderByBillId.get(row.bill_id) || 0;
+    nextActionSortOrderByBillId.set(row.bill_id, sortOrder + 1);
+    signatures.add(signature);
+    existingActionSignaturesByBillId.set(row.bill_id, signatures);
+    return [{ ...row, sort_order: sortOrder }];
+  });
+
+  const existingVersionRows = await listStoredBillVersionRowsByBillIds(changedBillIds);
+  const existingVersionIdsByBillId = new Map<string, Set<string>>();
+  existingVersionRows.forEach((row) => {
+    const ids = existingVersionIdsByBillId.get(row.bill_id) || new Set<string>();
+    ids.add(row.version_id);
+    existingVersionIdsByBillId.set(row.bill_id, ids);
+  });
+  const appendedVersionRows = billVersionRows.filter((row) => {
+    const ids = existingVersionIdsByBillId.get(row.bill_id) || new Set<string>();
+    if (ids.has(row.version_id)) {
+      return false;
+    }
+    ids.add(row.version_id);
+    existingVersionIdsByBillId.set(row.bill_id, ids);
+    return true;
+  });
 
   await Promise.all([
     finalizedPoliticianRows.length > 0
@@ -517,22 +760,19 @@ export async function syncStateLegislationFromOpenStates(states: string | string
     committeeRows.length > 0
       ? upsertSupabaseRowsInChunks("committees", committeeRows, "id", 25)
       : Promise.resolve([]),
-    replaceStoredCommitteeMemberships(committeeRows.map((row) => row.id), committeeMembershipRows),
-    replaceStoredBillActions(billRows.map((row) => row.id), billActionRows),
-    replaceStoredBillVersions(billRows.map((row) => row.id), billVersionRows),
-    replaceStoredVotes(voteRows.map((row) => row.id), voteRows, uniqueVotePositionRows),
+    changedCommitteeIds.length > 0
+      ? replaceStoredCommitteeMemberships(changedCommitteeIds, committeeMembershipRows.filter((row) => changedCommitteeIds.includes(row.committee_id)))
+      : Promise.resolve([]),
+    appendedActionRows.length > 0
+      ? appendStoredBillActions(appendedActionRows)
+      : Promise.resolve([]),
+    appendedVersionRows.length > 0
+      ? appendStoredBillVersions(appendedVersionRows)
+      : Promise.resolve([]),
+    voteRows.length > 0
+      ? appendStoredVotes(voteRows, uniqueVotePositionRows)
+      : Promise.resolve([]),
   ]);
-
-  const activeStateBillIds = new Set(billRows.map((row) => row.id));
-  const voteBackedBillIds = new Set(existingVoteRows.map((row) => row.bill_id));
-  const staleStateBillIds = existingStateBillRows
-    .filter((row) =>
-      row.jurisdiction_type === "state"
-      && normalizedStateCodes.has((row.state_code || row.state || "").toUpperCase())
-      && (row.source_system || "").toLowerCase() === "openstates"
-      && !activeStateBillIds.has(row.id)
-      && !voteBackedBillIds.has(row.id))
-    .map((row) => row.id);
 
   if (staleStateBillIds.length > 0) {
     for (let index = 0; index < staleStateBillIds.length; index += 100) {
@@ -544,13 +784,24 @@ export async function syncStateLegislationFromOpenStates(states: string | string
     }
   }
 
-  if (politicianMap.size === 0 && billMap.size === 0 && committeeMap.size === 0) {
+  if (politicianMap.size === 0 && billMap.size === 0 && committeeMap.size === 0 && stateFailures.length > 0) {
     const detail = stateFailures[0]?.error || "OpenStates sync produced no records";
     throw new Error(detail);
   }
 
   return {
     synced: finalizedPoliticianRows.length + billRows.length + committeeRows.length + voteRows.length,
+    mode,
+    newBills,
+    changedBills,
+    unchangedBillsSkipped,
+    newPoliticians,
+    changedPoliticians,
+    unchangedPoliticiansSkipped,
+    newActionsAppended: appendedActionRows.length,
+    newVersionsAppended: appendedVersionRows.length,
+    newVotesAppended: voteRows.length,
+    derivedPoliticiansRecomputed: finalizedPoliticianRows.length,
     staleBillsDeleted: staleStateBillIds.length,
     statesSynced: stateCodes.length,
     stateFailures,

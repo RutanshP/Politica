@@ -52,6 +52,7 @@ export async function runPipeline(
       startedAt,
       finishedAt,
       recordCount: result.recordCount,
+      metadata: result.metadata,
     };
   } catch (error) {
     const finishedAt = new Date().toISOString();
@@ -84,6 +85,7 @@ export async function runPipeline(
       finishedAt,
       recordCount: 0,
       error: message,
+      metadata: undefined,
     };
   }
 }

@@ -11,9 +11,11 @@ export async function POST(request: Request) {
   if (!isAuthorizedSyncRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const url = new URL(request.url);
+  const mode = /^full$/i.test(url.searchParams.get("mode") || "") ? "full" : "incremental";
 
   const result = await runPipeline("state_legislation_sync", async () => {
-    const sync = await syncStateLegislationFromOpenStates();
+    const sync = await syncStateLegislationFromOpenStates(undefined, { mode });
     return { recordCount: sync.synced, metadata: sync };
   });
 

@@ -123,6 +123,10 @@ export interface Politician {
     billsIntroduced: number;
     billsPassed: number;
     amendmentsOffered: number;
+    totalVotes?: number;
+    castVotes?: number;
+    withPartyCount?: number;
+    againstPartyCount?: number;
   };
   ideology: Record<string, number>;
   sourceMetadata?: SourceMetadata;
@@ -259,4 +263,5 @@ export interface SyncPipelineSummary {
   finishedAt?: string;
   recordCount: number;
   error?: string;
+  metadata?: unknown;
 }

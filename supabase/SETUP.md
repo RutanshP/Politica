@@ -15,12 +15,13 @@ Congress.gov is now intended for sync jobs, not normal page rendering.
 
 ## 1. Create the tables and indexes
 
-In the Supabase SQL Editor, run all four files:
+In the Supabase SQL Editor, run all five files:
 
 - `supabase/sql/001_politica_politicians.sql`
 - `supabase/sql/002_politica_legislation.sql`
 - `supabase/sql/003_politica_platform.sql`
 - `supabase/sql/004_politica_civic_read_indexes.sql`
+- `supabase/sql/005_politica_incremental_sync_metadata.sql`
 
 ## 2. Copy project keys
 

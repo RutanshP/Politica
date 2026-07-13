@@ -16,6 +16,26 @@ const CONGRESS_FETCH_TIMEOUT_MS = Number.parseInt(
   process.env.POLITICA_CONGRESS_FETCH_TIMEOUT_MS?.trim() || "20000",
   10,
 );
+const CONGRESS_MEMBER_DETAIL_FETCH_TIMEOUT_MS = Number.parseInt(
+  process.env.POLITICA_CONGRESS_MEMBER_FETCH_TIMEOUT_MS?.trim() || "5000",
+  10,
+);
+const CONGRESS_FETCH_RETRY_ATTEMPTS = Number.parseInt(
+  process.env.POLITICA_CONGRESS_FETCH_RETRY_ATTEMPTS?.trim() || "3",
+  10,
+);
+const CONGRESS_MEMBER_DETAIL_FETCH_RETRY_ATTEMPTS = Number.parseInt(
+  process.env.POLITICA_CONGRESS_MEMBER_FETCH_RETRY_ATTEMPTS?.trim() || "1",
+  10,
+);
+const CONGRESS_FETCH_RETRY_BASE_DELAY_MS = Number.parseInt(
+  process.env.POLITICA_CONGRESS_FETCH_RETRY_BASE_DELAY_MS?.trim() || "750",
+  10,
+);
+const CONGRESS_FETCH_RETRY_MAX_DELAY_MS = Number.parseInt(
+  process.env.POLITICA_CONGRESS_FETCH_RETRY_MAX_DELAY_MS?.trim() || "5000",
+  10,
+);
 
 function getCongressApiKey() {
   return process.env.CONGRESS_API_KEY?.trim()
@@ -49,42 +69,145 @@ function applyCongressQueryParams(url: URL, params?: Record<string, string | num
   return url;
 }
 
-function getCongressFetchSignal() {
-  const timeoutMs = Number.isFinite(CONGRESS_FETCH_TIMEOUT_MS) && CONGRESS_FETCH_TIMEOUT_MS > 0
-    ? CONGRESS_FETCH_TIMEOUT_MS
-    : 20000;
+function getCongressFetchSignal(timeoutOverrideMs?: number) {
+  const timeoutMs = Number.isFinite(timeoutOverrideMs) && (timeoutOverrideMs ?? 0) > 0
+    ? timeoutOverrideMs as number
+    : Number.isFinite(CONGRESS_FETCH_TIMEOUT_MS) && CONGRESS_FETCH_TIMEOUT_MS > 0
+      ? CONGRESS_FETCH_TIMEOUT_MS
+      : 20000;
   return AbortSignal.timeout(timeoutMs);
 }
 
-async function fetchCongressJson<T>(pathname: string, params?: Record<string, string | number | undefined>) {
-  const response = await fetch(buildCongressUrl(pathname, params), {
-    next: { revalidate: 21600 },
-    signal: getCongressFetchSignal(),
-    headers: {
-      Accept: "application/json",
-    },
-  });
+function getCongressFetchRetryAttempts(overrideAttempts?: number) {
+  return Number.isFinite(overrideAttempts) && (overrideAttempts ?? 0) > 0
+    ? overrideAttempts as number
+    : Number.isFinite(CONGRESS_FETCH_RETRY_ATTEMPTS) && CONGRESS_FETCH_RETRY_ATTEMPTS > 0
+      ? CONGRESS_FETCH_RETRY_ATTEMPTS
+      : 3;
+}
 
-  if (!response.ok) {
-    throw new Error(`Congress API request failed: ${response.status} ${response.statusText}`);
+function getCongressFetchRetryDelayMs(attempt: number) {
+  const baseDelay = Number.isFinite(CONGRESS_FETCH_RETRY_BASE_DELAY_MS) && CONGRESS_FETCH_RETRY_BASE_DELAY_MS > 0
+    ? CONGRESS_FETCH_RETRY_BASE_DELAY_MS
+    : 750;
+  const maxDelay = Number.isFinite(CONGRESS_FETCH_RETRY_MAX_DELAY_MS) && CONGRESS_FETCH_RETRY_MAX_DELAY_MS > 0
+    ? CONGRESS_FETCH_RETRY_MAX_DELAY_MS
+    : 5000;
+  return Math.min(maxDelay, baseDelay * (2 ** Math.max(0, attempt - 1)));
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getRetryAfterDelayMs(response: Response) {
+  const retryAfter = response.headers.get("retry-after")?.trim();
+  if (!retryAfter) {
+    return null;
   }
 
+  const seconds = Number.parseFloat(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+
+  const retryDate = Date.parse(retryAfter);
+  if (Number.isNaN(retryDate)) {
+    return null;
+  }
+
+  return Math.max(0, retryDate - Date.now());
+}
+
+function isRetriableCongressStatus(status: number) {
+  return status === 408
+    || status === 425
+    || status === 429
+    || (status >= 500 && status < 600);
+}
+
+function isRetriableCongressError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const name = error.name.toLowerCase();
+  const message = error.message.toLowerCase();
+  const cause = error.cause as { code?: string } | undefined;
+  const code = cause?.code?.toUpperCase() || "";
+
+  return name.includes("timeout")
+    || name.includes("abort")
+    || message.includes("terminated")
+    || message.includes("socket")
+    || code === "UND_ERR_SOCKET"
+    || code === "UND_ERR_CONNECT_TIMEOUT"
+    || code === "ECONNRESET"
+    || code === "ETIMEDOUT"
+    || code === "EAI_AGAIN";
+}
+
+async function fetchCongressWithRetry(
+  url: string,
+  accept: string,
+  options?: {
+    timeoutMs?: number;
+    retryAttempts?: number;
+  },
+) {
+  const attempts = getCongressFetchRetryAttempts(options?.retryAttempts);
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        cache: "no-store",
+        signal: getCongressFetchSignal(options?.timeoutMs),
+        headers: {
+          Accept: accept,
+        },
+      });
+
+      if (!response.ok) {
+        if (attempt < attempts && isRetriableCongressStatus(response.status)) {
+          const retryDelay = getRetryAfterDelayMs(response) ?? getCongressFetchRetryDelayMs(attempt);
+          await sleep(retryDelay);
+          continue;
+        }
+
+        throw new Error(`Congress API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error;
+
+      if (attempt >= attempts || !isRetriableCongressError(error)) {
+        throw error;
+      }
+
+      await sleep(getCongressFetchRetryDelayMs(attempt));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Congress API request failed");
+}
+
+async function fetchCongressJson<T>(pathname: string, params?: Record<string, string | number | undefined>) {
+  const response = await fetchCongressWithRetry(
+    buildCongressUrl(pathname, params),
+    "application/json",
+  );
   return (await response.json()) as T;
 }
 
 async function fetchCongressJsonByUrl<T>(urlString: string, params?: Record<string, string | number | undefined>) {
-  const response = await fetch(applyCongressQueryParams(new URL(urlString, CONGRESS_API_BASE), params).toString(), {
-    next: { revalidate: 21600 },
-    signal: getCongressFetchSignal(),
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Congress API request failed: ${response.status} ${response.statusText}`);
-  }
-
+  const response = await fetchCongressWithRetry(
+    applyCongressQueryParams(new URL(urlString, CONGRESS_API_BASE), params).toString(),
+    "application/json",
+  );
   return (await response.json()) as T;
 }
 
@@ -157,18 +280,10 @@ export async function fetchCongressBillTextVersions(input: {
 }
 
 export async function fetchCongressTextContent(url: string) {
-  const response = await fetch(url, {
-    next: { revalidate: 21600 },
-    signal: getCongressFetchSignal(),
-    headers: {
-      Accept: "text/plain,text/html,application/xml,text/xml;q=0.9,*/*;q=0.8",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Congress text request failed: ${response.status} ${response.statusText}`);
-  }
-
+  const response = await fetchCongressWithRetry(
+    url,
+    "text/plain,text/html,application/xml,text/xml;q=0.9,*/*;q=0.8",
+  );
   return response.text();
 }
 
@@ -189,7 +304,19 @@ export async function fetchCongressMembers(options?: {
 }
 
 export async function fetchCongressMemberDetail(bioguideId: string) {
-  return fetchCongressJson<CongressMemberDetailPayload>(`/member/${bioguideId}`);
+  const response = await fetchCongressWithRetry(
+    buildCongressUrl(`/member/${bioguideId}`),
+    "application/json",
+    {
+      timeoutMs: Number.isFinite(CONGRESS_MEMBER_DETAIL_FETCH_TIMEOUT_MS) && CONGRESS_MEMBER_DETAIL_FETCH_TIMEOUT_MS > 0
+        ? CONGRESS_MEMBER_DETAIL_FETCH_TIMEOUT_MS
+        : 5000,
+      retryAttempts: Number.isFinite(CONGRESS_MEMBER_DETAIL_FETCH_RETRY_ATTEMPTS) && CONGRESS_MEMBER_DETAIL_FETCH_RETRY_ATTEMPTS > 0
+        ? CONGRESS_MEMBER_DETAIL_FETCH_RETRY_ATTEMPTS
+        : 1,
+    },
+  );
+  return (await response.json()) as CongressMemberDetailPayload;
 }
 
 export async function fetchCongressCommittees(options?: {

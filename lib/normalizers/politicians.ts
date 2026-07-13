@@ -167,6 +167,10 @@ export function normalizeCongressMemberToPolitician(
       billsIntroduced: detailMember?.sponsoredLegislation?.count ?? 0,
       billsPassed: 0,
       amendmentsOffered: 0,
+      totalVotes: 0,
+      castVotes: 0,
+      withPartyCount: 0,
+      againstPartyCount: 0,
     },
     ideology: {},
     jurisdictionType: "federal",
@@ -179,6 +183,7 @@ export function normalizeCongressMemberToPolitician(
 }
 
 export function mapPoliticianToRow(politician: Politician, rawMember: unknown): PoliticianRow {
+  const now = new Date().toISOString();
   return {
     id: politician.id,
     slug: politician.slug,
@@ -203,7 +208,11 @@ export function mapPoliticianToRow(politician: Politician, rawMember: unknown): 
     jurisdiction_type: politician.jurisdictionType || "federal",
     state_code: normalizeStateCode(politician.state) || politician.state || null,
     session_id: politician.sessionId || null,
-    synced_at: new Date().toISOString(),
+    source_updated_at: null,
+    source_fingerprint: null,
+    last_profile_synced_at: now,
+    last_stats_recomputed_at: null,
+    synced_at: now,
     raw_payload: rawMember,
     raw_member: rawMember,
   };

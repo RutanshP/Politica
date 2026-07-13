@@ -20,6 +20,8 @@ export async function POST(request: Request) {
       .filter(Boolean);
     const syncVotes = /^(1|true|yes)$/i.test(url.searchParams.get("syncVotes") || "");
     const syncCommittees = /^(1|true|yes)$/i.test(url.searchParams.get("syncCommittees") || "");
+    const refreshStoredVotes = /^(1|true|yes)$/i.test(url.searchParams.get("refreshStoredVotes") || "");
+    const mode = /^full$/i.test(url.searchParams.get("mode") || "") ? "full" : "incremental";
     const listOffset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
     const listLimit = Number.parseInt(url.searchParams.get("limit") || "0", 10);
     const result = await runPipeline("federal_legislation_sync", async () => {
@@ -27,6 +29,8 @@ export async function POST(request: Request) {
         targetBillIds,
         syncVotes,
         syncCommittees,
+        refreshStoredVotes,
+        mode,
         listOffset: Number.isFinite(listOffset) && listOffset >= 0 ? listOffset : 0,
         listLimit: Number.isFinite(listLimit) && listLimit > 0 ? listLimit : undefined,
       });

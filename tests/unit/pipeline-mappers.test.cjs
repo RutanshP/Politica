@@ -3,7 +3,14 @@ const assert = require("node:assert/strict");
 
 const jiti = require("../support/jiti.cjs");
 
-const { buildUpdatedPoliticianRowsFromVotePositions } = jiti("@/lib/server/vote-stats");
+const {
+  applyVotePositionDeltaToPoliticians,
+  buildUpdatedPoliticianRowsFromVotePositions,
+} = jiti("@/lib/server/vote-stats");
+const {
+  applyBillSponsorStatDeltas,
+  buildBillSponsorStatDeltas,
+} = jiti("@/lib/server/politician-stat-deltas");
 const { mergeCommitteeMembershipIds } = jiti("@/lib/supabase/committees");
 const { normalizeCongressMemberToPolitician, mapPoliticianToRow } = jiti("@/lib/normalizers/politicians");
 
@@ -54,6 +61,158 @@ test("buildUpdatedPoliticianRowsFromVotePositions recomputes attendance and part
   assert.equal(rows[0].stats.attendance, 50);
   assert.equal(rows[0].stats.votesWithParty, 100);
   assert.equal(rows[0].stats.votesAgainstParty, 0);
+  assert.equal(rows[0].stats.totalVotes, 2);
+  assert.equal(rows[0].stats.castVotes, 1);
+  assert.equal(rows[0].stats.withPartyCount, 1);
+  assert.equal(rows[0].stats.againstPartyCount, 0);
+});
+
+test("applyVotePositionDeltaToPoliticians appends new vote counters without replaying history", () => {
+  const rows = applyVotePositionDeltaToPoliticians(
+    [{
+      id: "member-1",
+      slug: "member-1",
+      name: "Ada Lovelace",
+      title: "US Representative",
+      party: "Democratic",
+      state: "CA",
+      district: "CA-12",
+      biography: "",
+      born: "",
+      education: "",
+      occupation: "",
+      website: "",
+      office_phone: "",
+      office_address: "",
+      next_election: "",
+      stats: {
+        votesWithParty: 80,
+        votesAgainstParty: 20,
+        attendance: 90,
+        billsIntroduced: 0,
+        billsPassed: 0,
+        amendmentsOffered: 0,
+        totalVotes: 10,
+        castVotes: 9,
+        withPartyCount: 4,
+        againstPartyCount: 1,
+      },
+      ideology: {},
+      source: "congress_sync",
+      source_system: "congress",
+      source_id: "member-1",
+      jurisdiction_type: "federal",
+      state_code: "CA",
+      session_id: null,
+      synced_at: "2026-07-10T00:00:00.000Z",
+      raw_member: {},
+    }],
+    [
+      { vote_id: "vote-3", politician_id: "member-1", name: "Ada Lovelace", party: "D", state: "CA", vote: "Nay", source_system: "congress", source_id: "5", synced_at: "2026-07-10T00:00:00.000Z", raw_payload: {} },
+      { vote_id: "vote-3", politician_id: "member-2", name: "Bob", party: "D", state: "CA", vote: "Yea", source_system: "congress", source_id: "6", synced_at: "2026-07-10T00:00:00.000Z", raw_payload: {} },
+    ],
+  );
+
+  assert.equal(rows[0].stats.totalVotes, 11);
+  assert.equal(rows[0].stats.castVotes, 10);
+  assert.equal(rows[0].stats.withPartyCount, 4);
+  assert.equal(rows[0].stats.againstPartyCount, 1);
+  assert.equal(rows[0].stats.attendance, 91);
+  assert.equal(rows[0].stats.votesWithParty, 80);
+  assert.equal(rows[0].stats.votesAgainstParty, 20);
+});
+
+test("buildBillSponsorStatDeltas updates sponsor counts only for changed bills", () => {
+  const deltas = buildBillSponsorStatDeltas(
+    [{
+      id: "hr-1",
+      sponsor_id: "member-1",
+      status: "Introduced",
+    }],
+    [{
+      id: "hr-1",
+      sponsor_id: "member-1",
+      status: "Passed Chamber",
+    }, {
+      id: "hr-2",
+      sponsor_id: "member-2",
+      status: "Introduced",
+    }],
+  );
+  const updatedRows = applyBillSponsorStatDeltas(
+    [{
+      id: "member-1",
+      slug: "member-1",
+      name: "Ada Lovelace",
+      title: "US Representative",
+      party: "Democratic",
+      state: "CA",
+      district: "CA-12",
+      biography: "",
+      born: "",
+      education: "",
+      occupation: "",
+      website: "",
+      office_phone: "",
+      office_address: "",
+      next_election: "",
+      stats: {
+        votesWithParty: 0,
+        votesAgainstParty: 0,
+        attendance: 0,
+        billsIntroduced: 3,
+        billsPassed: 0,
+        amendmentsOffered: 0,
+      },
+      ideology: {},
+      source: "congress_sync",
+      source_system: "congress",
+      source_id: "member-1",
+      jurisdiction_type: "federal",
+      state_code: "CA",
+      session_id: null,
+      synced_at: "2026-07-10T00:00:00.000Z",
+      raw_member: {},
+    }, {
+      id: "member-2",
+      slug: "member-2",
+      name: "Grace Hopper",
+      title: "US Representative",
+      party: "Republican",
+      state: "VA",
+      district: "VA-2",
+      biography: "",
+      born: "",
+      education: "",
+      occupation: "",
+      website: "",
+      office_phone: "",
+      office_address: "",
+      next_election: "",
+      stats: {
+        votesWithParty: 0,
+        votesAgainstParty: 0,
+        attendance: 0,
+        billsIntroduced: 1,
+        billsPassed: 0,
+        amendmentsOffered: 0,
+      },
+      ideology: {},
+      source: "congress_sync",
+      source_system: "congress",
+      source_id: "member-2",
+      jurisdiction_type: "federal",
+      state_code: "VA",
+      session_id: null,
+      synced_at: "2026-07-10T00:00:00.000Z",
+      raw_member: {},
+    }],
+    deltas,
+  );
+
+  assert.equal(updatedRows[0].stats.billsIntroduced, 3);
+  assert.equal(updatedRows[0].stats.billsPassed, 1);
+  assert.equal(updatedRows[1].stats.billsIntroduced, 2);
 });
 
 test("mergeCommitteeMembershipIds applies roster ids onto committee records", () => {

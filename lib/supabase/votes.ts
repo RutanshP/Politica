@@ -1,7 +1,9 @@
-import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
+import { deleteSupabaseRows, fetchSupabasePage, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import type { VotePosition, Vote } from "@/types/civic";
 import type { VotePositionRow, VoteRow } from "@/types/supabase";
 import { normalizePartyLabel, normalizeStateLabel } from "@/lib/utils";
+
+const votePositionStatSelect = "vote_id,politician_id,party,vote";
 
 function buildQuotedInFilter(values: string[]) {
   return values
@@ -125,6 +127,32 @@ export async function listStoredVotePositionContextByPoliticianId(politicianId: 
   );
 }
 
+export async function listStoredVotePositionContextByPoliticianIds(politicianIds: string[]) {
+  if (politicianIds.length === 0) {
+    return [] as VotePositionRow[];
+  }
+
+  const chunkSize = 50;
+  const politicianPositionRows: VotePositionRow[] = [];
+
+  for (let index = 0; index < politicianIds.length; index += chunkSize) {
+    const chunk = politicianIds.slice(index, index + chunkSize);
+    const rows = await fetchSupabaseRows<VotePositionRow>(
+      "vote_positions",
+      `politician_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc`,
+      { cache: "no-store", paginateAll: true },
+    );
+    politicianPositionRows.push(...rows);
+  }
+
+  const voteIds = [...new Set(politicianPositionRows.map((row) => row.vote_id))];
+  if (voteIds.length === 0) {
+    return [];
+  }
+
+  return listStoredVotePositionsByVoteIds(voteIds);
+}
+
 export async function listStoredVoteHeaders() {
   return fetchSupabaseRows<Pick<VoteRow, "id" | "canonical_id" | "source_system" | "bill_id">>(
     "votes",
@@ -133,6 +161,44 @@ export async function listStoredVoteHeaders() {
       cache: "no-store",
       select: "id,canonical_id,source_system,bill_id",
       paginateAll: true,
+    },
+  );
+}
+
+export async function listStoredVoteHeadersByBillIds(billIds: string[]) {
+  if (billIds.length === 0) {
+    return [] as Array<Pick<VoteRow, "id" | "canonical_id" | "source_system" | "bill_id">>;
+  }
+
+  const chunkSize = 100;
+  const rows: Array<Pick<VoteRow, "id" | "canonical_id" | "source_system" | "bill_id">> = [];
+
+  for (let index = 0; index < billIds.length; index += chunkSize) {
+    const chunk = billIds.slice(index, index + chunkSize);
+    const result = await fetchSupabaseRows<Pick<VoteRow, "id" | "canonical_id" | "source_system" | "bill_id">>(
+      "votes",
+      `bill_id=in.(${buildQuotedInFilter(chunk)})&order=id.asc`,
+      {
+        cache: "no-store",
+        select: "id,canonical_id,source_system,bill_id",
+        paginateAll: true,
+      },
+    );
+    rows.push(...result);
+  }
+
+  return rows;
+}
+
+export async function listStoredFederalVoteHeadersPage(limit: number, offset: number) {
+  return fetchSupabasePage<Pick<VoteRow, "id" | "canonical_id" | "source_system" | "bill_id">>(
+    "votes",
+    "source_system=in.(house_clerk,senate_lis)&order=id.asc",
+    {
+      cache: "no-store",
+      select: "id,canonical_id,source_system,bill_id",
+      limit,
+      offset,
     },
   );
 }
@@ -150,6 +216,44 @@ export async function listStoredVotePositionsByVoteIds(voteIds: string[]) {
       "vote_positions",
       `vote_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc,name.asc`,
       { cache: "no-store", paginateAll: true },
+    );
+    rows.push(...result);
+  }
+
+  return rows;
+}
+
+export async function listStoredVoteStatContextByPoliticianIds(politicianIds: string[]) {
+  if (politicianIds.length === 0) {
+    return [] as Pick<VotePositionRow, "vote_id" | "politician_id" | "party" | "vote">[];
+  }
+
+  const chunkSize = 50;
+  const politicianPositionRows: Pick<VotePositionRow, "vote_id" | "politician_id" | "party" | "vote">[] = [];
+
+  for (let index = 0; index < politicianIds.length; index += chunkSize) {
+    const chunk = politicianIds.slice(index, index + chunkSize);
+    const rows = await fetchSupabaseRows<Pick<VotePositionRow, "vote_id" | "politician_id" | "party" | "vote">>(
+      "vote_positions",
+      `politician_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc`,
+      { cache: "no-store", paginateAll: true, select: votePositionStatSelect },
+    );
+    politicianPositionRows.push(...rows);
+  }
+
+  const voteIds = [...new Set(politicianPositionRows.map((row) => row.vote_id))];
+  if (voteIds.length === 0) {
+    return [];
+  }
+
+  const rows: Pick<VotePositionRow, "vote_id" | "politician_id" | "party" | "vote">[] = [];
+
+  for (let index = 0; index < voteIds.length; index += 100) {
+    const chunk = voteIds.slice(index, index + 100);
+    const result = await fetchSupabaseRows<Pick<VotePositionRow, "vote_id" | "politician_id" | "party" | "vote">>(
+      "vote_positions",
+      `vote_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc`,
+      { cache: "no-store", paginateAll: true, select: votePositionStatSelect },
     );
     rows.push(...result);
   }

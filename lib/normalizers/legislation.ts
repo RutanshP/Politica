@@ -11,7 +11,19 @@ export function sortBillsByActivity(bills: Bill[]) {
   return [...bills].sort((left, right) => parseDateLabel(right.lastActionAt) - parseDateLabel(left.lastActionAt));
 }
 
-export function mapBillToRow(bill: Bill, rawBill: unknown): BillRow {
+export function mapBillToRow(
+  bill: Bill,
+  rawBill: unknown,
+  options?: {
+    sourceUpdatedAt?: string | null;
+    sourceFingerprint?: string | null;
+    lastDetailSyncedAt?: string | null;
+    lastActionsSyncedAt?: string | null;
+    lastVersionsSyncedAt?: string | null;
+    lastVotesSyncedAt?: string | null;
+  },
+): BillRow {
+  const now = new Date().toISOString();
   return {
     id: bill.id,
     slug: bill.slug || slugifySegment(`${bill.number}-${bill.title}`),
@@ -41,7 +53,13 @@ export function mapBillToRow(bill: Bill, rawBill: unknown): BillRow {
     jurisdiction_type: bill.jurisdiction === "Federal" ? "federal" : "state",
     state_code: bill.state || null,
     session_id: bill.sessionId || null,
-    synced_at: new Date().toISOString(),
+    source_updated_at: options?.sourceUpdatedAt || null,
+    source_fingerprint: options?.sourceFingerprint || null,
+    last_detail_synced_at: options?.lastDetailSyncedAt || null,
+    last_actions_synced_at: options?.lastActionsSyncedAt || null,
+    last_versions_synced_at: options?.lastVersionsSyncedAt || null,
+    last_votes_synced_at: options?.lastVotesSyncedAt || null,
+    synced_at: now,
     raw_payload: rawBill,
     raw_bill: rawBill,
   };

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const jiti = require("../support/jiti.cjs");
 
 const { syncLegislationFromCongress } = jiti("@/lib/server/legislation-sync");
+const { buildSourceFingerprint, normalizeSourceUpdatedAt } = jiti("@/lib/server/sync-freshness");
 
 function createBillRow(id, title, summary, overrides = {}) {
   return {
@@ -305,5 +306,276 @@ test("syncLegislationFromCongress preserves existing detailed bills on enrichmen
     assert.ok(deletedUrls.some((value) => value.includes("/rest/v1/bills") && value.includes("hr-999")));
   } finally {
     global.fetch = originalFetch;
+  }
+});
+
+test("syncLegislationFromCongress skips unchanged bills before detail fetch in incremental mode", async () => {
+  process.env.CONGRESS_API_KEY = "test-key";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+  process.env.SUPABASE_SECRET_KEY = "test-secret";
+  process.env.POLITICA_DEFAULT_CONGRESS = "119";
+  process.env.POLITICA_FEDERAL_VOTE_MAX_PER_SESSION = "0";
+
+  const listBill = {
+    congress: "119",
+    type: "hr",
+    number: "777",
+    title: "Stable Act",
+    originChamber: "House",
+    updateDate: "2026-01-08T00:00:00Z",
+    latestAction: { text: "Introduced in House", actionDate: "2026-01-08" },
+    sponsors: [{ bioguideId: "A0001", fullName: "Rep. Ada Lovelace" }],
+  };
+  const sourceFingerprint = buildSourceFingerprint({
+    congress: listBill.congress,
+    type: listBill.type,
+    number: listBill.number,
+    updateDate: listBill.updateDate,
+    title: listBill.title,
+    originChamber: listBill.originChamber,
+    latestAction: listBill.latestAction,
+    sponsors: listBill.sponsors,
+    policyArea: null,
+    committees: null,
+  });
+
+  const originalFetch = global.fetch;
+  let detailFetches = 0;
+  let billWrites = 0;
+
+  global.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = init.method || "GET";
+
+    if (url.hostname === "api.congress.gov") {
+      if (url.pathname === "/v3/bill/119") {
+        return {
+          ok: true,
+          async json() {
+            return { bills: [listBill] };
+          },
+        };
+      }
+
+      if (url.pathname === "/v3/bill/119/hr/777") {
+        detailFetches += 1;
+        throw new Error("detail fetch should not run for unchanged bill");
+      }
+
+      throw new Error(`Unexpected Congress URL: ${url.toString()}`);
+    }
+
+    if (url.hostname === "example.supabase.co") {
+      if (method === "GET" && url.pathname === "/rest/v1/bills") {
+        return {
+          ok: true,
+          async json() {
+            return [
+              createBillRow("hr-777", "Stable Act", "Existing stored detailed summary.", {
+                source_updated_at: normalizeSourceUpdatedAt(listBill.updateDate),
+                source_fingerprint: sourceFingerprint,
+                last_detail_synced_at: "2026-07-11T00:00:00.000Z",
+              }),
+            ];
+          },
+        };
+      }
+
+      if (method === "GET" && url.pathname === "/rest/v1/bill_actions") {
+        return {
+          ok: true,
+          async json() {
+            return [
+              { bill_id: "hr-777", sort_order: 0, date: "Jan 8, 2026", label: "Intro", detail: "Introduced in House", type: "milestone" },
+            ];
+          },
+        };
+      }
+
+      if (method === "GET" && url.pathname === "/rest/v1/bill_versions") {
+        return {
+          ok: true,
+          async json() {
+            return [];
+          },
+        };
+      }
+
+      if (method === "GET" && url.pathname === "/rest/v1/votes") {
+        return {
+          ok: true,
+          async json() {
+            return [];
+          },
+        };
+      }
+
+      if (method === "POST" && url.pathname === "/rest/v1/bills") {
+        billWrites += 1;
+        return {
+          ok: true,
+          async json() {
+            return JSON.parse(String(init.body || "[]"));
+          },
+        };
+      }
+
+      return {
+        ok: true,
+        async json() {
+          return [];
+        },
+        async text() {
+          return "";
+        },
+      };
+    }
+
+    throw new Error(`Unexpected fetch: ${method} ${url.toString()}`);
+  };
+
+  try {
+    const result = await syncLegislationFromCongress();
+    assert.equal(result.unchangedBillsSkipped, 1);
+    assert.equal(result.detailedBillsSynced, 0);
+    assert.equal(detailFetches, 0);
+    assert.equal(billWrites, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("syncLegislationFromCongress retries transient Congress list failures before succeeding", async () => {
+  process.env.CONGRESS_API_KEY = "test-key";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+  process.env.SUPABASE_SECRET_KEY = "test-secret";
+  process.env.POLITICA_DEFAULT_CONGRESS = "119";
+  process.env.POLITICA_FEDERAL_VOTE_MAX_PER_SESSION = "0";
+  process.env.POLITICA_CONGRESS_FETCH_RETRY_ATTEMPTS = "3";
+
+  const listBill = {
+    congress: "119",
+    type: "hr",
+    number: "778",
+    title: "Retry Act",
+    originChamber: "House",
+    updateDate: "2026-01-09T00:00:00Z",
+    latestAction: { text: "Introduced in House", actionDate: "2026-01-09" },
+    sponsors: [{ bioguideId: "A0001", fullName: "Rep. Ada Lovelace" }],
+  };
+  const sourceFingerprint = buildSourceFingerprint({
+    congress: listBill.congress,
+    type: listBill.type,
+    number: listBill.number,
+    updateDate: listBill.updateDate,
+    title: listBill.title,
+    originChamber: listBill.originChamber,
+    latestAction: listBill.latestAction,
+    sponsors: listBill.sponsors,
+    policyArea: null,
+    committees: null,
+  });
+
+  const originalFetch = global.fetch;
+  let listAttempts = 0;
+  let detailFetches = 0;
+
+  global.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = init.method || "GET";
+
+    if (url.hostname === "api.congress.gov") {
+      if (url.pathname === "/v3/bill/119") {
+        listAttempts += 1;
+        if (listAttempts === 1) {
+          const error = new Error("terminated");
+          error.cause = { code: "UND_ERR_SOCKET" };
+          throw error;
+        }
+
+        return {
+          ok: true,
+          async json() {
+            return { bills: [listBill] };
+          },
+        };
+      }
+
+      if (url.pathname === "/v3/bill/119/hr/778") {
+        detailFetches += 1;
+        throw new Error("detail fetch should not run for unchanged bill");
+      }
+
+      throw new Error(`Unexpected Congress URL: ${url.toString()}`);
+    }
+
+    if (url.hostname === "example.supabase.co") {
+      if (method === "GET" && url.pathname === "/rest/v1/bills") {
+        return {
+          ok: true,
+          async json() {
+            return [
+              createBillRow("hr-778", "Retry Act", "Existing stored detailed summary.", {
+                source_updated_at: normalizeSourceUpdatedAt(listBill.updateDate),
+                source_fingerprint: sourceFingerprint,
+                last_detail_synced_at: "2026-07-11T00:00:00.000Z",
+              }),
+            ];
+          },
+        };
+      }
+
+      if (method === "GET" && url.pathname === "/rest/v1/bill_actions") {
+        return {
+          ok: true,
+          async json() {
+            return [
+              { bill_id: "hr-778", sort_order: 0, date: "Jan 9, 2026", label: "Intro", detail: "Introduced in House", type: "milestone" },
+            ];
+          },
+        };
+      }
+
+      if (method === "GET" && url.pathname === "/rest/v1/bill_versions") {
+        return {
+          ok: true,
+          async json() {
+            return [];
+          },
+        };
+      }
+
+      if (method === "GET" && url.pathname === "/rest/v1/votes") {
+        return {
+          ok: true,
+          async json() {
+            return [];
+          },
+        };
+      }
+
+      return {
+        ok: true,
+        async json() {
+          return [];
+        },
+        async text() {
+          return "";
+        },
+      };
+    }
+
+    throw new Error(`Unexpected fetch: ${method} ${url.toString()}`);
+  };
+
+  try {
+    const result = await syncLegislationFromCongress();
+    assert.equal(result.unchangedBillsSkipped, 1);
+    assert.equal(result.detailedBillsSynced, 0);
+    assert.equal(listAttempts, 2);
+    assert.equal(detailFetches, 0);
+  } finally {
+    global.fetch = originalFetch;
+    delete process.env.POLITICA_CONGRESS_FETCH_RETRY_ATTEMPTS;
   }
 });
