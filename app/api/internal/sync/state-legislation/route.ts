@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
+import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 import { syncStateLegislationFromOpenStates } from "@/lib/server/state-sync";
 
@@ -18,6 +19,8 @@ export async function POST(request: Request) {
     const sync = await syncStateLegislationFromOpenStates(undefined, { mode });
     return { recordCount: sync.synced, metadata: sync };
   });
+
+  revalidatePoliticaCaches();
 
   revalidatePath("/");
   revalidatePath("/bills");

@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
+import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 import { syncPoliticiansFromCongress } from "@/lib/server/politician-sync";
 
@@ -28,6 +29,8 @@ export async function POST(request: Request) {
         metadata: sync,
       };
     });
+
+    revalidatePoliticaCaches();
 
     revalidatePath("/politicians");
     revalidatePath("/profile");

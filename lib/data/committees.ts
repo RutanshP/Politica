@@ -59,13 +59,16 @@ export async function getCommitteeData(slug: string) {
   }
 
   try {
-    const [committee, memberships, federalRun, stateRun] = await Promise.all([
+    // getStoredCommitteeBySlug was previously called twice in this Promise.all -- once for the
+    // committee and once inside the memberships branch -- firing two identical requests.
+    const [committee, federalRun, stateRun] = await Promise.all([
       getStoredCommitteeBySlug(slug),
-      getStoredCommitteeBySlug(slug).then((item) =>
-        item ? listStoredCommitteeMembershipsByCommitteeId(item.id).catch(() => []) : []),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
       getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
+    const memberships = committee
+      ? await listStoredCommitteeMembershipsByCommitteeId(committee.id).catch(() => [])
+      : [];
     const mergedCommittee = committee
       ? mergeCommitteeMembershipIds([committee], memberships)[0]
       : undefined;

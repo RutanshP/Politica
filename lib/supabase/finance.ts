@@ -1,3 +1,4 @@
+import { FINANCE_CACHE_TAG } from "@/lib/supabase/cache-tags";
 import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
 import type { FundingEdge, FundingNode } from "@/types/civic";
 import type {
@@ -39,11 +40,53 @@ function mapEdgeRow(row: FinanceEdgeRow): FundingEdge {
   };
 }
 
+const FINANCE_ENTITY_SELECT = "id,slug,label,entity_type,party,state,amount,source_system,source_id,synced_at";
+const FINANCE_EDGE_SELECT = "id,source,target,label,amount,source_system,source_id,synced_at";
+
 export async function getStoredFinanceGraph() {
   const [entityRows, edgeRows] = await Promise.all([
-    fetchSupabaseRows<FinanceEntityRow>("finance_entities", "order=label.asc"),
-    fetchSupabaseRows<FinanceEdgeRow>("finance_edges", "order=amount.desc"),
+    fetchSupabaseRows<FinanceEntityRow>("finance_entities", "order=label.asc", {
+      select: FINANCE_ENTITY_SELECT,
+      tags: [FINANCE_CACHE_TAG],
+    }),
+    fetchSupabaseRows<FinanceEdgeRow>("finance_edges", "order=amount.desc", {
+      select: FINANCE_EDGE_SELECT,
+      tags: [FINANCE_CACHE_TAG],
+    }),
   ]);
+
+  return {
+    nodes: entityRows.map(mapEntityRowToNode),
+    edges: edgeRows.map(mapEdgeRow),
+  };
+}
+
+/**
+ * The subgraph around a single politician, selected in Postgres via the finance_edges
+ * source/target indexes. The caller previously fetched the entire national graph and filtered
+ * it down in JS with a nodes.filter() that ran edges.some() inside it -- O(nodes x edges).
+ */
+export async function getStoredFinanceGraphForPolitician(politicianSlug: string) {
+  const edgeRows = await fetchSupabaseRows<FinanceEdgeRow>(
+    "finance_edges",
+    `or=(source.eq.${encodeURIComponent(politicianSlug)},target.eq.${encodeURIComponent(politicianSlug)})&order=amount.desc`,
+    { select: FINANCE_EDGE_SELECT, tags: [FINANCE_CACHE_TAG] },
+  );
+
+  const nodeIds = [
+    ...new Set([politicianSlug, ...edgeRows.flatMap((row) => [row.source, row.target])].filter(Boolean)),
+  ];
+
+  if (nodeIds.length === 0) {
+    return { nodes: [], edges: [] };
+  }
+
+  const quoted = nodeIds.map((value) => `"${value.replace(/"/g, '\\"')}"`).join(",");
+  const entityRows = await fetchSupabaseRows<FinanceEntityRow>(
+    "finance_entities",
+    `id=in.(${quoted})&order=label.asc`,
+    { select: FINANCE_ENTITY_SELECT, tags: [FINANCE_CACHE_TAG] },
+  );
 
   return {
     nodes: entityRows.map(mapEntityRowToNode),

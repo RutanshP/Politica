@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import { emptyResult, withData } from "@/lib/data/result";
 import { listStoredBillsBySponsor } from "@/lib/supabase/bills";
 import { listStoredCommitteeMembershipsByPoliticianId } from "@/lib/supabase/committees";
@@ -529,7 +531,13 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
   }
 }
 
-export async function getPoliticianData(slug: string) {
+/**
+ * Memoized per render pass: the politician profile page resolves the same slug three times
+ * (once directly, then again inside getSponsoredBillsForPolitician and
+ * getCommitteeMembershipsForPolitician), and each call was a fresh slug lookup plus two
+ * sync-run reads plus vote-stat hydration.
+ */
+export const getPoliticianData = cache(async (slug: string) => {
   if (!isSupabaseConfigured()) {
     return {
       ...emptyResult("unconfigured", "federal_members_sync", undefined, "unconfigured"),
@@ -566,7 +574,7 @@ export async function getPoliticianData(slug: string) {
       politician: undefined,
     };
   }
-}
+});
 
 export async function getPoliticianRouteParams() {
   const { politicians } = await getPoliticiansData();

@@ -1,22 +1,24 @@
-import { getBillsData } from "@/lib/data/bills";
+import { listRecentStoredBills } from "@/lib/supabase/bills";
 import { getCommitteesData } from "@/lib/data/committees";
 import { getIssuesData } from "@/lib/data/issues";
 import { getPoliticiansData } from "@/lib/data/politicians";
 import { withData } from "@/lib/data/result";
-import type { WatchlistItem } from "@/types/civic";
+import type { Bill, WatchlistItem } from "@/types/civic";
 
 export type WatchlistDataSource = "supabase-derived" | "unconfigured" | "unavailable";
 
 export async function getWatchlistData() {
-  const [billsData, politiciansData, committeesData, issuesData] = await Promise.all([
-    getBillsData(),
+  // The watchlist renders 2 bills, 2 politicians, 1 committee and 1 issue. Bills used to come
+  // from getBillsData(), which downloads the entire bills table.
+  const [bills, politiciansData, committeesData, issuesData] = await Promise.all([
+    listRecentStoredBills(2).catch(() => [] as Bill[]),
     getPoliticiansData(),
     getCommitteesData(),
     getIssuesData(),
   ]);
 
   const items: WatchlistItem[] = [
-    ...billsData.bills.slice(0, 2).map((bill) => ({
+    ...bills.map((bill) => ({
       id: `watch-${bill.id}`,
       label: `${bill.number} - ${bill.title}`,
       type: "bill" as const,
@@ -52,7 +54,6 @@ export async function getWatchlistData() {
 
   const hasData = items.length > 0;
   const allSources = [
-    billsData.source,
     politiciansData.source,
     committeesData.source,
     issuesData.source,
@@ -68,7 +69,7 @@ export async function getWatchlistData() {
     source,
     "watchlist_seed",
     items,
-    [billsData.freshness.syncedAt, politiciansData.freshness.syncedAt, committeesData.freshness.syncedAt, issuesData.freshness.syncedAt]
+    [politiciansData.freshness.syncedAt, committeesData.freshness.syncedAt, issuesData.freshness.syncedAt]
       .filter(Boolean)
       .sort()
       .at(-1),

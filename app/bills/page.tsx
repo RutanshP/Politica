@@ -7,7 +7,7 @@ import {
   getBillsSourceLabel,
   isLiveBillsSource,
 } from "@/lib/data/bills";
-import { getCommitteesData } from "@/lib/data/committees";
+import { getCommitteeSlugLookup } from "@/lib/supabase/bills";
 
 export const revalidate = 21600;
 
@@ -20,10 +20,10 @@ export default async function BillsPage({
   const normalizedSearchParams = Object.fromEntries(
     Object.entries(resolvedSearchParams).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value]),
   );
-  const [{ bills, source, total, page, pageSize, filters, options }, { committees }] = await Promise.all([
-    getBillsDirectoryData(normalizedSearchParams),
-    getCommitteesData(),
-  ]);
+  const { bills, source, total, page, pageSize, filters, options } =
+    await getBillsDirectoryData(normalizedSearchParams);
+  // Only the committees referenced by the 20 bills on this page, rather than the whole table.
+  const committeeSlugs = await getCommitteeSlugLookup(bills).catch(() => ({} as Record<string, string>));
   const live = isLiveBillsSource(source);
 
   return (
@@ -37,7 +37,7 @@ export default async function BillsPage({
       <SectionCard title="Bills table" description="Every row links deeper into the bill, committee, and sponsor profile.">
         <BillsDirectory
           bills={bills}
-          committees={committees}
+          committeeSlugs={committeeSlugs}
           total={total}
           page={page}
           pageSize={pageSize}

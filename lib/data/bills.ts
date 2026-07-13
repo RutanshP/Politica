@@ -1,5 +1,14 @@
+import { cache } from "react";
+
 import { emptyResult, withData } from "@/lib/data/result";
-import { getStoredBillById, getStoredBillsPage, listStoredBillDirectoryFacets, listStoredBills } from "@/lib/supabase/bills";
+import {
+  getStoredBillById,
+  getStoredBillsPage,
+  listRecentStoredBills,
+  listStoredBillDirectoryFacets,
+  listStoredBills,
+  type BillDirectoryFacetRow,
+} from "@/lib/supabase/bills";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
 import { sortLabelsAlphabetically } from "@/lib/utils";
@@ -131,7 +140,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
         committee: filters.committee,
         sortBy: filters.sortBy,
       }),
-      listStoredBillDirectoryFacets().catch(() => []),
+      listStoredBillDirectoryFacets().catch(() => [] as BillDirectoryFacetRow[]),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
       getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
@@ -140,15 +149,19 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
 
+    // Postgres already grouped these; the rows arrive pre-deduplicated and sorted.
+    const facetValues = (facet: string) =>
+      facetRows.filter((row) => row.facet === facet).map((row) => row.value);
+
     const options = {
-      levels: ["All levels", ...sortLabelsAlphabetically(facetRows.map((row) => row.jurisdiction_type === "state" ? "State" : "Federal"))],
-      states: ["All states", ...sortLabelsAlphabetically(facetRows.map((row) => row.state).filter(Boolean) as string[])],
-      chambers: ["Both", ...sortLabelsAlphabetically(facetRows.map((row) => row.chamber))],
-      statuses: ["All statuses", ...sortLabelsAlphabetically(facetRows.map((row) => row.status))],
-      sessions: ["All sessions", ...sortLabelsAlphabetically(facetRows.map((row) => row.session))],
-      topics: ["All topics", ...sortLabelsAlphabetically(facetRows.map((row) => row.topic))],
-      sponsors: ["Any sponsor", ...sortLabelsAlphabetically(facetRows.map((row) => row.sponsor_name))],
-      committees: ["Any committee", ...sortLabelsAlphabetically(facetRows.map((row) => row.committee_name))],
+      levels: ["All levels", ...sortLabelsAlphabetically(facetValues("level"))],
+      states: ["All states", ...sortLabelsAlphabetically(facetValues("state"))],
+      chambers: ["Both", ...sortLabelsAlphabetically(facetValues("chamber"))],
+      statuses: ["All statuses", ...sortLabelsAlphabetically(facetValues("status"))],
+      sessions: ["All sessions", ...sortLabelsAlphabetically(facetValues("session"))],
+      topics: ["All topics", ...sortLabelsAlphabetically(facetValues("topic"))],
+      sponsors: ["Any sponsor", ...sortLabelsAlphabetically(facetValues("sponsor"))],
+      committees: ["Any committee", ...sortLabelsAlphabetically(facetValues("committee"))],
       sortOptions: ["Recent activity", "Bill number", "Title", "Level"],
     };
 
@@ -196,7 +209,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
   }
 }
 
-export async function getBillData(billId: string) {
+export async function getBillData(billId: string, options?: { includeVersionContent?: boolean }) {
   if (!isSupabaseConfigured()) {
     return {
       ...emptyResult("unconfigured", "federal_legislation_sync", undefined, "unconfigured"),
@@ -206,7 +219,7 @@ export async function getBillData(billId: string) {
 
   try {
     const [bill, federalRun, stateRun] = await Promise.all([
-      getStoredBillById(billId),
+      getStoredBillById(billId, options),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
       getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
@@ -235,6 +248,32 @@ export async function getBillData(billId: string) {
     };
   }
 }
+
+/**
+ * The 12 bills the dashboard renders, as three LIMITed queries instead of a full-table download.
+ */
+export const getDashboardBills = cache(async () => {
+  if (!isSupabaseConfigured()) {
+    return { trending: [] as Bill[], recentlyPassed: [] as Bill[], upcomingVotes: [] as Bill[], source: "unconfigured" as BillDataSource };
+  }
+
+  try {
+    const [trending, recentlyPassed, upcomingVotes] = await Promise.all([
+      listRecentStoredBills(4),
+      listRecentStoredBills(4, ["Passed Chamber", "Signed"]),
+      listRecentStoredBills(4, ["On Floor", "Passed Chamber"]),
+    ]);
+
+    return {
+      trending,
+      recentlyPassed,
+      upcomingVotes,
+      source: (trending.length > 0 ? "supabase" : "unavailable") as BillDataSource,
+    };
+  } catch {
+    return { trending: [] as Bill[], recentlyPassed: [] as Bill[], upcomingVotes: [] as Bill[], source: "unavailable" as BillDataSource };
+  }
+});
 
 export async function getBillRouteParams() {
   const { bills } = await getBillsData();

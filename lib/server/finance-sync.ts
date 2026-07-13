@@ -13,7 +13,7 @@ export async function syncFinanceFromFec() {
     throw new Error("FEC API is not configured");
   }
 
-  const politicians = await listStoredPoliticians();
+  const politicians = await listStoredPoliticians({ fresh: true });
   const entityRows: FinanceEntityRow[] = [];
   const edgeRows: FinanceEdgeRow[] = [];
   const snapshotRows: CandidateFinanceSnapshotRow[] = [];

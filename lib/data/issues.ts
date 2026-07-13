@@ -1,3 +1,5 @@
+import { listStoredBillsByIds } from "@/lib/supabase/bills";
+import type { Bill } from "@/types/civic";
 import { emptyResult, withData } from "@/lib/data/result";
 import { getCommitteesData } from "@/lib/data/committees";
 import { getPoliticiansData } from "@/lib/data/politicians";
@@ -84,17 +86,23 @@ export async function getIssueRouteParams() {
 }
 
 export async function getIssueViewData(slug: string) {
-  const [{ issue, source, freshness, availability, error }, { bills }, { committees }, { politicians }] = await Promise.all([
-    getIssueData(slug),
-    import("@/lib/data/bills").then((module) => module.getBillsData()),
+  const { issue, source, freshness, availability, error } = await getIssueData(slug);
+
+  // Fetch only the issue's own bills. This previously downloaded the entire bills table and
+  // filtered it down to issue.topBillIds in JS.
+  const [issueBills, { committees }, { politicians }] = await Promise.all([
+    issue
+      ? listStoredBillsByIds(issue.topBillIds).catch(() => [] as Bill[])
+      : Promise.resolve([] as Bill[]),
     getCommitteesData(),
     getPoliticiansData(),
   ]);
 
-  const issueBills = issue ? bills.filter((bill) => issue.topBillIds.includes(bill.id)) : [];
   const issueCommittees = committees.filter((committee) => issue?.committeeIds.includes(committee.slug));
+  const sponsorIds = new Set(issueBills.map((bill) => bill.sponsorId));
+  const sponsorNames = new Set(issueBills.map((bill) => bill.sponsorName));
   const topPoliticians = politicians
-    .filter((politician) => issueBills.some((bill) => bill.sponsorId === politician.id || bill.sponsorName === politician.name))
+    .filter((politician) => sponsorIds.has(politician.id) || sponsorNames.has(politician.name))
     .slice(0, 5);
 
   return {

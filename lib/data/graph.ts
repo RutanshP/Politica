@@ -1,5 +1,5 @@
 import { emptyResult, withData } from "@/lib/data/result";
-import { getStoredFinanceGraph } from "@/lib/supabase/finance";
+import { getStoredFinanceGraph, getStoredFinanceGraphForPolitician } from "@/lib/supabase/finance";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
 
@@ -20,19 +20,12 @@ export async function getFundingGraphData(politicianSlug?: string) {
   }
 
   try {
-    const [graph, latestRun] = await Promise.all([
-      getStoredFinanceGraph(),
+    const [filteredGraph, latestRun] = await Promise.all([
+      politicianSlug
+        ? getStoredFinanceGraphForPolitician(politicianSlug)
+        : getStoredFinanceGraph(),
       getLatestSyncRun("finance_sync").catch(() => undefined),
     ]);
-    const filteredGraph = politicianSlug
-      ? {
-          nodes: graph.nodes.filter((node) =>
-            node.id === politicianSlug
-            || graph.edges.some((edge) => (edge.source === node.id || edge.target === node.id) && (edge.source === politicianSlug || edge.target === politicianSlug)),
-          ),
-          edges: graph.edges.filter((edge) => edge.source === politicianSlug || edge.target === politicianSlug),
-        }
-      : graph;
     const source = filteredGraph.nodes.length > 0 ? "supabase" : "partial";
     const result = withData(
       source,
