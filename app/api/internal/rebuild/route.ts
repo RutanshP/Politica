@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
+import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 import {
   rebuildAnalyticsFromStoredData,
@@ -35,6 +36,8 @@ export async function POST(request: Request) {
       return { recordCount: rebuilt.rebuilt, metadata: rebuilt };
     }),
   ]);
+
+  revalidatePoliticaCaches();
 
   revalidatePath("/");
   revalidatePath("/analytics");

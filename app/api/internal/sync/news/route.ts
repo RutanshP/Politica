@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
+import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { syncNewsFromApi } from "@/lib/server/news-sync";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 
@@ -16,6 +17,8 @@ export async function POST(request: Request) {
     const sync = await syncNewsFromApi();
     return { recordCount: sync.synced, metadata: sync };
   });
+
+  revalidatePoliticaCaches();
 
   revalidatePath("/");
   revalidatePath("/news");

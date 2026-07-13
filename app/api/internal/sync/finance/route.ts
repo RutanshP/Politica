@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { syncFinanceFromFec } from "@/lib/server/finance-sync";
 import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
+import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,8 @@ export async function POST(request: Request) {
     const sync = await syncFinanceFromFec();
     return { recordCount: sync.synced, metadata: sync };
   });
+
+  revalidatePoliticaCaches();
 
   revalidatePath("/money");
   revalidatePath("/money/graph");
