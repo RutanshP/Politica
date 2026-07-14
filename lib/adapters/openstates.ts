@@ -80,9 +80,20 @@ async function fetchOpenStatesJson<T>(pathname: string, params?: OpenStatesParam
       return (await response.json()) as T;
     }
 
+    const detail = await response.text().catch(() => "");
+
+    // Two different 429s. The per-minute limit clears on its own, so back off and retry. The
+    // daily quota does not -- retrying just burns wall-clock and hammers the API, so surface it
+    // immediately and let the caller stop.
+    if (response.status === 429 && /\/day/i.test(detail)) {
+      throw new Error(
+        `OpenStates daily quota exhausted: ${detail.trim()}. Requests reset at 00:00 UTC; `
+        + "sync fewer states per run or use a key with a higher quota.",
+      );
+    }
+
     const retriable = response.status === 429 || response.status >= 500;
     if (!retriable || attempt === OPENSTATES_MAX_ATTEMPTS) {
-      const detail = await response.text().catch(() => "");
       throw new Error(
         `OpenStates request failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`,
       );
