@@ -202,13 +202,14 @@ function buildStateVoteRows(
 
 export async function syncStateLegislationFromOpenStates(
   states: string | string[] = getOpenStatesStateCodes(),
-  options?: { mode?: "incremental" | "full" },
+  options?: { mode?: "incremental" | "full"; scope?: "people" | "all" },
 ) {
   if (!isOpenStatesConfigured()) {
     throw new Error("OpenStates API is not configured");
   }
 
   const mode = options?.mode || "incremental";
+  const scope = options?.scope || "all";
   const stateCodes = (Array.isArray(states) ? states : [states])
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
@@ -260,12 +261,18 @@ export async function syncStateLegislationFromOpenStates(
     let votes;
 
     try {
-      [people, bills, committees, votes] = await Promise.all([
-        fetchOpenStatesPeople(state),
-        fetchOpenStatesBills(state),
-        fetchOpenStatesCommittees(state),
-        fetchOpenStatesVotes(state),
-      ]);
+      // scope=people skips bills, committees and votes. Those paths fetch a detail document per
+      // bill and per committee, and OpenStates allows 10 requests/minute -- so a full state sync
+      // spends ~30 minutes on data the member directory does not need. Roll calls are imported
+      // separately by state-vote-sync.
+      [people, bills, committees, votes] = scope === "people"
+        ? [await fetchOpenStatesPeople(state), [], [], []]
+        : await Promise.all([
+          fetchOpenStatesPeople(state),
+          fetchOpenStatesBills(state),
+          fetchOpenStatesCommittees(state),
+          fetchOpenStatesVotes(state),
+        ]);
     } catch (error) {
       stateFailures.push({
         state,

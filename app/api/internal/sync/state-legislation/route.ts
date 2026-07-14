@@ -14,9 +14,20 @@ export async function POST(request: Request) {
   }
   const url = new URL(request.url);
   const mode = /^full$/i.test(url.searchParams.get("mode") || "") ? "full" : "incremental";
+  // scope=people syncs only legislators (skips the per-bill and per-committee detail fetches,
+  // which dominate the runtime under OpenStates' 10 req/min limit).
+  const scope = /^people$/i.test(url.searchParams.get("scope") || "") ? "people" : "all";
+  // ?states=tx,ca was previously ignored -- every call synced the full default state list.
+  const states = (url.searchParams.get("states") || url.searchParams.get("state") || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 
   const result = await runPipeline("state_legislation_sync", async () => {
-    const sync = await syncStateLegislationFromOpenStates(undefined, { mode });
+    const sync = await syncStateLegislationFromOpenStates(
+      states.length > 0 ? states : undefined,
+      { mode, scope },
+    );
     return { recordCount: sync.synced, metadata: sync };
   });
 
