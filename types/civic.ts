@@ -144,7 +144,8 @@ export interface VotePosition {
 export interface Vote {
   id: string;
   canonicalId?: string;
-  billId: string;
+  /** Absent for roll calls whose bill was never imported (state votes). */
+  billId?: string;
   billNumber: string;
   title: string;
   chamber: string;

@@ -563,7 +563,7 @@ async function loadExistingStoredBills(congressSession: string) {
     billRows,
     billRowsById,
     billsById,
-    voteBillIds: new Set(voteRows.map((row) => row.bill_id)),
+    voteBillIds: new Set(voteRows.map((row) => row.bill_id).filter((id): id is string => Boolean(id))),
   };
 }
 
@@ -1113,7 +1113,7 @@ async function refreshStoredFederalVotes(options?: {
   ).catch(() => []);
   const politicianLookup = buildFederalPoliticianLookup(storedPoliticianRows);
   const refreshedVotes = await collectTargetedFederalVotes(targetVoteRows);
-  const billIds = [...new Set(targetVoteRows.map((row) => row.bill_id).filter(Boolean))];
+  const billIds = [...new Set(targetVoteRows.map((row) => row.bill_id).filter((id): id is string => Boolean(id)))];
   const storedBills = await loadStoredBillsByIds(billIds);
   const voteBundle = buildFederalVoteRows(
     refreshedVotes,
@@ -1266,7 +1266,8 @@ function buildFederalVotePlaceholderBillRows(
 
   return uniqueByKey(
     voteRows
-      .filter((voteRow) => !existingBillIds.has(voteRow.bill_id))
+      .filter((voteRow): voteRow is typeof voteRow & { bill_id: string } =>
+        Boolean(voteRow.bill_id) && !existingBillIds.has(voteRow.bill_id as string))
       .map((voteRow) => ({
         id: voteRow.bill_id,
         slug: slugifySegment(`${voteRow.bill_number}-${voteRow.title || voteRow.bill_id}`),
@@ -1848,7 +1849,7 @@ export async function syncLegislationFromCongress(options?: {
       ? buildStaleCongressBillIds(
         existingStored.billRows,
         new Set(requestedBillIds),
-        new Set([...existingStored.voteBillIds, ...voteRows.map((row) => row.bill_id)]),
+        new Set([...existingStored.voteBillIds, ...voteRows.map((row) => row.bill_id).filter((id): id is string => Boolean(id))]),
         congressSession,
       )
       : [];

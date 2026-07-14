@@ -31,7 +31,7 @@ function mapRowToVote(row: VoteRow, positions: VotePositionRow[]): Vote {
   return {
     id: row.id,
     canonicalId: row.canonical_id || undefined,
-    billId: row.bill_id,
+    billId: row.bill_id || undefined,
     billNumber: row.bill_number,
     title: row.title,
     chamber: row.chamber,

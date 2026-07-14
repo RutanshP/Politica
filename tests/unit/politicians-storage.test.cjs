@@ -927,30 +927,46 @@ test("listStoredPoliticians drops standalone federal placeholder offices that ar
   }
 });
 
-test("fetchOpenStatesVotes returns stored upstream vote results when the endpoint responds", async () => {
+test("fetchOpenStatesVotes reads roll calls embedded on bills", async () => {
+  // OpenStates v3 has no /votes endpoint (it 404s). Votes are only returned as an embedded
+  // resource on bills, via ?include=votes.
   process.env.POLITICA_OPENSTATES_API_KEY = "test-key";
+  process.env.POLITICA_OPENSTATES_MIN_INTERVAL_MS = "0";
 
   const originalFetch = global.fetch;
-  global.fetch = async () => ({
-    ok: true,
-    async json() {
-      return {
-        results: [{
-          id: "vote-1",
-          motion_text: "On passage",
-          result: "pass",
-        }],
-      };
-    },
-  });
+  const requestedUrls = [];
+  global.fetch = async (input) => {
+    requestedUrls.push(String(input));
+    return {
+      ok: true,
+      headers: { get: () => null },
+      async json() {
+        return {
+          results: [{
+            id: "ocd-bill/1",
+            identifier: "HB 1",
+            votes: [{
+              id: "vote-1",
+              motion_text: "On passage",
+              result: "pass",
+            }],
+          }],
+        };
+      },
+    };
+  };
 
   try {
     const votes = await fetchOpenStatesVotes("ca");
     assert.equal(votes.length, 1);
     assert.equal(votes[0].id, "vote-1");
     assert.equal(votes[0].motion_text, "On passage");
+    assert.equal(votes[0].bill.identifier, "HB 1");
+    assert.match(requestedUrls[0], /\/bills\?/);
+    assert.match(requestedUrls[0], /include=votes/);
   } finally {
     global.fetch = originalFetch;
     delete process.env.POLITICA_OPENSTATES_API_KEY;
+    delete process.env.POLITICA_OPENSTATES_MIN_INTERVAL_MS;
   }
 });

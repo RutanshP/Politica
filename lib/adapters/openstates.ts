@@ -2,8 +2,39 @@ import type { OpenStatesBill, OpenStatesCommittee, OpenStatesPerson, OpenStatesV
 
 const OPENSTATES_API_BASE = process.env.POLITICA_OPENSTATES_API_BASE_URL?.trim()
   || "https://v3.openstates.org";
+// per_page is hard-capped at 20 by the API. The old 5-page ceiling therefore capped every fetch
+// at 100 rows, which is why only ~21 legislators per state were ever stored -- Texas alone has
+// 184, and a roll-call voter cannot be matched to a member we never imported.
 const OPENSTATES_PER_PAGE = 20;
-const OPENSTATES_MAX_PAGES = 5;
+const OPENSTATES_MAX_PAGES = Number(process.env.POLITICA_OPENSTATES_MAX_PAGES || 25);
+
+// OpenStates allows 10 requests/minute and returns 429 past that. There was no throttle and no
+// retry: a sync that tripped the limit simply threw. Serialize requests behind a minimum spacing
+// and honour Retry-After.
+const OPENSTATES_MIN_REQUEST_INTERVAL_MS = Number(process.env.POLITICA_OPENSTATES_MIN_INTERVAL_MS || 6500);
+const OPENSTATES_MAX_ATTEMPTS = 4;
+
+let requestChain: Promise<unknown> = Promise.resolve();
+let lastRequestAt = 0;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Serializes every OpenStates call and spaces them out, so concurrent callers cannot burst. */
+function throttle<T>(task: () => Promise<T>): Promise<T> {
+  const scheduled = requestChain.then(async () => {
+    const wait = lastRequestAt + OPENSTATES_MIN_REQUEST_INTERVAL_MS - Date.now();
+    if (wait > 0) {
+      await sleep(wait);
+    }
+    lastRequestAt = Date.now();
+    return task();
+  });
+
+  requestChain = scheduled.catch(() => undefined);
+  return scheduled;
+}
 
 function getOpenStatesApiKey() {
   return process.env.POLITICA_OPENSTATES_API_KEY?.trim() || "";
@@ -35,22 +66,37 @@ async function fetchOpenStatesJson<T>(pathname: string, params?: OpenStatesParam
     url.searchParams.set(key, String(value));
   }
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      Accept: "application/json",
-      "X-API-KEY": getOpenStatesApiKey(),
-    },
-    next: { revalidate: 21600 },
-  });
+  for (let attempt = 1; attempt <= OPENSTATES_MAX_ATTEMPTS; attempt += 1) {
+    const response = await throttle(() =>
+      fetch(url.toString(), {
+        headers: {
+          Accept: "application/json",
+          "X-API-KEY": getOpenStatesApiKey(),
+        },
+        next: { revalidate: 21600 },
+      }));
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `OpenStates request failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`,
+    if (response.ok) {
+      return (await response.json()) as T;
+    }
+
+    const retriable = response.status === 429 || response.status >= 500;
+    if (!retriable || attempt === OPENSTATES_MAX_ATTEMPTS) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(
+        `OpenStates request failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`,
+      );
+    }
+
+    const retryAfter = Number(response.headers.get("retry-after"));
+    await sleep(
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : OPENSTATES_MIN_REQUEST_INTERVAL_MS * 2 ** attempt,
     );
   }
 
-  return (await response.json()) as T;
+  throw new Error("OpenStates request failed: retries exhausted");
 }
 
 async function fetchOpenStatesWithJurisdictionFallback<T>(
@@ -138,10 +184,27 @@ export async function fetchOpenStatesCommitteeDetail(committeeId: string) {
   return fetchOpenStatesJson<OpenStatesCommittee>(`/committees/${committeeId}`);
 }
 
-export async function fetchOpenStatesVotes(state?: string): Promise<OpenStatesVote[]> {
-  const results = await fetchOpenStatesPaginatedResults<OpenStatesVote>("/votes", state, {
+/**
+ * OpenStates v3 has no /votes endpoint -- it returns 404. This used to call it and swallow the
+ * failure with `.catch(() => [])`, so state vote sync reported success while importing nothing,
+ * which is why every state legislator has zero attendance.
+ *
+ * Votes are only exposed as an embedded resource on bills. The list endpoint accepts
+ * `include=votes`, so a page of bills carries its roll calls with it -- no per-bill detail fetch.
+ */
+export async function fetchOpenStatesBillsWithVotes(state?: string) {
+  return fetchOpenStatesPaginatedResults<OpenStatesBill>("/bills", state, {
     sort: "updated_desc",
-  }).catch(() => []);
+    include: ["votes"],
+  });
+}
 
-  return results;
+export async function fetchOpenStatesVotes(state?: string): Promise<OpenStatesVote[]> {
+  const bills = await fetchOpenStatesBillsWithVotes(state).catch(() => [] as OpenStatesBill[]);
+  return bills.flatMap((bill) =>
+    (bill.votes ?? []).map((vote) => ({
+      ...vote,
+      bill: vote.bill ?? { identifier: bill.identifier },
+    })),
+  );
 }

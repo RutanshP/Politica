@@ -34,7 +34,10 @@ import type {
 } from "@/types/supabase";
 import type { OpenStatesBill, OpenStatesVote } from "@/types/openstates";
 
-const OPENSTATES_MAX_ROWS = 75;
+// Per-entity cap for a single state sync. People are capped separately: truncating the member
+// list breaks roll-call matching, so it defaults to the full chamber.
+const OPENSTATES_MAX_ROWS = Number(process.env.POLITICA_OPENSTATES_MAX_ROWS || 75);
+const OPENSTATES_MAX_PEOPLE = Number(process.env.POLITICA_OPENSTATES_MAX_PEOPLE || 1000);
 const OPENSTATES_DEFAULT_STATE_CODES = [
   "ca", "ny", "tx", "fl", "il", "pa", "oh", "ga", "mi", "nc",
 ] as const;
@@ -271,7 +274,7 @@ export async function syncStateLegislationFromOpenStates(
       continue;
     }
 
-    people.slice(0, OPENSTATES_MAX_ROWS).forEach((person) => {
+    people.slice(0, OPENSTATES_MAX_PEOPLE).forEach((person) => {
       const name = person.name || [person.given_name, person.family_name].filter(Boolean).join(" ") || "State Legislator";
       const stateName = normalizeStateLabel(state);
       const title = person.current_role?.org_classification?.toLowerCase().includes("upper")

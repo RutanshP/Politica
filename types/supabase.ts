@@ -168,7 +168,7 @@ export interface CommitteeMemberRow {
 
 export interface VoteRow {
   id: string;
-  bill_id: string;
+  bill_id: string | null;
   canonical_id: string | null;
   bill_number: string;
   title: string;
