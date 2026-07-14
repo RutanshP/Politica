@@ -13,13 +13,26 @@ export function isOpenStatesConfigured() {
   return Boolean(getOpenStatesApiKey());
 }
 
-async function fetchOpenStatesJson<T>(pathname: string, params?: Record<string, string | number | undefined>) {
+type OpenStatesParams = Record<string, string | number | string[] | undefined>;
+
+async function fetchOpenStatesJson<T>(pathname: string, params?: OpenStatesParams) {
   const url = new URL(`${OPENSTATES_API_BASE}${pathname}`);
 
   for (const [key, value] of Object.entries(params ?? {})) {
-    if (value !== undefined && value !== "") {
-      url.searchParams.set(key, String(value));
+    if (value === undefined || value === "") {
+      continue;
     }
+
+    // OpenStates v3 expects repeated params for list-valued args (?include=links&include=offices),
+    // not a comma-joined single value.
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        url.searchParams.append(key, item);
+      }
+      continue;
+    }
+
+    url.searchParams.set(key, String(value));
   }
 
   const response = await fetch(url.toString(), {
@@ -43,7 +56,7 @@ async function fetchOpenStatesJson<T>(pathname: string, params?: Record<string, 
 async function fetchOpenStatesWithJurisdictionFallback<T>(
   pathname: string,
   state: string | undefined,
-  params?: Record<string, string | number | undefined>,
+  params?: OpenStatesParams,
 ) {
   const trimmedState = state?.trim();
   const jurisdictionCandidates = trimmedState
@@ -77,7 +90,7 @@ async function fetchOpenStatesWithJurisdictionFallback<T>(
 async function fetchOpenStatesPaginatedResults<T>(
   pathname: string,
   state: string | undefined,
-  params?: Record<string, string | number | undefined>,
+  params?: OpenStatesParams,
 ) {
   const results: T[] = [];
 
@@ -99,7 +112,12 @@ async function fetchOpenStatesPaginatedResults<T>(
 }
 
 export async function fetchOpenStatesPeople(state?: string) {
-  return fetchOpenStatesPaginatedResults<OpenStatesPerson>("/people", state);
+  // Without `include`, OpenStates omits links and offices entirely -- which is why state-sync
+  // read person.links[0].url off a payload that had no links key and stored a placeholder
+  // website, phone and address for every state legislator.
+  return fetchOpenStatesPaginatedResults<OpenStatesPerson>("/people", state, {
+    include: ["links", "offices"],
+  });
 }
 
 export async function fetchOpenStatesBills(state?: string) {

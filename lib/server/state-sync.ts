@@ -304,12 +304,18 @@ export async function syncStateLegislationFromOpenStates(
         state: state.toUpperCase(),
         district: person.current_role?.district || null,
         biography: `${title} synced from OpenStates.`,
-        born: "Not available from configured sources",
+        born: person.birth_date || "Not available from configured sources",
         education: "Not available from configured sources",
         occupation: "Public official",
-        website: person.links?.[0]?.url || "Not available from configured sources",
-        office_phone: person.offices?.[0]?.voice || "Not available from configured sources",
-        office_address: person.offices?.[0]?.address || "Not available from configured sources",
+        // openstates_url is always present; links/offices only arrive when requested via
+        // `include` (see fetchOpenStatesPeople), so fall back rather than storing a placeholder.
+        website: person.links?.[0]?.url
+          || person.openstates_url
+          || "Not available from configured sources",
+        office_phone: person.offices?.find((office) => office.voice)?.voice
+          || "Not available from configured sources",
+        office_address: person.offices?.find((office) => office.address)?.address
+          || "Not available from configured sources",
         next_election: "State election feed not connected",
         stats: {
           votesWithParty: 0,

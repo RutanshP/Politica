@@ -6,6 +6,9 @@ export interface OpenStatesPerson {
   family_name?: string;
   image?: string;
   email?: string;
+  /** Always returned by /people; links and offices are only returned when requested via `include`. */
+  openstates_url?: string;
+  birth_date?: string;
   current_role?: {
     org_classification?: string;
     district?: string;

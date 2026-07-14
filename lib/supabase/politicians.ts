@@ -461,6 +461,36 @@ function enforceFederalOfficeUniqueness(rows: PoliticianRow[]) {
     .sort((left, right) => fallbackPoliticianName(left).localeCompare(fallbackPoliticianName(right), "en-US", { sensitivity: "base" }));
 }
 
+function readRawString(row: PoliticianRow, key: string) {
+  const value = getRawMemberRecord(row)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+/**
+ * Recovers profile fields that the sync stored as placeholders but that are present in the
+ * source payload we already persisted.
+ *
+ * The OpenStates /people endpoint only returns `links` and `offices` when they are explicitly
+ * requested via `include`, which state-sync never did -- so it read `person.links[0].url` off a
+ * payload that had no `links` key and wrote "Not available from configured sources" for all 210
+ * state legislators. Their `openstates_url`, `email` and `birth_date` were captured in
+ * `raw_member` the whole time. Reading them here fixes the existing rows with no resync.
+ */
+function resolveProfileField(row: PoliticianRow, stored: string, rawKeys: string[]) {
+  if (!isPlaceholderText(stored)) {
+    return stored;
+  }
+
+  for (const key of rawKeys) {
+    const value = readRawString(row, key);
+    if (value) {
+      return value;
+    }
+  }
+
+  return stored;
+}
+
 function mapRowToPolitician(row: PoliticianRow): Politician {
   const name = fallbackPoliticianName(row);
 
@@ -473,10 +503,10 @@ function mapRowToPolitician(row: PoliticianRow): Politician {
     state: normalizeStateLabel(row.state),
     district: getResolvedDistrict(row) || undefined,
     biography: row.biography,
-    born: row.born,
+    born: resolveProfileField(row, row.born, ["birth_date"]),
     education: row.education,
     occupation: row.occupation,
-    website: row.website,
+    website: resolveProfileField(row, row.website, ["openstates_url", "officialWebsiteUrl", "url"]),
     officePhone: row.office_phone,
     officeAddress: row.office_address,
     nextElection: row.next_election,
