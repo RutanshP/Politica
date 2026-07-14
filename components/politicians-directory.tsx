@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { DataTable } from "@/components/data-table";
+import { EmptyState } from "@/components/empty-state";
 import { FilterBar } from "@/components/filter-bar";
 import { Pagination } from "@/components/pagination";
 import { WatchButton } from "@/components/watch-button";
@@ -16,6 +17,7 @@ export function PoliticiansDirectory({
   total,
   page,
   pageSize,
+  needsState,
   filters,
   options,
 }: {
@@ -23,6 +25,8 @@ export function PoliticiansDirectory({
   total: number;
   page: number;
   pageSize: number;
+  /** Level is State but no state has been picked yet, so nothing has been loaded. */
+  needsState: boolean;
   filters: {
     query: string;
     office: string;
@@ -43,6 +47,7 @@ export function PoliticiansDirectory({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(filters.query);
+  const isStateLevel = filters.level === "State";
 
   const buildHref = useMemo(
     () => (nextPage: number) => {
@@ -61,7 +66,13 @@ export function PoliticiansDirectory({
   function updateParams(updates: Record<string, string>) {
     const params = new URLSearchParams(searchParams.toString());
     Object.entries(updates).forEach(([key, value]) => {
-      if (!value || value.startsWith("All ") || (key === "sort" && value === "Name")) {
+      const isDefault = !value
+        || value.startsWith("All ")
+        || value === "Select a state"          // the state placeholder is not a filter
+        || (key === "level" && value === "Federal")
+        || (key === "sort" && value === "Name");
+
+      if (isDefault) {
         params.delete(key);
       } else {
         params.set(key, value);
@@ -97,41 +108,59 @@ export function PoliticiansDirectory({
         </div>
       </form>
 
+      {/*
+        Level leads, because it determines what is even loaded. The state dropdown only appears
+        once Level is State -- and until a state is chosen, no legislators are fetched at all.
+      */}
       <FilterBar
         filters={[
-          { label: "Chamber", value: filters.office, options: options.offices },
           { label: "Level", value: filters.level, options: options.levels },
+          ...(isStateLevel
+            ? [{ label: "State", value: filters.state, options: options.states }]
+            : []),
+          { label: "Chamber", value: filters.office, options: options.offices },
           { label: "Party", value: filters.party, options: options.parties },
-          { label: "State", value: filters.state, options: options.states },
           { label: "Sort by", value: filters.sortBy, options: options.sortOptions },
         ]}
         onChange={(label, value) => {
-          if (label === "Chamber") updateParams({ office: value });
-          if (label === "Level") updateParams({ level: value });
-          if (label === "Party") updateParams({ party: value });
+          if (label === "Level") {
+            // Switching level invalidates the state and chamber choices from the other level.
+            updateParams({ level: value, state: "", office: "", party: "" });
+          }
           if (label === "State") updateParams({ state: value });
+          if (label === "Chamber") updateParams({ office: value });
+          if (label === "Party") updateParams({ party: value });
           if (label === "Sort by") updateParams({ sort: value });
         }}
       />
 
-      <DataTable
-        columns={["Name", "Office", "Party", "State", "Attendance", "Profile", "Watch"]}
-        rows={politicians.map((politician) => [
-          <Link key={politician.id} href={`/politicians/${politician.slug}`} className="font-semibold text-[var(--accent)]">
-            {politician.name}
-          </Link>,
-          politician.title,
-          politician.party,
-          politician.state,
-          hasVotePerformanceStats(politician.stats) ? `${politician.stats.attendance}%` : "N/A",
-          <Link key={`${politician.id}-profile`} href={`/politicians/${politician.slug}`} className="font-semibold text-[var(--accent)]">
-            View profile
-          </Link>,
-          <WatchButton key={`${politician.id}-watch`} />,
-        ])}
-      />
+      {needsState ? (
+        <EmptyState
+          title="Choose a state"
+          description="Pick a state above to load its legislators. State members are loaded one state at a time rather than all at once."
+        />
+      ) : (
+        <>
+          <DataTable
+            columns={["Name", "Office", "Party", "State", "Attendance", "Profile", "Watch"]}
+            rows={politicians.map((politician) => [
+              <Link key={politician.id} href={`/politicians/${politician.slug}`} className="font-semibold text-[var(--accent)]">
+                {politician.name}
+              </Link>,
+              politician.title,
+              politician.party,
+              politician.state,
+              hasVotePerformanceStats(politician.stats) ? `${politician.stats.attendance}%` : "N/A",
+              <Link key={`${politician.id}-profile`} href={`/politicians/${politician.slug}`} className="font-semibold text-[var(--accent)]">
+                View profile
+              </Link>,
+              <WatchButton key={`${politician.id}-watch`} />,
+            ])}
+          />
 
-      <Pagination page={page} pageSize={pageSize} total={total} buildHref={buildHref} />
+          <Pagination page={page} pageSize={pageSize} total={total} buildHref={buildHref} />
+        </>
+      )}
     </div>
   );
 }

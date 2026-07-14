@@ -3,7 +3,7 @@ import { cache } from "react";
 import { emptyResult, withData } from "@/lib/data/result";
 import { listStoredBillsBySponsor } from "@/lib/supabase/bills";
 import { listStoredCommitteeMembershipsByPoliticianId } from "@/lib/supabase/committees";
-import { getStoredPoliticianBySlug, listStoredPoliticians } from "@/lib/supabase/politicians";
+import { getStoredPoliticianBySlug, listStoredPoliticians, listStoredPoliticianStates } from "@/lib/supabase/politicians";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
 import { listStoredVotePositionContextByPoliticianId } from "@/lib/supabase/votes";
@@ -390,7 +390,39 @@ export async function getPoliticiansData() {
   }
 }
 
+export const POLITICIAN_SORT_OPTIONS = ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"];
+const FEDERAL_CHAMBERS = ["All chambers", "US House", "US Senate"];
+const STATE_CHAMBERS = ["All chambers", "State House", "State Senate"];
+export const SELECT_A_STATE = "Select a state";
+
+function emptyDirectoryOptions() {
+  return {
+    offices: FEDERAL_CHAMBERS,
+    levels: ["Federal", "State"],
+    parties: ["All parties"],
+    states: [SELECT_A_STATE],
+    sortOptions: POLITICIAN_SORT_OPTIONS,
+  };
+}
+
 export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirectorySearchParams) {
+  const page = parsePositiveInt(searchParams.page, 1);
+
+  // Level is the primary filter and defaults to Federal, so the directory opens on one bounded
+  // set instead of every member of every legislature. State requires an explicit state before
+  // anything is read.
+  const level = searchParams.level === "State" ? "State" : "Federal";
+  const isState = level === "State";
+  const selectedState = (searchParams.state || "").trim().toUpperCase();
+  const filters = {
+    query: (searchParams.q || "").trim(),
+    office: searchParams.office || "All chambers",
+    level,
+    party: searchParams.party || "All parties",
+    state: isState && selectedState ? selectedState : SELECT_A_STATE,
+    sortBy: searchParams.sort || "Name",
+  };
+
   if (!isSupabaseConfigured()) {
     return {
       ...emptyResult("unconfigured", "federal_members_sync", [] as Politician[], "unconfigured"),
@@ -398,46 +430,55 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
       total: 0,
       page: 1,
       pageSize: POLITICIAN_DIRECTORY_PAGE_SIZE,
-      filters: {
-        query: "",
-        office: "All chambers",
-        level: "All levels",
-        party: "All parties",
-        state: "All states",
-        sortBy: "Name",
-      },
+      needsState: false,
+      filters,
+      options: emptyDirectoryOptions(),
+    };
+  }
+
+  // "State" with no state chosen yet: prompt rather than downloading every state legislator.
+  if (isState && !selectedState) {
+    const states = await listStoredPoliticianStates().catch(() => [] as string[]);
+    return {
+      ...emptyResult("supabase", "state_legislation_sync", [] as Politician[], "empty"),
+      source: "supabase" as PoliticianDataSource,
+      politicians: [] as Politician[],
+      total: 0,
+      page: 1,
+      pageSize: POLITICIAN_DIRECTORY_PAGE_SIZE,
+      needsState: true,
+      filters,
       options: {
-        offices: ["All chambers"],
-        levels: ["All levels"],
+        offices: STATE_CHAMBERS,
+        levels: ["Federal", "State"],
         parties: ["All parties"],
-        states: ["All states"],
-        sortOptions: ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"],
+        states: [SELECT_A_STATE, ...states],
+        sortOptions: POLITICIAN_SORT_OPTIONS,
       },
     };
   }
 
-  const page = parsePositiveInt(searchParams.page, 1);
-  const filters = {
-    query: (searchParams.q || "").trim(),
-    office: searchParams.office || "All chambers",
-    level: searchParams.level || "All levels",
-    party: searchParams.party || "All parties",
-    state: searchParams.state || "All states",
-    sortBy: searchParams.sort || "Name",
-  };
-
   try {
-    const [politicians, federalMembersRun, federalLegislationRun, stateRun] = await Promise.all([
-      listStoredPoliticians(),
+    const [politicians, availableStates, federalMembersRun, federalLegislationRun, stateRun] = await Promise.all([
+      // Only the level (and, for state, the single state) the user is actually looking at.
+      listStoredPoliticians(
+        isState
+          ? { jurisdictionType: "state", stateCode: selectedState }
+          : { jurisdictionType: "federal" },
+      ),
+      isState ? listStoredPoliticianStates().catch(() => [] as string[]) : Promise.resolve([] as string[]),
       getLatestSyncRun("federal_members_sync").catch(() => undefined),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
       getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
 
-    const enrichedPoliticians = fillFederalHouseVacancies(
-      enforceRenderedOfficeUniqueness(politicians),
-    );
+    // Vacant-seat placeholders only make sense for the federal House.
+    const enrichedPoliticians = isState
+      ? enforceRenderedOfficeUniqueness(politicians)
+      : fillFederalHouseVacancies(enforceRenderedOfficeUniqueness(politicians));
 
+    // Level and state are already applied by the query above; only the secondary filters
+    // (chamber, party, search) are left to apply here.
     const filtered = enrichedPoliticians
       .filter((politician) => {
         const normalizedQuery = filters.query.toLowerCase();
@@ -451,13 +492,10 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
           ].some((value) => value.toLowerCase().includes(normalizedQuery));
 
         const office = getDisplayOfficeLabel(politician);
-        const level = politician.jurisdictionType === "state" ? "State" : "Federal";
 
         return matchesQuery
           && (filters.office === "All chambers" || office === filters.office)
-          && (filters.level === "All levels" || level === filters.level)
-          && (filters.party === "All parties" || politician.party === filters.party)
-          && (filters.state === "All states" || politician.state === filters.state);
+          && (filters.party === "All parties" || politician.party === filters.party);
       })
       .sort((left, right) => {
         if (filters.sortBy === "Attendance") return right.stats.attendance - left.stats.attendance;
@@ -474,18 +512,17 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
 
     const presentOffices = new Set(enrichedPoliticians.map(getDisplayOfficeLabel));
     const options = {
+      // Chambers are scoped to the level: a federal view never offers "State Senate".
       offices: [
         "All chambers",
-        "US House",
-        "US Senate",
-        ...(presentOffices.has("State House") ? ["State House"] : []),
-        ...(presentOffices.has("State Senate") ? ["State Senate"] : []),
-        ...(presentOffices.has("Other state") ? ["Other state"] : []),
+        ...(isState ? ["State House", "State Senate"] : ["US House", "US Senate"]),
+        ...(presentOffices.has("Other state") && isState ? ["Other state"] : []),
+        ...(presentOffices.has("Other federal") && !isState ? ["Other federal"] : []),
       ],
-      levels: ["All levels", ...sortLabelsAlphabetically(enrichedPoliticians.map((politician) => politician.jurisdictionType === "state" ? "State" : "Federal"))],
+      levels: ["Federal", "State"],
       parties: ["All parties", ...sortLabelsAlphabetically(enrichedPoliticians.map((politician) => politician.party))],
-      states: ["All states", ...sortLabelsAlphabetically(enrichedPoliticians.map((politician) => politician.state))],
-      sortOptions: ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"],
+      states: isState ? [SELECT_A_STATE, ...availableStates] : [],
+      sortOptions: POLITICIAN_SORT_OPTIONS,
     };
 
     const latestRun = [federalMembersRun, federalLegislationRun, stateRun]
@@ -509,6 +546,7 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
       total,
       page: safePage,
       pageSize: POLITICIAN_DIRECTORY_PAGE_SIZE,
+      needsState: false,
       filters,
       options,
     };
@@ -519,13 +557,14 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
       total: 0,
       page,
       pageSize: POLITICIAN_DIRECTORY_PAGE_SIZE,
+      needsState: false,
       filters,
       options: {
         offices: ["All chambers"],
-        levels: ["All levels"],
+        levels: ["Federal", "State"],
         parties: ["All parties"],
-        states: ["All states"],
-        sortOptions: ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"],
+        states: [SELECT_A_STATE],
+        sortOptions: POLITICIAN_SORT_OPTIONS,
       },
     };
   }

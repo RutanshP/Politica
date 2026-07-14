@@ -19,7 +19,7 @@ export default async function PoliticiansPage({
   const normalizedSearchParams = Object.fromEntries(
     Object.entries(resolvedSearchParams).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value]),
   );
-  const { politicians, source, total, page, pageSize, filters, options } = await getPoliticiansDirectoryData(normalizedSearchParams);
+  const { politicians, source, total, page, pageSize, needsState, filters, options } = await getPoliticiansDirectoryData(normalizedSearchParams);
 
   return (
     <div className="space-y-6">
@@ -37,6 +37,7 @@ export default async function PoliticiansPage({
       <SectionCard title="Member directory" description="Search, filter, and sort the stored member records.">
         <PoliticiansDirectory
           politicians={politicians}
+          needsState={needsState}
           total={total}
           page={page}
           pageSize={pageSize}

@@ -561,9 +561,23 @@ const POLITICIAN_LIST_SELECT = [
 /**
  * @param options.fresh sync pipelines must observe current rows to compute diffs; the render
  * path reads through the cache.
+ * @param options.jurisdictionType / options.stateCode scope the read. The directory only ever
+ * shows one level at a time (and one state at a time), so it should not download every member of
+ * every legislature to render 20 rows. The merge/dedupe below still sees the full set it needs,
+ * because duplicates only ever occur within the same level and state.
  */
-export const listStoredPoliticians = cache(async (options?: { fresh?: boolean }) => {
-  const rows = await fetchSupabaseRows<PoliticianRow>("politicians", "order=name.asc", {
+export const listStoredPoliticians = cache(async (options?: {
+  fresh?: boolean;
+  jurisdictionType?: "federal" | "state";
+  stateCode?: string;
+}) => {
+  const conditions = [
+    options?.jurisdictionType ? `jurisdiction_type=eq.${options.jurisdictionType}` : "",
+    options?.stateCode ? `state_code=eq.${options.stateCode.toUpperCase()}` : "",
+    "order=name.asc",
+  ].filter(Boolean);
+
+  const rows = await fetchSupabaseRows<PoliticianRow>("politicians", conditions.join("&"), {
     ...(options?.fresh
       ? { cache: "no-store" as const }
       : { tags: [POLITICIANS_CACHE_TAG] }),
@@ -573,6 +587,17 @@ export const listStoredPoliticians = cache(async (options?: { fresh?: boolean })
   return enforceFederalOfficeUniqueness(mergeDuplicatePoliticianRows(rows))
     .filter((row) => row.jurisdiction_type !== "federal" || ["US Senator", "US Representative"].includes(getResolvedOfficeTitle(row)))
     .map(mapRowToPolitician);
+});
+
+/** The states we actually store legislators for, for the conditional state dropdown. */
+export const listStoredPoliticianStates = cache(async () => {
+  const rows = await fetchSupabaseRows<{ state_code: string | null }>(
+    "politicians",
+    "jurisdiction_type=eq.state&order=state_code.asc",
+    { select: "state_code", tags: [POLITICIANS_CACHE_TAG], paginateAll: true },
+  );
+
+  return [...new Set(rows.map((row) => (row.state_code || "").toUpperCase()).filter(Boolean))].sort();
 });
 
 export async function getStoredPoliticianBySlug(slug: string) {
