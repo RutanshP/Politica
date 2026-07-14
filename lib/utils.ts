@@ -265,6 +265,11 @@ export function normalizeCommitteeField(value: string, fallback: string) {
 export function normalizePersonLookup(value?: string | null) {
   const normalized = (value || "")
     .toLowerCase()
+    // Fold diacritics to their base letter before stripping punctuation. Without this the
+    // [^a-z0-9\s,] pass turns the accent itself into a space -- "Ben Ray Luján" became
+    // "ben ray luj n", which never matches the roll call's "ben lujan".
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/\b(rep|representative|sen|senator|mr|mrs|ms|dr)\.?\b/g, " ")
     .replace(/[^a-z0-9\s,]/g, " ")
     .replace(/\s+/g, " ")

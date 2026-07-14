@@ -93,7 +93,12 @@ async function readJson<T>(url: string, init: RequestInit) {
   const response = await fetch(url, init);
 
   if (!response.ok) {
-    throw new Error(`Supabase read failed: ${response.status} ${response.statusText}`);
+    // Include PostgREST's error body: a bare "500 Internal Server Error" gives no way to tell a
+    // statement timeout from a bad column from a malformed filter.
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      `Supabase read failed: ${response.status} ${response.statusText}${detail ? ` - ${detail.slice(0, 300)}` : ""}`,
+    );
   }
 
   return (await response.json()) as T;
