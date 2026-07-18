@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { EntityBadge } from "@/components/entity-badge";
 import { PageHeader } from "@/components/page-header";
+import { BillProgressStepper } from "@/components/bill-progress";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { StatusPill } from "@/components/status-pill";
@@ -42,10 +43,15 @@ export default async function BillDetailPage({
   const relatedNews = news.filter((item) => item.relatedIds.includes(bill.id));
   const chronologicalActions = bill.actions;
 
+  const introducedMs = Date.parse(bill.introducedAt);
+  const daysActive = Number.isFinite(introducedMs)
+    ? Math.max(0, Math.round((Date.now() - introducedMs) / 86_400_000))
+    : null;
+
   const statCards = [
+    ["Days active", daysActive ?? "—"],
     ["Amendments", bill.stats.amendments],
     ["Cosponsors", bill.stats.cosponsors],
-    ["Votes", bill.stats.votes],
     ["Bipartisan score", `${bill.stats.bipartisanScore}%`],
   ] as const;
 
@@ -76,6 +82,8 @@ export default async function BillDetailPage({
           { label: "News", href: "/news" },
         ]}
       />
+
+      <BillProgressStepper bill={bill} />
 
       <section className="grid gap-6 xl:grid-cols-[1.35fr_1fr]">
         <div className="space-y-6">
@@ -154,25 +162,6 @@ export default async function BillDetailPage({
 
         <div className="space-y-6">
           <SectionCard title="Bill statistics">
-            <div id="statistics" className="mb-4 rounded-2xl border border-[var(--line)] bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                Progress tracker
-              </p>
-              <div className="mt-3 grid gap-3 md:grid-cols-4">
-                {["Introduced", "In Committee", "On Floor", "Passed Chamber"].map((step) => (
-                  <div
-                    key={step}
-                    className={`rounded-2xl px-4 py-3 text-sm font-semibold ${
-                      bill.status === step || bill.actions.some((action) => action.label.toLowerCase().includes(step.toLowerCase()))
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-slate-50 text-[var(--muted)]"
-                    }`}
-                  >
-                    {step}
-                  </div>
-                ))}
-              </div>
-            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {statCards.map(([label, value]) => (
                 <div key={label} className="rounded-3xl border border-[var(--line)] bg-white p-4">
