@@ -7,7 +7,7 @@ import { BillProgressStepper } from "@/components/bill-progress";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { StatusPill } from "@/components/status-pill";
-import { Tabs } from "@/components/tabs";
+import { BillTabs } from "@/components/bill-tabs";
 import { Timeline } from "@/components/timeline";
 import { WatchButton } from "@/components/watch-button";
 import {
@@ -70,18 +70,7 @@ export default async function BillDetailPage({
         }
       />
 
-      <Tabs
-        items={[
-          { label: "Overview", href: `/bills/${bill.id}`, active: true },
-          { label: "Timeline", href: `/bills/${bill.id}/timeline` },
-          { label: "Text", href: `/bills/${bill.id}/text` },
-          { label: "Votes", href: `/bills/${bill.id}/votes` },
-          { label: "Sponsors", href: sponsor ? `/politicians/${sponsor.slug}` : `/bills/${bill.id}#sponsor` },
-          { label: "Amendments", href: `/bills/${bill.id}#statistics` },
-          { label: "Related", href: `/bills/${bill.id}#related` },
-          { label: "News", href: "/news" },
-        ]}
-      />
+      <BillTabs billId={bill.id} active="overview" />
 
       <BillProgressStepper bill={bill} />
 

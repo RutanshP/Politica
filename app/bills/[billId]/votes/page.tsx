@@ -6,7 +6,7 @@ import { FilterBar } from "@/components/filter-bar";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
-import { Tabs } from "@/components/tabs";
+import { BillTabs } from "@/components/bill-tabs";
 import { VoteBarChart } from "@/components/trend-charts";
 import { VoteTypeBadge } from "@/components/vote-type-badge";
 import { VOTE_CATEGORY_META, isSubstantiveVote } from "@/lib/vote-classification";
@@ -68,14 +68,7 @@ export default async function BillVotesPage({
           </>
         }
       />
-      <Tabs
-        items={[
-          { label: "Overview", href: `/bills/${bill.id}` },
-          { label: "Timeline", href: `/bills/${bill.id}/timeline` },
-          { label: "Text", href: `/bills/${bill.id}/text` },
-          { label: "Votes", href: `/bills/${bill.id}/votes`, active: true },
-        ]}
-      />
+      <BillTabs billId={bill.id} active="votes" />
       {vote ? (
         <>
           <section className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">

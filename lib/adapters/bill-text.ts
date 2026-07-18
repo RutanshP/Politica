@@ -14,6 +14,8 @@ export interface BillTextNode {
   header?: string; // "Short title"
   text: string; // flattened inline text for this node (excludes children)
   level: number;
+  /** True for text inside a <quoted-block> -- statutory language a bill inserts into existing law. */
+  quoted?: boolean;
   children: BillTextNode[];
 }
 
@@ -103,6 +105,33 @@ function findOfficialTitle(nodes: OrderedNode[]): string | undefined {
 
 let sequentialId = 0;
 
+/**
+ * A <quoted-block> holds the statutory text a bill inserts (its structural children are the real
+ * sections/subsections being added). Returns those children, flagged `quoted` so the UI can set
+ * them off visually, plus any bare quoted text.
+ */
+function buildQuotedBlock(node: OrderedNode, level: number): BillTextNode[] {
+  const out: BillTextNode[] = [];
+  for (const child of childrenOf(node, "quoted-block")) {
+    const childTag = tagOf(child);
+    if (!childTag) continue;
+    if (STRUCTURAL_TAGS.has(childTag)) {
+      const built = buildNode(child, childTag, level);
+      markQuoted(built);
+      out.push(built);
+    } else if (childTag === "text") {
+      const text = flattenInline(childrenOf(child, "text")).replace(/\s+/g, " ").trim();
+      if (text) out.push({ id: `n${sequentialId++}`, text, level, quoted: true, children: [] });
+    }
+  }
+  return out;
+}
+
+function markQuoted(node: BillTextNode) {
+  node.quoted = true;
+  node.children.forEach(markQuoted);
+}
+
 /** Turns one structural element into a normalized node with children; `level` is nesting depth. */
 function buildNode(node: OrderedNode, tag: string, level: number): BillTextNode {
   const kids = childrenOf(node, tag);
@@ -124,6 +153,10 @@ function buildNode(node: OrderedNode, tag: string, level: number): BillTextNode 
       header = flattenInline(childrenOf(child, "header")).trim() || undefined;
     } else if (childTag === "text") {
       inlineParts.push(...childrenOf(child, "text"));
+    } else if (childTag === "quoted-block") {
+      // The actual statutory language a bill inserts into existing law lives here. Without this
+      // the page shows "by inserting the following:" but not the text being inserted.
+      children.push(...buildQuotedBlock(child, level + 1));
     } else if (STRUCTURAL_TAGS.has(childTag)) {
       children.push(buildNode(child, childTag, level + 1));
     }

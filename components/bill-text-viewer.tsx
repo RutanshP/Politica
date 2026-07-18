@@ -15,7 +15,10 @@ function NodeContent({ node }: { node: BillTextNode }) {
   const indent = Math.min(node.level, 6) * 16;
 
   return (
-    <div style={{ marginLeft: indent }} className="border-l border-transparent">
+    <div
+      style={{ marginLeft: indent }}
+      className={cn(node.quoted && "rounded-lg border-l-2 border-slate-300 bg-slate-50 py-2 pl-3 pr-2")}
+    >
       {heading ? (
         <p className={cn("font-semibold text-[var(--ink)]", node.level === 0 ? "text-base" : "text-sm")}>
           {heading}

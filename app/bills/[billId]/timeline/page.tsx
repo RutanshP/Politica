@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
-import { Tabs } from "@/components/tabs";
+import { BillTabs } from "@/components/bill-tabs";
 import { BillProgressStepper } from "@/components/bill-progress";
 import { Timeline } from "@/components/timeline";
 import {
@@ -33,15 +33,7 @@ export default async function BillTimelinePage({
         description="Track every committee and floor milestone in a dedicated timeline view."
         actions={<SourceBadge label={getBillsSourceLabel(source)} live={isLiveBillsSource(source)} />}
       />
-      <Tabs
-        items={[
-          { label: "Overview", href: `/bills/${bill.id}` },
-          { label: "Timeline", href: `/bills/${bill.id}/timeline`, active: true },
-          { label: "Text", href: `/bills/${bill.id}/text` },
-          { label: "Votes", href: `/bills/${bill.id}/votes` },
-          { label: "News", href: "/news" },
-        ]}
-      />
+      <BillTabs billId={bill.id} active="timeline" />
       <BillProgressStepper bill={bill} />
       <SectionCard title="Legislative timeline">
         {bill.actions.length > 0 ? (
