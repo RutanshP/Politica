@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { PoliticianTabs } from "@/components/politician-tabs";
+import { StatDonut } from "@/components/stat-donut";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { WatchButton } from "@/components/watch-button";
@@ -46,10 +47,12 @@ export default async function PoliticianProfilePage({
   );
   const fundingEdges = graphData.graph.edges.filter((edge: FundingEdge) => edge.target === politician.slug || edge.target === politician.id);
   const hasVoteStats = hasVotePerformanceStats(politician.stats);
+  const voteDonuts = [
+    { label: "Votes with party", value: hasVoteStats ? politician.stats.votesWithParty : null, tone: "emerald" as const },
+    { label: "Votes against party", value: hasVoteStats ? politician.stats.votesAgainstParty : null, tone: "rose" as const },
+    { label: "Attendance", value: hasVoteStats ? politician.stats.attendance : null, tone: "sky" as const },
+  ];
   const statCards = [
-    ["Votes with party", hasVoteStats ? `${politician.stats.votesWithParty}%` : "N/A"],
-    ["Votes against party", hasVoteStats ? `${politician.stats.votesAgainstParty}%` : "N/A"],
-    ["Attendance", hasVoteStats ? `${politician.stats.attendance}%` : "N/A"],
     ["Bills introduced", politician.stats.billsIntroduced],
     ["Bills passed", politician.stats.billsPassed],
     ["Amendments", politician.stats.amendmentsOffered],
@@ -105,7 +108,12 @@ export default async function PoliticianProfilePage({
           title="Key stats"
           description="Votes, bills, attendance, and ideology snapshots."
         >
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 rounded-3xl border border-[var(--line)] bg-white p-5 sm:grid-cols-3">
+            {voteDonuts.map((donut) => (
+              <StatDonut key={donut.label} value={donut.value} label={donut.label} tone={donut.tone} />
+            ))}
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
             {statCards.map(([label, value]) => (
               <div
                 key={label}
