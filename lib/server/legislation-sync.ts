@@ -1214,7 +1214,11 @@ function buildFederalVoteRows(
 
     voteRows.push({
       id: voteId,
-      bill_id: linkedBill?.id || vote.billId || voteId,
+      // Link to the real bill when the vote references one (vote.billId is a Congress bill id that
+      // exists in the fully-synced bill list). A procedural motion or nomination has no bill, so it
+      // gets null rather than self-referencing into a placeholder "bill" -- votes.bill_id is
+      // nullable since migration 007.
+      bill_id: linkedBill?.id || vote.billId || null,
       canonical_id: vote.canonicalId,
       bill_number: linkedBill?.number || vote.billNumber,
       title: linkedBill?.title || vote.title,
@@ -1258,57 +1262,6 @@ function buildFederalVoteRows(
   return { voteRows, positionRows };
 }
 
-function buildFederalVotePlaceholderBillRows(
-  existingBillRows: BillRow[],
-  voteRows: VoteRow[],
-) {
-  const existingBillIds = new Set(existingBillRows.map((row) => row.id));
-
-  return uniqueByKey(
-    voteRows
-      .filter((voteRow): voteRow is typeof voteRow & { bill_id: string } =>
-        Boolean(voteRow.bill_id) && !existingBillIds.has(voteRow.bill_id as string))
-      .map((voteRow) => ({
-        id: voteRow.bill_id,
-        slug: slugifySegment(`${voteRow.bill_number}-${voteRow.title || voteRow.bill_id}`),
-        number: voteRow.bill_number || voteRow.bill_id.toUpperCase(),
-        title: voteRow.title || "Federal vote record",
-        summary: "Stored federal vote metadata is available even though the linked bill metadata has not been synced yet.",
-        jurisdiction: "Federal" as const,
-        country: "United States",
-        state: null,
-        chamber: voteRow.chamber,
-        status: "On Floor" as const,
-        topic: "Congressional Vote",
-        sponsor_id: "federal-vote-pending",
-        sponsor_name: "Congressional sponsor metadata pending bill sync",
-        committee_id: "federal-vote-pending",
-        committee_name: "Committee metadata pending bill sync",
-        latest_action: voteRow.result,
-        last_action_at: voteRow.date_label,
-        introduced_at: voteRow.date_label,
-        session: `${getDefaultCongress()}th Congress`,
-        chance_of_passing: 50,
-        stats: {
-          amendments: 0,
-          cosponsors: 0,
-          votes: 1,
-          bipartisanScore: 0,
-        },
-        related_bill_ids: [],
-        source: "congress_sync",
-        source_system: voteRow.source_system,
-        source_id: voteRow.bill_id,
-        jurisdiction_type: "federal" as const,
-        state_code: null,
-        session_id: null,
-        synced_at: new Date().toISOString(),
-        raw_payload: voteRow.raw_payload,
-        raw_bill: voteRow.raw_payload,
-      })),
-    (row) => row.id,
-  );
-}
 
 function buildMissingFederalPoliticianRows(
   existingRows: PoliticianRow[],
@@ -1838,13 +1791,9 @@ export async function syncLegislationFromCongress(options?: {
       (row) => row.id,
     );
     let derivedPoliticiansRecomputed = 0;
-    const billRows = uniqueByKey(
-      [
-        ...syncedBillRows,
-        ...buildFederalVotePlaceholderBillRows([...existingStored.billRows, ...syncedBillRows], voteRows),
-      ],
-      (row) => row.id,
-    );
+    // No longer synthesizes placeholder bills from unlinked votes -- those cluttered the directory
+    // with procedural motions. Unlinked votes now store bill_id = null (see buildFederalVoteRows).
+    const billRows = syncedBillRows;
     const staleBillsDeleted = shouldPruneStaleBills
       ? buildStaleCongressBillIds(
         existingStored.billRows,

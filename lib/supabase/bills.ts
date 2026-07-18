@@ -69,9 +69,17 @@ export interface StoredBillsPageQuery {
   sortBy?: string;
 }
 
+// Vote-derived placeholder "bills" (a motion to proceed, a cloture vote, etc.) were created only
+// to satisfy the old votes.bill_id foreign key. They carry this sponsor marker and should never
+// appear in the bills directory -- they are procedural votes, not legislation.
+export const VOTE_PLACEHOLDER_SPONSOR_ID = "federal-vote-pending";
+
 function buildStoredBillsPageFilterQuery(filters: Omit<StoredBillsPageQuery, "page" | "pageSize" | "sortBy">) {
   const congressSession = `${getDefaultCongress()}th Congress`;
-  const conditions = [`or(jurisdiction_type.eq.state,and(jurisdiction_type.eq.federal,session.eq.${congressSession}))`];
+  const conditions = [
+    `or(jurisdiction_type.eq.state,and(jurisdiction_type.eq.federal,session.eq.${congressSession}))`,
+    `sponsor_id.neq.${VOTE_PLACEHOLDER_SPONSOR_ID}`,
+  ];
 
   if (filters.level === "Federal") {
     conditions.push(`jurisdiction_type.eq.federal`);
@@ -307,6 +315,7 @@ export async function listRecentStoredBills(limit: number, statuses?: string[]) 
   const congressSession = `${getDefaultCongress()}th Congress`;
   const conditions = [
     `or(jurisdiction_type.eq.state,and(jurisdiction_type.eq.federal,session.eq.${congressSession}))`,
+    `sponsor_id.neq.${VOTE_PLACEHOLDER_SPONSOR_ID}`,
   ];
 
   if (statuses?.length) {
