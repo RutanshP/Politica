@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { Tabs } from "@/components/tabs";
+import { BillProgressStepper } from "@/components/bill-progress";
 import { Timeline } from "@/components/timeline";
 import {
   getBillData,
@@ -41,6 +42,7 @@ export default async function BillTimelinePage({
           { label: "News", href: "/news" },
         ]}
       />
+      <BillProgressStepper bill={bill} />
       <SectionCard title="Legislative timeline">
         {bill.actions.length > 0 ? (
           <Timeline items={chronologicalActions} />

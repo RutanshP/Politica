@@ -2,6 +2,53 @@ export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
+const HTML_ENTITIES: Record<string, string> = {
+  "&nbsp;": " ",
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+  "&rsquo;": "’",
+  "&lsquo;": "‘",
+  "&rdquo;": "”",
+  "&ldquo;": "“",
+  "&mdash;": "—",
+  "&ndash;": "–",
+  "&hellip;": "…",
+  "&sect;": "§",
+};
+
+/**
+ * Congress.gov summaries arrive as HTML (`<p><strong>Title</strong></p><p>...</p><ul><li>...`).
+ * Rendering that raw shows the tags; using dangerouslySetInnerHTML on an external source is an
+ * injection risk. This converts the markup to clean text that preserves paragraph and list
+ * structure, safe to render with `whitespace-pre-line`.
+ */
+export function formatSummaryText(value?: string | null): string {
+  if (!value) return "";
+
+  let text = value
+    .replace(/<\s*(br|BR)\s*\/?>/g, "\n")
+    .replace(/<\/\s*(p|div|h[1-6]|tr)\s*>/gi, "\n\n")
+    .replace(/<\s*li[^>]*>/gi, "\n• ")
+    .replace(/<\/\s*li\s*>/gi, "")
+    .replace(/<[^>]+>/g, ""); // strip any remaining tags
+
+  text = text.replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)));
+  text = text.replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+  for (const [entity, char] of Object.entries(HTML_ENTITIES)) {
+    text = text.split(entity).join(char);
+  }
+
+  return text
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function initials(name: string) {
   return name
     .split(" ")

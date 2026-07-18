@@ -1,6 +1,6 @@
 import type { Bill, Committee } from "@/types/civic";
 import type { BillActionRow, BillRow, BillVersionRow, CommitteeRow } from "@/types/supabase";
-import { normalizeStateLabel, slugifySegment } from "@/lib/utils";
+import { formatSummaryText, normalizeStateLabel, slugifySegment } from "@/lib/utils";
 
 function parseDateLabel(value: string) {
   const timestamp = Date.parse(value);
@@ -104,7 +104,7 @@ export function mapRowToBill(
     slug: row.slug || undefined,
     number: row.number,
     title: row.title,
-    summary: row.summary,
+    summary: formatSummaryText(row.summary),
     jurisdiction: row.jurisdiction,
     country: row.country,
     state: row.state ? normalizeStateLabel(row.state) : undefined,

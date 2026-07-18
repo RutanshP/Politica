@@ -123,7 +123,7 @@ export default async function BillDetailPage({
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4 text-sm text-[var(--muted)]">
                   <p className="font-semibold text-[var(--ink)]">Official summary</p>
-                  <p className="mt-2">{bill.summary}</p>
+                  <p className="mt-2 whitespace-pre-line leading-6">{bill.summary}</p>
                 </div>
               </div>
               <div className="rounded-3xl border border-[var(--line)] bg-white p-5">
@@ -188,7 +188,7 @@ export default async function BillDetailPage({
                         {related.number}
                       </p>
                       <p className="mt-1 text-sm text-[var(--ink)]">{related.title}</p>
-                      <p className="mt-1 text-sm text-[var(--muted)]">
+                      <p className="mt-1 line-clamp-3 text-sm text-[var(--muted)]">
                         {related.summary}
                       </p>
                     </Link>
