@@ -14,6 +14,9 @@
 #
 set -uo pipefail
 
+# cron runs with a minimal PATH (/usr/bin:/bin) that lacks Homebrew node/npx.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
