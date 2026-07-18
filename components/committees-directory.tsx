@@ -137,7 +137,7 @@ export function CommitteesDirectory({
         ])}
       />
 
-      <Pagination page={currentPage} pageSize={PAGE_SIZE} total={filtered.length} />
+      <Pagination page={currentPage} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} />
     </div>
   );
 }
