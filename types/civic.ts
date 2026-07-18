@@ -156,6 +156,8 @@ export interface Vote {
   present: number;
   notVoting: number;
   positions: VotePosition[];
+  /** Substantive-vs-procedural classification derived from the motion text. */
+  category?: "policy" | "amendment" | "nomination" | "procedural";
   sourceMetadata?: SourceMetadata;
 }
 

@@ -1,3 +1,4 @@
+import { classifyVote } from "@/lib/vote-classification";
 import { deleteSupabaseRows, fetchSupabasePage, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import type { VotePosition, Vote } from "@/types/civic";
 import type { VotePositionRow, VoteRow } from "@/types/supabase";
@@ -41,6 +42,7 @@ function mapRowToVote(row: VoteRow, positions: VotePositionRow[]): Vote {
     nay: row.nay,
     present: row.present,
     notVoting: row.not_voting,
+    category: classifyVote(row.title),
     positions: positions.map(mapRowToVotePosition),
     sourceMetadata: {
       sourceSystem: row.source_system,

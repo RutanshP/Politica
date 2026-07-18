@@ -18,6 +18,8 @@ import {
   isLiveVoteSource,
 } from "@/lib/data/votes";
 import { hasVotePerformanceStats } from "@/lib/utils";
+import { VoteTypeBadge } from "@/components/vote-type-badge";
+import { isSubstantiveVote } from "@/lib/vote-classification";
 
 export const revalidate = 21600;
 
@@ -30,7 +32,9 @@ export default async function PoliticianVotesPage({
   const { politician, source } = await getPoliticianData(slug);
   if (!politician) notFound();
   const { votes, source: voteSource } = await getVotesDataForPolitician(politician.id);
-  const issueOptions = [...new Set(votes.map((vote) => vote.title).slice(0, 6))];
+  const substantiveVotes = votes.filter((vote) => isSubstantiveVote(vote.category ?? "policy"));
+  const proceduralCount = votes.length - substantiveVotes.length;
+  const issueOptions = [...new Set(substantiveVotes.map((vote) => vote.title).slice(0, 6))];
   const hasVoteStats = hasVotePerformanceStats(politician.stats);
 
   return (
@@ -74,16 +78,24 @@ export default async function PoliticianVotesPage({
             </div>
           </div>
         </SectionCard>
-        <SectionCard title="Recent votes">
-          {votes.length > 0 ? (
+        <SectionCard
+          title="Recent policy votes"
+          description={proceduralCount > 0
+            ? `Substantive passage and amendment votes. ${proceduralCount} procedural motion${proceduralCount === 1 ? "" : "s"} (cloture, motions to proceed, etc.) set aside.`
+            : "Substantive passage and amendment votes."}
+        >
+          {substantiveVotes.length > 0 ? (
             <div className="space-y-3">
-              {votes.slice(0, 6).map((vote) => (
+              {substantiveVotes.slice(0, 8).map((vote) => (
                 <Link
                   key={vote.id}
-                  href={`/bills/${vote.billId}/votes`}
+                  href={vote.billId ? `/bills/${vote.billId}/votes` : `/politicians/${politician.slug}/votes`}
                   className="block rounded-2xl border border-[var(--line)] bg-white p-4 transition hover:border-[var(--accent)]"
                 >
-                  <p className="font-semibold text-[var(--accent)]">{vote.billNumber}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-[var(--accent)]">{vote.billNumber}</p>
+                    <VoteTypeBadge category={vote.category} />
+                  </div>
                   <p className="mt-1 text-sm text-[var(--ink)]">{vote.title}</p>
                   <p className="mt-1 text-sm text-[var(--muted)]">
                     {vote.positions[0]?.vote || "Vote unavailable"} | {vote.result} | {vote.dateLabel}
@@ -93,8 +105,10 @@ export default async function PoliticianVotesPage({
             </div>
           ) : (
             <EmptyState
-              title="No stored vote records available"
-              description="This member does not yet have synced vote-position records in the current stored dataset."
+              title={votes.length > 0 ? "Only procedural votes on record" : "No stored vote records available"}
+              description={votes.length > 0
+                ? `This member has ${votes.length} stored vote${votes.length === 1 ? "" : "s"}, but they are all procedural motions rather than substantive policy votes.`
+                : "This member does not yet have synced vote-position records in the current stored dataset."}
             />
           )}
         </SectionCard>

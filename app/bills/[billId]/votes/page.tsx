@@ -8,6 +8,8 @@ import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { Tabs } from "@/components/tabs";
 import { VoteBarChart } from "@/components/trend-charts";
+import { VoteTypeBadge } from "@/components/vote-type-badge";
+import { VOTE_CATEGORY_META, isSubstantiveVote } from "@/lib/vote-classification";
 import {
   getBillData,
   getBillsSourceLabel,
@@ -34,7 +36,12 @@ export default async function BillVotesPage({
   if (!bill) notFound();
 
   const { votes, source: voteSource } = await getVotesDataForBill(billId);
-  const vote = votes.find((item) => item.id === voteId) || votes[0];
+  // Default to a substantive vote (passage/amendment) rather than whatever procedural motion
+  // happens to be first, so the page opens on the policy decision that matters.
+  const vote =
+    votes.find((item) => item.id === voteId)
+    || votes.find((item) => isSubstantiveVote(item.category ?? "policy"))
+    || votes[0];
   const live = isLiveBillsSource(source);
   const voteStats = vote
     ? ([
@@ -94,25 +101,34 @@ export default async function BillVotesPage({
                         <a
                           key={item.id}
                           href={`/bills/${bill.id}/votes?voteId=${encodeURIComponent(item.id)}`}
-                          className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                          className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${
                             item.id === vote.id
                               ? "bg-[var(--accent)] text-white"
                               : "border border-[var(--line)] bg-white text-[var(--ink)]"
                           }`}
                         >
                           {item.dateLabel}
+                          {!isSubstantiveVote(item.category ?? "policy") ? (
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] ${item.id === vote.id ? "bg-white/25" : "bg-slate-100 text-slate-600"}`}>
+                              {VOTE_CATEGORY_META[item.category ?? "policy"].label}
+                            </span>
+                          ) : null}
                         </a>
                       ))}
                     </div>
                   </div>
                 ) : null}
                 <div className="rounded-3xl border border-[var(--line)] bg-white p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                    Result
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Result
+                    </p>
+                    <VoteTypeBadge category={vote.category} />
+                  </div>
                   <p className="mt-2 font-display text-4xl font-semibold">
                     {vote.result}
                   </p>
+                  <p className="mt-2 text-sm text-[var(--muted)]">{vote.title}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {voteStats.map(([label, value]) => (
