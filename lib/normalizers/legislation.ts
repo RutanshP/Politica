@@ -60,8 +60,11 @@ export function mapBillToRow(
     last_versions_synced_at: options?.lastVersionsSyncedAt || null,
     last_votes_synced_at: options?.lastVotesSyncedAt || null,
     synced_at: now,
-    raw_payload: rawBill,
-    raw_bill: rawBill,
+    // Coalesce to null: JSON.stringify omits undefined keys, and PostgREST rejects a bulk upsert
+    // whose objects do not all share the same keys (PGRST102). A list-only bill has no raw
+    // payload while a detailed one does, so without this the two cannot go in one chunk.
+    raw_payload: rawBill ?? null,
+    raw_bill: rawBill ?? null,
   };
 }
 
@@ -177,8 +180,8 @@ export function mapCommitteeToRow(committee: Committee, rawCommittee: unknown): 
     state_code: null,
     session_id: committee.sessionId || null,
     synced_at: new Date().toISOString(),
-    raw_payload: rawCommittee,
-    raw_committee: rawCommittee,
+    raw_payload: rawCommittee ?? null,
+    raw_committee: rawCommittee ?? null,
   };
 }
 

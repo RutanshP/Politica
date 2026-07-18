@@ -279,6 +279,37 @@ export async function fetchSupabasePage<T>(
   };
 }
 
+/**
+ * PostgREST rejects a bulk insert whose objects do not all share the same keys (PGRST102), and
+ * `JSON.stringify` silently drops `undefined` values -- so two rows built by different code paths
+ * (e.g. a list-only bill vs a detailed one, or a placeholder politician vs a stored one) can end
+ * up with different key sets in the same batch. Normalize every row to the union of all keys,
+ * filling any it is missing with null.
+ */
+function normalizeRowKeys<T extends object>(rows: T[]): T[] {
+  if (rows.length <= 1) {
+    return rows;
+  }
+
+  const allKeys = new Set<string>();
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if ((row as Record<string, unknown>)[key] !== undefined) {
+        allKeys.add(key);
+      }
+    }
+  }
+
+  return rows.map((row) => {
+    const normalized: Record<string, unknown> = {};
+    for (const key of allKeys) {
+      const value = (row as Record<string, unknown>)[key];
+      normalized[key] = value === undefined ? null : value;
+    }
+    return normalized as T;
+  });
+}
+
 export async function upsertSupabaseRows<T extends object>(
   pathname: string,
   rows: T[],
@@ -294,7 +325,7 @@ export async function upsertSupabaseRows<T extends object>(
       "Content-Type": "application/json",
       Prefer: "resolution=merge-duplicates,return=representation",
     }),
-    body: JSON.stringify(rows),
+    body: JSON.stringify(normalizeRowKeys(rows)),
   });
 
   if (!response.ok) {
