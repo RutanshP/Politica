@@ -1,102 +1,64 @@
 import { notFound } from "next/navigation";
 
-import { DataTable } from "@/components/data-table";
-import { EmptyState } from "@/components/empty-state";
-import { NetworkGraph } from "@/components/network-graph";
+import { FundingNetworkExplorer } from "@/components/funding/funding-network-explorer";
+import { FundingStatTiles } from "@/components/funding/funding-stat-tiles";
 import { PageHeader } from "@/components/page-header";
 import { PoliticianTabs } from "@/components/politician-tabs";
-import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
-import {
-  getGraphSourceLabel,
-  getFundingGraphData,
-  isLiveGraphSource,
-} from "@/lib/data/graph";
+import { buildPoliticianFundingGraph } from "@/lib/graph/build-politician-funding-graph";
+import { parseFundingGraphQuery } from "@/lib/graph/funding-graph-params";
 import {
   getPoliticianData,
   getPoliticianSourceLabel,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
+import { DEFAULT_FUNDING_GRAPH_FILTERS } from "@/types/funding-graph";
 
 export const revalidate = 21600;
 
 export default async function PoliticianFundingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { slug } = await params;
+  const [{ slug }, rawSearchParams] = await Promise.all([params, searchParams]);
   const { politician, source } = await getPoliticianData(slug);
   if (!politician) notFound();
 
-  const { graph, source: graphSource } = await getFundingGraphData(slug);
+  const urlParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(rawSearchParams)) {
+    if (typeof value === "string") urlParams.set(key, value);
+  }
+  const parsed = parseFundingGraphQuery(urlParams);
+  const filters = parsed.ok ? parsed.filters : DEFAULT_FUNDING_GRAPH_FILTERS;
+
+  const graph = await buildPoliticianFundingGraph(slug, filters);
+  if (!graph) notFound();
+
+  const cycleLabel = filters.cycle
+    ? `${filters.cycle} cycle`
+    : graph.availableFilters.cycles.length > 0
+      ? `${graph.availableFilters.cycles.join(" + ")} cycles`
+      : "No cycle data yet";
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Funding relationships"
+        eyebrow="Funding network"
         title={politician.name}
-        description="Centered funding view for this politician, with campaign committees and finance sources arranged around the member."
+        description={`${politician.title} · ${politician.party} · ${politician.district || politician.state}. Documented funding, organizational, lobbying, and legislative relationships around this member.`}
         actions={
-          <>
-            <SourceBadge
-              label={getPoliticianSourceLabel(source)}
-              live={isLivePoliticianSource(source)}
-            />
-            <SourceBadge
-              label={getGraphSourceLabel(graphSource)}
-              live={isLiveGraphSource(graphSource)}
-            />
-          </>
+          <SourceBadge
+            label={getPoliticianSourceLabel(source)}
+            live={isLivePoliticianSource(source)}
+          />
         }
       />
       <PoliticianTabs slug={politician.slug} active="funding" />
-      <section className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <SectionCard title="Funding filters">
-          <div className="space-y-3 text-sm">
-            {[
-              "Election cycle: current",
-              "Center node: selected politician",
-              "Jurisdiction: Federal",
-              "Relationship: campaign funding",
-              "Top sources: highest receipts first",
-              "Fallback mode: stored Congress links if FEC match is missing",
-            ].map((item) => (
-              <div key={item} className="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-                {item}
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-        <SectionCard title="Funding network">
-          {graph.edges.length > 0 ? (
-            <NetworkGraph nodes={graph.nodes} edges={graph.edges} focusNodeId={politician.slug} />
-          ) : (
-            <EmptyState
-              title="No stored finance relationships yet"
-              description="The FEC sync ran, but this politician does not yet have matched stored committee relationships in the current finance graph."
-            />
-          )}
-        </SectionCard>
-        <SectionCard title="Connected sources">
-          {graph.edges.length > 0 ? (
-            <DataTable
-              columns={["Source", "Target", "Amount", "Type"]}
-              rows={graph.edges.map((edge) => [
-                graph.nodes.find((node) => node.id === edge.source)?.label || edge.source,
-                graph.nodes.find((node) => node.id === edge.target)?.label || edge.target,
-                edge.amount ? `$${edge.amount.toLocaleString()}` : "Context edge",
-                edge.label,
-              ])}
-            />
-          ) : (
-            <EmptyState
-              title="No connected sources yet"
-              description="Stored funding edges will appear here once a campaign committee or donor match is synced for this member."
-            />
-          )}
-        </SectionCard>
-      </section>
+      <FundingStatTiles totals={graph.totals} cycleLabel={cycleLabel} />
+      <FundingNetworkExplorer slug={slug} initialGraph={graph} initialFilters={filters} />
     </div>
   );
 }
