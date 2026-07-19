@@ -5,6 +5,11 @@ import type { VotePositionRow, VoteRow } from "@/types/supabase";
 import { normalizePartyLabel, normalizeStateLabel } from "@/lib/utils";
 
 const votePositionStatSelect = "vote_id,politician_id,party,vote";
+// Excludes raw_payload -- an unused-in-UI blob column on the largest table in the database
+// (345k+ rows). Fetching it by default via select=* on every vote/politician page view was a
+// major, uncached (cache: "no-store") egress driver.
+const votePositionDisplaySelect = "vote_id,politician_id,name,party,state,vote,source_system,source_id,synced_at";
+const voteDisplaySelect = "id,bill_id,canonical_id,bill_number,title,chamber,date_label,result,yea,nay,present,not_voting,source_system,source_id,synced_at";
 
 function buildQuotedInFilter(values: string[]) {
   return values
@@ -54,7 +59,7 @@ function mapRowToVote(row: VoteRow, positions: VotePositionRow[]): Vote {
 }
 
 export async function listStoredVotes() {
-  const voteRows = await fetchSupabaseRows<VoteRow>("votes", "order=date_label.desc", { cache: "no-store", paginateAll: true });
+  const voteRows = await fetchSupabaseRows<VoteRow>("votes", "order=date_label.desc", { cache: "no-store", paginateAll: true, select: voteDisplaySelect });
   const positionRows = await listStoredVotePositionsByVoteIds(voteRows.map((row) => row.id));
 
   const positionsByVoteId = new Map<string, VotePositionRow[]>();
@@ -68,7 +73,7 @@ export async function listStoredVotes() {
 }
 
 export async function listStoredVotesByBillId(billId: string) {
-  const voteRows = await fetchSupabaseRows<VoteRow>("votes", `bill_id=eq.${encodeURIComponent(billId)}&order=date_label.desc`, { cache: "no-store", paginateAll: true });
+  const voteRows = await fetchSupabaseRows<VoteRow>("votes", `bill_id=eq.${encodeURIComponent(billId)}&order=date_label.desc`, { cache: "no-store", paginateAll: true, select: voteDisplaySelect });
   const wantedVoteIds = new Set(voteRows.map((row) => row.id));
   const positionRows = await listStoredVotePositionsByVoteIds([...wantedVoteIds]);
   const positionsByVoteId = new Map<string, VotePositionRow[]>();
@@ -86,7 +91,7 @@ export async function listStoredVotesByPoliticianId(politicianId: string) {
   const positionRows = await fetchSupabaseRows<VotePositionRow>(
     "vote_positions",
     `politician_id=eq.${encodeURIComponent(politicianId)}&order=vote_id.asc`,
-    { cache: "no-store", paginateAll: true },
+    { cache: "no-store", paginateAll: true, select: votePositionDisplaySelect },
   );
 
   const voteIds = [...new Set(positionRows.map((row) => row.vote_id))];
@@ -97,7 +102,7 @@ export async function listStoredVotesByPoliticianId(politicianId: string) {
   const voteRows = await fetchSupabaseRows<VoteRow>(
     "votes",
     `id=in.(${buildQuotedInFilter(voteIds)})&order=date_label.desc`,
-    { cache: "no-store", paginateAll: true },
+    { cache: "no-store", paginateAll: true, select: voteDisplaySelect },
   );
 
   const positionsByVoteId = new Map<string, VotePositionRow[]>();
@@ -114,7 +119,7 @@ export async function listStoredVotePositionContextByPoliticianId(politicianId: 
   const positionRows = await fetchSupabaseRows<VotePositionRow>(
     "vote_positions",
     `politician_id=eq.${encodeURIComponent(politicianId)}&order=vote_id.asc`,
-    { cache: "no-store", paginateAll: true },
+    { cache: "no-store", paginateAll: true, select: votePositionDisplaySelect },
   );
 
   const voteIds = [...new Set(positionRows.map((row) => row.vote_id))];
@@ -125,7 +130,7 @@ export async function listStoredVotePositionContextByPoliticianId(politicianId: 
   return fetchSupabaseRows<VotePositionRow>(
     "vote_positions",
     `vote_id=in.(${buildQuotedInFilter(voteIds)})&order=vote_id.asc,name.asc`,
-    { cache: "no-store", paginateAll: true },
+    { cache: "no-store", paginateAll: true, select: votePositionDisplaySelect },
   );
 }
 
@@ -142,7 +147,7 @@ export async function listStoredVotePositionContextByPoliticianIds(politicianIds
     const rows = await fetchSupabaseRows<VotePositionRow>(
       "vote_positions",
       `politician_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc`,
-      { cache: "no-store", paginateAll: true },
+      { cache: "no-store", paginateAll: true, select: votePositionDisplaySelect },
     );
     politicianPositionRows.push(...rows);
   }
@@ -217,7 +222,7 @@ export async function listStoredVotePositionsByVoteIds(voteIds: string[]) {
     const result = await fetchSupabaseRows<VotePositionRow>(
       "vote_positions",
       `vote_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc,name.asc`,
-      { cache: "no-store", paginateAll: true },
+      { cache: "no-store", paginateAll: true, select: votePositionDisplaySelect },
     );
     rows.push(...result);
   }

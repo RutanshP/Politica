@@ -447,7 +447,7 @@ export async function listStoredBillActionRowsByBillIds(billIds: string[]) {
     const result = await fetchSupabaseRows<BillActionRow>(
       "bill_actions",
       `bill_id=in.(${buildQuotedInFilter(chunk)})&order=bill_id.asc,sort_order.asc`,
-      { cache: "no-store", paginateAll: true },
+      { cache: "no-store", paginateAll: true, select: BILL_ACTION_SELECT },
     );
     rows.push(...result);
   }
@@ -455,6 +455,10 @@ export async function listStoredBillActionRowsByBillIds(billIds: string[]) {
   return rows;
 }
 
+// Excludes `content` (the full bill text, on the largest text column in the schema) -- every
+// caller of this bulk lookup only reads bill_id/version_id for dedup, never the text itself. This
+// used to run select=* on every incremental federal sync (now daily), which was a major,
+// uncached egress driver.
 export async function listStoredBillVersionRowsByBillIds(billIds: string[]) {
   if (billIds.length === 0) {
     return [] as BillVersionRow[];
@@ -467,7 +471,7 @@ export async function listStoredBillVersionRowsByBillIds(billIds: string[]) {
     const result = await fetchSupabaseRows<BillVersionRow>(
       "bill_versions",
       `bill_id=in.(${buildQuotedInFilter(chunk)})&order=bill_id.asc,sort_order.asc`,
-      { cache: "no-store", paginateAll: true },
+      { cache: "no-store", paginateAll: true, select: BILL_VERSION_METADATA_SELECT },
     );
     rows.push(...result);
   }
