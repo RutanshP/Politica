@@ -202,7 +202,7 @@ function buildStateVoteRows(
 
 export async function syncStateLegislationFromOpenStates(
   states: string | string[] = getOpenStatesStateCodes(),
-  options?: { mode?: "incremental" | "full"; scope?: "people" | "all" },
+  options?: { mode?: "incremental" | "full"; scope?: "people" | "detail" | "all" },
 ) {
   if (!isOpenStatesConfigured()) {
     throw new Error("OpenStates API is not configured");
@@ -255,24 +255,38 @@ export async function syncStateLegislationFromOpenStates(
   let unchangedPoliticiansSkipped = 0;
 
   for (const state of stateCodes) {
-    let people;
-    let bills;
-    let committees;
-    let votes;
+    let people: Awaited<ReturnType<typeof fetchOpenStatesPeople>>;
+    let bills: Awaited<ReturnType<typeof fetchOpenStatesBills>>;
+    let committees: Awaited<ReturnType<typeof fetchOpenStatesCommittees>>;
+    let votes: Awaited<ReturnType<typeof fetchOpenStatesVotes>>;
 
     try {
       // scope=people skips bills, committees and votes. Those paths fetch a detail document per
       // bill and per committee, and OpenStates allows 10 requests/minute -- so a full state sync
       // spends ~30 minutes on data the member directory does not need. Roll calls are imported
       // separately by state-vote-sync.
-      [people, bills, committees, votes] = scope === "people"
-        ? [await fetchOpenStatesPeople(state), [], [], []]
-        : await Promise.all([
+      //
+      // scope=detail is the complement: bills, committees and (bill-embedded) votes, without
+      // re-fetching people. Lets the cron run people daily (cheap) and detail on its own, slower
+      // cadence -- both write against whatever politicians are already stored, via
+      // existingPoliticiansById below, so people doesn't need to run in the same pass.
+      if (scope === "people") {
+        [people, bills, committees, votes] = [await fetchOpenStatesPeople(state), [], [], []];
+      } else if (scope === "detail") {
+        [bills, committees, votes] = await Promise.all([
+          fetchOpenStatesBills(state),
+          fetchOpenStatesCommittees(state),
+          fetchOpenStatesVotes(state),
+        ]);
+        people = [];
+      } else {
+        [people, bills, committees, votes] = await Promise.all([
           fetchOpenStatesPeople(state),
           fetchOpenStatesBills(state),
           fetchOpenStatesCommittees(state),
           fetchOpenStatesVotes(state),
         ]);
+      }
     } catch (error) {
       stateFailures.push({
         state,

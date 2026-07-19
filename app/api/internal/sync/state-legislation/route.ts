@@ -15,8 +15,11 @@ export async function POST(request: Request) {
   const url = new URL(request.url);
   const mode = /^full$/i.test(url.searchParams.get("mode") || "") ? "full" : "incremental";
   // scope=people syncs only legislators (skips the per-bill and per-committee detail fetches,
-  // which dominate the runtime under OpenStates' 10 req/min limit).
-  const scope = /^people$/i.test(url.searchParams.get("scope") || "") ? "people" : "all";
+  // which dominate the runtime under OpenStates' 10 req/min limit). scope=detail is the
+  // complement -- bills and committees, without re-fetching people -- so the two can run on
+  // separate cadences (people daily, detail slower).
+  const rawScope = (url.searchParams.get("scope") || "").toLowerCase();
+  const scope = rawScope === "people" ? "people" : rawScope === "detail" ? "detail" : "all";
   // ?states=tx,ca was previously ignored -- every call synced the full default state list.
   const states = (url.searchParams.get("states") || url.searchParams.get("state") || "")
     .split(",")
