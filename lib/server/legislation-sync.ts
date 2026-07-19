@@ -13,6 +13,10 @@ import {
   isCongressBillsConfigured,
 } from "@/lib/adapters/congress";
 import {
+  type CongressLegislatorsCommitteeMember,
+  fetchCongressLegislatorsCommitteeMembership,
+} from "@/lib/adapters/congress-legislators";
+import {
   type FederalVoteRecord,
   fetchHouseRollCallVote,
   fetchSenateRollCallVote,
@@ -73,8 +77,11 @@ const LEGISLATION_TEXT_VERSION_CONTENT_LIMIT = Number.parseInt(
   process.env.POLITICA_LEGISLATION_TEXT_VERSION_CONTENT_LIMIT?.trim() || "0",
   10,
 );
+// Congress.gov's own per-chamber committee count (current congress, including subcommittees) is
+// well under 250 -- this used to also re-truncate the merged senate+house+joint list down to the
+// same 20, so only ~20 committees total ever got synced. It's now just each chamber's page size.
 const LEGISLATION_MAX_COMMITTEES = Number.parseInt(
-  process.env.POLITICA_LEGISLATION_MAX_COMMITTEES?.trim() || "20",
+  process.env.POLITICA_LEGISLATION_MAX_COMMITTEES?.trim() || "250",
   10,
 );
 const LEGISLATION_SYNC_COMMITTEES = /^(1|true|yes)$/i.test(
@@ -1315,47 +1322,91 @@ function buildMissingFederalPoliticianRows(
   );
 }
 
-function buildFederalCommitteeMembershipRows(
+function buildLeadershipNameMatchedRows(
+  committee: Committee,
+  normalizedPoliticians: Array<{ id: string; name: string; normalized: string }>,
+): CommitteeMemberRow[] {
+  const rows: CommitteeMemberRow[] = [];
+
+  [
+    { role: "chair", name: committee.chair, sortOrder: 0 },
+    { role: "ranking-member", name: committee.rankingMember, sortOrder: 1 },
+  ].forEach((entry) => {
+    const normalizedName = entry.name.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    if (!normalizedName || normalizedName.includes("not connected")) {
+      return;
+    }
+
+    const politician = normalizedPoliticians.find((candidate) => candidate.normalized === normalizedName);
+    if (!politician) {
+      return;
+    }
+
+    rows.push({
+      committee_id: committee.id,
+      politician_id: politician.id,
+      role: entry.role,
+      sort_order: entry.sortOrder,
+      source_system: "congress",
+      source_id: `${committee.id}:${politician.id}:${entry.role}`,
+      synced_at: new Date().toISOString(),
+      raw_payload: {
+        committeeId: committee.id,
+        politicianId: politician.id,
+        role: entry.role,
+        matchedBy: "leadership-name",
+      },
+    });
+  });
+
+  return rows;
+}
+
+/**
+ * Congress.gov's API has no member-roster endpoint, so the full committee membership comes from
+ * the unitedstates/congress-legislators dataset (real bioguideIds, no name-matching needed). Falls
+ * back to matching Congress.gov's own chair/ranking-member name strings for any committee that
+ * dataset doesn't cover (e.g. a brand-new committee), so coverage never regresses versus before.
+ */
+async function buildFederalCommitteeMembershipRows(
   committees: Committee[],
   politicians: PoliticianRow[],
-): CommitteeMemberRow[] {
+): Promise<CommitteeMemberRow[]> {
+  const politicianIdSet = new Set(politicians.map((politician) => politician.id));
   const normalizedPoliticians = politicians.map((politician) => ({
     id: politician.id,
     name: politician.name,
     normalized: politician.name.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim(),
   }));
 
+  const membershipBySystemCode = await fetchCongressLegislatorsCommitteeMembership().catch(
+    () => new Map<string, CongressLegislatorsCommitteeMember[]>(),
+  );
+
   const rows: CommitteeMemberRow[] = [];
 
   committees.forEach((committee) => {
-    [
-      { role: "chair", name: committee.chair, sortOrder: 0 },
-      { role: "ranking-member", name: committee.rankingMember, sortOrder: 1 },
-    ].forEach((entry) => {
-      const normalizedName = entry.name.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-      if (!normalizedName || normalizedName.includes("not connected")) {
-        return;
-      }
+    const roster = membershipBySystemCode.get(committee.id) || [];
 
-      const politician = normalizedPoliticians.find((candidate) => candidate.normalized === normalizedName);
-      if (!politician) {
+    if (roster.length === 0) {
+      rows.push(...buildLeadershipNameMatchedRows(committee, normalizedPoliticians));
+      return;
+    }
+
+    roster.forEach((member, index) => {
+      if (!member.bioguide || !politicianIdSet.has(member.bioguide)) {
         return;
       }
 
       rows.push({
         committee_id: committee.id,
-        politician_id: politician.id,
-        role: entry.role,
-        sort_order: entry.sortOrder,
-        source_system: "congress",
-        source_id: `${committee.id}:${politician.id}:${entry.role}`,
+        politician_id: member.bioguide,
+        role: member.title || "Member",
+        sort_order: index,
+        source_system: "congress_legislators",
+        source_id: `${committee.id}:${member.bioguide}`,
         synced_at: new Date().toISOString(),
-        raw_payload: {
-          committeeId: committee.id,
-          politicianId: politician.id,
-          role: entry.role,
-          matchedBy: "leadership-name",
-        },
+        raw_payload: member,
       });
     });
   });
@@ -1595,38 +1646,38 @@ export async function syncLegislationFromCongress(options?: {
     }
 
     const committees = syncCommittees
-      ? await Promise.all(
+      ? await mapWithConcurrency(
         (await Promise.all([
           fetchCongressCommittees({ congress, chamber: "senate", limit: LEGISLATION_MAX_COMMITTEES }),
           fetchCongressCommittees({ congress, chamber: "house", limit: LEGISLATION_MAX_COMMITTEES }),
-          fetchCongressCommittees({ congress, chamber: "joint", limit: 10 }).catch(() => []),
+          fetchCongressCommittees({ congress, chamber: "joint", limit: LEGISLATION_MAX_COMMITTEES }).catch(() => []),
         ]))
-          .flat()
-          .slice(0, LEGISLATION_MAX_COMMITTEES)
-          .map(async (committee) => {
-            try {
-              const detail = await fetchCongressCommitteeDetail({
-                congress,
-                chamber: committee.chamber || "house",
-                systemCode: committee.systemCode || slugifySegment(committee.name || "committee"),
-              });
-              const activeBillIds = detail.committee?.bills?.url
-                ? (await fetchAllCommitteeBills(detail.committee.bills.url))
-                  .map(normalizeCongressBillListItem)
-                  .map((bill) => bill.id)
-                : [];
+          .flat(),
+        LEGISLATION_DETAIL_CONCURRENCY,
+        async (committee) => {
+          try {
+            const detail = await fetchCongressCommitteeDetail({
+              congress,
+              chamber: committee.chamber || "house",
+              systemCode: committee.systemCode || slugifySegment(committee.name || "committee"),
+            });
+            const activeBillIds = detail.committee?.bills?.url
+              ? (await fetchAllCommitteeBills(detail.committee.bills.url))
+                .map(normalizeCongressBillListItem)
+                .map((bill) => bill.id)
+              : [];
 
-              return {
-                committee: normalizeCommitteeRecord(committee, detail, activeBillIds),
-                rawCommittee: detail.committee || committee,
-              };
-            } catch {
-              return {
-                committee: normalizeCommitteeRecord(committee, undefined, []),
-                rawCommittee: committee,
-              };
-            }
-          }),
+            return {
+              committee: normalizeCommitteeRecord(committee, detail, activeBillIds),
+              rawCommittee: detail.committee || committee,
+            };
+          } catch {
+            return {
+              committee: normalizeCommitteeRecord(committee, undefined, []),
+              rawCommittee: committee,
+            };
+          }
+        },
       )
       : [];
 
@@ -1834,7 +1885,7 @@ export async function syncLegislationFromCongress(options?: {
       [...storedPoliticianRows, ...billStatUpdatedRows],
       (row) => row.id,
     );
-    const committeeMembershipRows = buildFederalCommitteeMembershipRows(
+    const committeeMembershipRows = await buildFederalCommitteeMembershipRows(
       committees.map((entry) => entry.committee),
       allFederalPoliticianRows,
     );
