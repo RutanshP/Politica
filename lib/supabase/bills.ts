@@ -370,9 +370,9 @@ export async function listStoredBillsBySponsor(
 ) {
   const normalizedName = (politicianName || "").replace(/"/g, '\\"');
   const filters = [
-    `sponsor_id=eq.${encodeURIComponent(politicianId)}`,
-    politicianSlug ? `sponsor_id=eq.${encodeURIComponent(politicianSlug)}` : "",
-    normalizedName ? `sponsor_name=eq.${encodeURIComponent(normalizedName)}` : "",
+    `sponsor_id.eq.${encodeURIComponent(politicianId)}`,
+    politicianSlug ? `sponsor_id.eq.${encodeURIComponent(politicianSlug)}` : "",
+    normalizedName ? `sponsor_name.eq.${encodeURIComponent(normalizedName)}` : "",
   ].filter(Boolean);
 
   const rows = await fetchSupabaseRows<BillRow>(

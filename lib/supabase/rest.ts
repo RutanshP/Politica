@@ -32,7 +32,14 @@ function applyRestQuery(url: URL, query?: string, includeSelect = false, select?
   }
 
   for (const chunk of query.split("&")) {
-    const [key, value = ""] = chunk.split("=");
+    // Split on the first "=" only: an or()/and() combinator's value legitimately contains
+    // further "=" characters (e.g. "or=(sponsor_id.eq.x,sponsor_name.eq.y)" does not, but a
+    // caller building one with "sponsor_id=eq.x" by mistake would) -- chunk.split("=") silently
+    // discarded everything past the second "=", corrupting the filter into a truncated key with
+    // no PostgREST operator, which PostgREST then rejected outright.
+    const eqIndex = chunk.indexOf("=");
+    const key = eqIndex === -1 ? chunk : chunk.slice(0, eqIndex);
+    const value = eqIndex === -1 ? "" : chunk.slice(eqIndex + 1);
     if (key) {
       url.searchParams.set(key, decodeURIComponent(value));
     }

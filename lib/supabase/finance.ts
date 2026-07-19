@@ -40,7 +40,7 @@ function mapEdgeRow(row: FinanceEdgeRow): FundingEdge {
   };
 }
 
-const FINANCE_ENTITY_SELECT = "id,slug,label,entity_type,party,state,amount,source_system,source_id,synced_at";
+const FINANCE_ENTITY_SELECT = "id,slug,label,entity_type,detail,amount,href,source_system,source_id,synced_at";
 const FINANCE_EDGE_SELECT = "id,source,target,label,amount,source_system,source_id,synced_at";
 
 export async function getStoredFinanceGraph() {
