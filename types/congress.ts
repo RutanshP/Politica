@@ -143,11 +143,13 @@ export interface CongressMemberDetailPayload {
       phoneNumber?: string;
     };
     officialWebsiteUrl?: string;
+    birthYear?: string | number;
     cosponsoredLegislation?: {
       count?: number;
     };
     sponsoredLegislation?: {
       count?: number;
+      url?: string;
     };
   };
 }

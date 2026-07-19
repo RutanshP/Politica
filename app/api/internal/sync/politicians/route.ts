@@ -33,6 +33,9 @@ export async function POST(request: Request) {
     revalidatePoliticaCaches();
 
     revalidatePath("/politicians");
+    revalidatePath("/politicians/[slug]", "page");
+    revalidatePath("/politicians/[slug]/analytics", "page");
+    revalidatePath("/politicians/[slug]/votes", "page");
     revalidatePath("/profile");
 
     return NextResponse.json({

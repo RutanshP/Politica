@@ -153,7 +153,7 @@ export function normalizeCongressMemberToPolitician(
       currentTerm?.memberType,
     ),
     biography: `${buildTitle(currentTerm?.chamber)} from ${state}. Synced from Congress.gov via scheduled ingestion.`,
-    born: "Not available from configured sources",
+    born: detailMember?.birthYear ? String(detailMember.birthYear) : "Not available from configured sources",
     education: "Not available from configured sources",
     occupation: "Public official",
     website: detailMember?.officialWebsiteUrl || "www.congress.gov/member",

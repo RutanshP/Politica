@@ -41,6 +41,9 @@ export async function POST(request: Request) {
   revalidatePath("/bills/[billId]/votes", "page");
   revalidatePath("/committees");
   revalidatePath("/politicians");
+  revalidatePath("/politicians/[slug]", "page");
+  revalidatePath("/politicians/[slug]/analytics", "page");
+  revalidatePath("/politicians/[slug]/votes", "page");
 
   return NextResponse.json(result, { status: result.status === "failed" ? 500 : 200 });
 }

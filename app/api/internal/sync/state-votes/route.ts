@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
@@ -33,6 +34,10 @@ export async function POST(request: Request) {
 
     if (!dryRun) {
       revalidatePoliticaCaches();
+      revalidatePath("/politicians");
+      revalidatePath("/politicians/[slug]", "page");
+      revalidatePath("/politicians/[slug]/analytics", "page");
+      revalidatePath("/politicians/[slug]/votes", "page");
     }
 
     return NextResponse.json({ ok: true, dryRun, results });
