@@ -137,12 +137,12 @@ export async function listStoredBills(includeDetails = false) {
   const congressSession = `${getDefaultCongress()}th Congress`;
   const [federalBillRows, stateBillRows] = await Promise.all([
     fetchSupabaseRows<BillRow>("bills", `jurisdiction_type=eq.federal&session=eq.${encodeURIComponent(congressSession)}`, {
-      cache: "no-store",
+      tags: [BILLS_CACHE_TAG],
       select: BILL_LIST_SELECT,
       paginateAll: true,
     }),
     fetchSupabaseRows<BillRow>("bills", "jurisdiction_type=eq.state", {
-      cache: "no-store",
+      tags: [BILLS_CACHE_TAG],
       select: BILL_LIST_SELECT,
       paginateAll: true,
     }),
@@ -330,7 +330,7 @@ export async function listStoredBillsByIds(billIds: string[], includeDetails = f
   const rows = await fetchSupabaseRows<BillRow>(
     "bills",
     `id=in.(${buildQuotedInFilter(billIds)})`,
-    { cache: "no-store", select: BILL_LIST_SELECT, paginateAll: true },
+    { tags: [BILLS_CACHE_TAG], select: BILL_LIST_SELECT, paginateAll: true },
   );
 
   if (!includeDetails) {
@@ -378,7 +378,7 @@ export async function listStoredBillsBySponsor(
   const rows = await fetchSupabaseRows<BillRow>(
     "bills",
     `or=(${filters.join(",")})`,
-    { cache: "no-store", select: BILL_LIST_SELECT, paginateAll: true },
+    { tags: [BILLS_CACHE_TAG], select: BILL_LIST_SELECT, paginateAll: true },
   );
 
   const uniqueRows = [...new Map(rows.map((row) => [row.id, row])).values()];

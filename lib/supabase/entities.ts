@@ -2,6 +2,9 @@ import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRows } from "@/lib
 import type { SearchEntity } from "@/types/civic";
 import type { EntityRelationshipRow, EntityRow } from "@/types/supabase";
 
+// Excludes raw_payload -- mapRowToEntity only ever checks it with Boolean(), never reads its contents.
+const ENTITY_SELECT = "id,entity_type,label,title,description,href,meta,source_system,source_id,synced_at";
+
 function mapRowToEntity(row: EntityRow): SearchEntity {
   return {
     id: row.id,
@@ -21,7 +24,7 @@ function mapRowToEntity(row: EntityRow): SearchEntity {
 }
 
 export async function listStoredEntities() {
-  const rows = await fetchSupabaseRows<EntityRow>("entities", "order=label.asc");
+  const rows = await fetchSupabaseRows<EntityRow>("entities", "order=label.asc", { select: ENTITY_SELECT });
   return rows.map(mapRowToEntity);
 }
 
@@ -29,6 +32,7 @@ export async function getStoredEntity(entityId: string) {
   const rows = await fetchSupabaseRows<EntityRow>(
     "entities",
     `id=eq.${encodeURIComponent(entityId)}&limit=1`,
+    { select: ENTITY_SELECT },
   );
   const row = rows[0];
   return row ? mapRowToEntity(row) : undefined;

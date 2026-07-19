@@ -637,7 +637,7 @@ export async function getStoredPoliticianById(id: string) {
   const rows = await fetchSupabaseRows<PoliticianRow>(
     "politicians",
     `id=eq.${encodeURIComponent(id)}&limit=1`,
-    { cache: "no-store" },
+    { select: POLITICIAN_LIST_SELECT, tags: [POLITICIANS_CACHE_TAG] },
   );
   const row = rows[0];
   return row ? mapRowToPolitician(row) : undefined;
