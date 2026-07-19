@@ -68,3 +68,116 @@ export async function fetchFecCandidateTotals(candidateId: string, cycle = 2024)
     per_page: 10,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Sync-path fetchers (cache: no-store -- the funding-graph sync must observe
+// current FEC data, and its results are persisted to Supabase anyway).
+// ---------------------------------------------------------------------------
+
+async function fetchFecJsonFresh<T>(
+  pathname: string,
+  params?: Record<string, string | number | undefined>,
+) {
+  const url = new URL(`${FEC_API_BASE}${pathname}`);
+  url.searchParams.set("api_key", getFecApiKey());
+  url.searchParams.set("per_page", String(params?.per_page ?? 20));
+
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value !== undefined && key !== "per_page") {
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  const response = await fetch(url.toString(), {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`FEC API request failed: ${response.status} ${response.statusText} (${pathname})`);
+  }
+
+  return (await response.json()) as T;
+}
+
+export interface FecCandidateTotalsRow {
+  cycle?: number;
+  receipts?: number;
+  disbursements?: number;
+  cash_on_hand_end_period?: number;
+  individual_contributions?: number;
+  individual_itemized_contributions?: number;
+  individual_unitemized_contributions?: number;
+  other_political_committee_contributions?: number;
+  political_party_committee_contributions?: number;
+  candidate_contribution?: number;
+  transfers_from_other_authorized_committee?: number;
+}
+
+export async function fetchFecCandidateTotalsDetailed(candidateId: string, cycle: number) {
+  const payload = await fetchFecJsonFresh<{ results?: FecCandidateTotalsRow[] }>(
+    `/candidate/${encodeURIComponent(candidateId)}/totals/`,
+    { cycle, per_page: 5 },
+  );
+  return payload.results ?? [];
+}
+
+export interface FecCommitteeRow {
+  committee_id?: string;
+  name?: string;
+  designation?: string;
+  designation_full?: string;
+  committee_type_full?: string;
+}
+
+export async function fetchFecCandidateCommittees(candidateId: string, cycle: number) {
+  const payload = await fetchFecJsonFresh<{ results?: FecCommitteeRow[] }>(
+    `/candidate/${encodeURIComponent(candidateId)}/committees/`,
+    { cycle, per_page: 20 },
+  );
+  return payload.results ?? [];
+}
+
+export interface FecEmployerAggregateRow {
+  employer?: string | null;
+  total?: number;
+  count?: number;
+}
+
+export async function fetchFecScheduleAByEmployer(committeeId: string, cycle: number) {
+  const payload = await fetchFecJsonFresh<{ results?: FecEmployerAggregateRow[] }>(
+    "/schedules/schedule_a/by_employer/",
+    { committee_id: committeeId, cycle, per_page: 30, sort: "-total" },
+  );
+  return payload.results ?? [];
+}
+
+export interface FecSizeAggregateRow {
+  size?: number;
+  total?: number;
+  count?: number | null;
+}
+
+export async function fetchFecScheduleABySize(committeeId: string, cycle: number) {
+  const payload = await fetchFecJsonFresh<{ results?: FecSizeAggregateRow[] }>(
+    "/schedules/schedule_a/by_size/",
+    { committee_id: committeeId, cycle, per_page: 10 },
+  );
+  return payload.results ?? [];
+}
+
+export interface FecScheduleEByCandidateRow {
+  support_oppose_indicator?: "S" | "O" | string;
+  total?: number;
+  count?: number;
+  cycle?: number;
+}
+
+export async function fetchFecScheduleEByCandidate(candidateId: string, cycle: number) {
+  const payload = await fetchFecJsonFresh<{ results?: FecScheduleEByCandidateRow[] }>(
+    "/schedules/schedule_e/by_candidate/",
+    { candidate_id: candidateId, cycle, per_page: 10 },
+  );
+  return payload.results ?? [];
+}

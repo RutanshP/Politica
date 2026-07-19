@@ -4,6 +4,10 @@ const COMMITTEE_MEMBERSHIP_URL =
   process.env.POLITICA_CONGRESS_LEGISLATORS_COMMITTEE_MEMBERSHIP_URL?.trim()
   || "https://raw.githubusercontent.com/unitedstates/congress-legislators/main/committee-membership-current.yaml";
 
+const LEGISLATORS_CURRENT_URL =
+  process.env.POLITICA_CONGRESS_LEGISLATORS_CURRENT_URL?.trim()
+  || "https://raw.githubusercontent.com/unitedstates/congress-legislators/main/legislators-current.yaml";
+
 const FETCH_TIMEOUT_MS = 20000;
 
 export interface CongressLegislatorsCommitteeMember {
@@ -46,4 +50,43 @@ export async function fetchCongressLegislatorsCommitteeMembership() {
   }
 
   return bySystemCode;
+}
+
+interface RawCurrentLegislator {
+  id?: {
+    bioguide?: string;
+    fec?: string[];
+  };
+}
+
+/**
+ * bioguide -> FEC candidate ids for every current member. The FEC API has no
+ * bioguide lookup, and name search is unreliable; this dataset is the standard
+ * deterministic crosswalk. A member can carry several FEC ids (e.g. a House id
+ * plus a Senate id after a chamber switch) -- callers pick by office prefix
+ * (H/S) against the member's current title.
+ */
+export async function fetchCongressLegislatorsFecIds() {
+  const response = await fetch(LEGISLATORS_CURRENT_URL, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`congress-legislators current fetch failed: ${response.status} ${response.statusText}`);
+  }
+
+  const text = await response.text();
+  const parsed = (load(text) as RawCurrentLegislator[]) || [];
+
+  const fecIdsByBioguide = new Map<string, string[]>();
+  for (const legislator of parsed) {
+    const bioguide = legislator?.id?.bioguide;
+    const fecIds = legislator?.id?.fec;
+    if (bioguide && Array.isArray(fecIds) && fecIds.length > 0) {
+      fecIdsByBioguide.set(bioguide, fecIds.filter((id): id is string => typeof id === "string"));
+    }
+  }
+
+  return fecIdsByBioguide;
 }

@@ -44,8 +44,13 @@ export default async function BillDetailPage({
   const chronologicalActions = bill.actions;
 
   const introducedMs = Date.parse(bill.introducedAt);
+  // This page is cached for `revalidate` seconds, so "days active" is a
+  // snapshot that can lag by up to that window -- acceptable at day
+  // granularity, which is why the impure Date.now() here is fine.
+  // eslint-disable-next-line react-hooks/purity
+  const nowMs = Date.now();
   const daysActive = Number.isFinite(introducedMs)
-    ? Math.max(0, Math.round((Date.now() - introducedMs) / 86_400_000))
+    ? Math.max(0, Math.round((nowMs - introducedMs) / 86_400_000))
     : null;
 
   const statCards = [

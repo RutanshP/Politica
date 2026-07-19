@@ -30,6 +30,11 @@ try {
   $stateCodes = Get-PoliticaDefaultStateCodes
   Invoke-PoliticaSync -Path "/api/internal/sync/state-votes?states=$($stateCodes -join ',')" -TimeoutSec 3000 | Out-Null
 
+  Write-Host "=== FEC funding graph (chunk of 60) ===" -ForegroundColor Magenta
+  # ~5 FEC calls per member against a 1,000 req/hour key; 60/day covers every
+  # current member in ~9 days, then keeps rotating by staleness.
+  Invoke-PoliticaSync -Path "/api/internal/sync/fec-funding-graph?limit=60" -TimeoutSec 3600 | Out-Null
+
   Write-Host "=== News ===" -ForegroundColor Magenta
   Invoke-PoliticaSync -Path "/api/internal/sync/news" | Out-Null
 
