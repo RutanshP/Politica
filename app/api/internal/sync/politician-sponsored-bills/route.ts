@@ -15,6 +15,7 @@ export async function POST(request: Request) {
   }
 
   const url = new URL(request.url);
+  const offset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
   const limit = Number.parseInt(url.searchParams.get("limit") || "0", 10);
   const bioguideIds = (url.searchParams.get("bioguideIds") || "")
     .split(",")
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
   const result = await runPipeline("federal_sponsored_bill_history_sync", async () => {
     const sync = await syncFederalMemberSponsoredBillHistory({
       bioguideIds: bioguideIds.length > 0 ? bioguideIds : undefined,
+      offset: Number.isFinite(offset) && offset >= 0 ? offset : 0,
       limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
     });
     return {

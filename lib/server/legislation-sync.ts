@@ -1436,6 +1436,7 @@ function chamberFromBillType(type?: string) {
  */
 export async function syncFederalMemberSponsoredBillHistory(options?: {
   bioguideIds?: string[];
+  offset?: number;
   limit?: number;
 }) {
   if (!isCongressBillsConfigured()) {
@@ -1451,9 +1452,12 @@ export async function syncFederalMemberSponsoredBillHistory(options?: {
   const targetPoliticians = options?.bioguideIds?.length
     ? storedPoliticianRows.filter((row) => options.bioguideIds!.includes(row.id))
     : storedPoliticianRows;
-  const limitedPoliticians = options?.limit && options.limit > 0
-    ? targetPoliticians.slice(0, options.limit)
+  const offsetPoliticians = options?.offset && options.offset > 0
+    ? targetPoliticians.slice(options.offset)
     : targetPoliticians;
+  const limitedPoliticians = options?.limit && options.limit > 0
+    ? offsetPoliticians.slice(0, options.limit)
+    : offsetPoliticians;
 
   let membersProcessed = 0;
   let billsDiscovered = 0;
@@ -1524,6 +1528,9 @@ export async function syncFederalMemberSponsoredBillHistory(options?: {
   return {
     membersProcessed,
     membersTotal: limitedPoliticians.length,
+    federalPoliticianCount: targetPoliticians.length,
+    requestedOffset: options?.offset || 0,
+    requestedLimit: options?.limit || 0,
     billsDiscovered,
     billsInserted,
     failures,
