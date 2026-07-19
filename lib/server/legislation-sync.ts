@@ -8,6 +8,7 @@ import {
   fetchCongressCommitteeDetail,
   fetchCongressCommittees,
   fetchCongressCommitteesByUrl,
+  fetchCongressMemberSponsoredLegislation,
   fetchCongressTextContent,
   getDefaultCongress,
   isCongressBillsConfigured,
@@ -58,7 +59,7 @@ import { applyVotePositionDeltaToPoliticians, buildUpdatedPoliticianRowsFromVote
 import { buildSourceFingerprint, classifyFreshness, normalizeSourceUpdatedAt } from "@/lib/server/sync-freshness";
 import { normalizePersonLookup, slugifySegment } from "@/lib/utils";
 import type { Bill, Committee } from "@/types/civic";
-import type { CongressCommitteeListItem } from "@/types/congress";
+import type { CongressBillListItem, CongressCommitteeListItem } from "@/types/congress";
 import type { BillActionRow, BillRow, BillVersionRow, CommitteeMemberRow, PoliticianRow, VotePositionRow, VoteRow } from "@/types/supabase";
 
 const LEGISLATION_PAGE_SIZE = Number.parseInt(
@@ -1412,6 +1413,121 @@ async function buildFederalCommitteeMembershipRows(
   });
 
   return uniqueByKey(rows, (row) => `${row.committee_id}:${row.politician_id}`);
+}
+
+function chamberFromBillType(type?: string) {
+  const normalized = String(type || "").toUpperCase();
+  if (normalized.startsWith("H")) return "House";
+  if (normalized.startsWith("S")) return "Senate";
+  return "Congress";
+}
+
+/**
+ * Congress.gov's member detail count ("sponsoredLegislation.count") spans every congress a member
+ * has served, but the bills table only ever holds the currently-synced congress -- so a member's
+ * profile could report 200+ sponsored bills while showing only the handful from the current
+ * congress. This backfills the rest as lightweight stub bill rows (title/status/date/link, not
+ * full actions/versions/committee detail) using the same per-congress-session bill id, so they
+ * show up correctly in a member's sponsored-bills list without touching the main bills directory
+ * (which stays scoped to the current congress by design).
+ *
+ * Never overwrites a bill id that's already stored -- this only fills in what the main pipeline's
+ * current-congress-only scope leaves out.
+ */
+export async function syncFederalMemberSponsoredBillHistory(options?: {
+  bioguideIds?: string[];
+  limit?: number;
+}) {
+  if (!isCongressBillsConfigured()) {
+    throw new Error("Congress API is not configured");
+  }
+
+  const storedPoliticianRows = await fetchSupabaseRows<PoliticianRow>(
+    "politicians",
+    "jurisdiction_type=eq.federal&order=name.asc",
+    { cache: "no-store" },
+  );
+
+  const targetPoliticians = options?.bioguideIds?.length
+    ? storedPoliticianRows.filter((row) => options.bioguideIds!.includes(row.id))
+    : storedPoliticianRows;
+  const limitedPoliticians = options?.limit && options.limit > 0
+    ? targetPoliticians.slice(0, options.limit)
+    : targetPoliticians;
+
+  let membersProcessed = 0;
+  let billsDiscovered = 0;
+  let billsInserted = 0;
+  const failures: Array<{ bioguideId: string; reason: string }> = [];
+
+  for (const politician of limitedPoliticians) {
+    try {
+      const sponsoredItems = await fetchCongressMemberSponsoredLegislation(politician.id);
+      membersProcessed += 1;
+      billsDiscovered += sponsoredItems.length;
+
+      if (sponsoredItems.length === 0) {
+        continue;
+      }
+
+      const candidateListItems: CongressBillListItem[] = sponsoredItems
+        .filter((item) => item.type && item.number != null)
+        .map((item) => ({
+          congress: item.congress,
+          type: item.type,
+          number: item.number,
+          title: item.title,
+          latestAction: item.latestAction,
+          policyArea: item.policyArea,
+          originChamber: chamberFromBillType(item.type),
+          updateDate: item.introducedDate || item.latestAction?.actionDate,
+          sponsors: [
+            {
+              bioguideId: politician.id,
+              fullName: politician.name,
+            },
+          ],
+        }));
+
+      const candidateIds = candidateListItems.map(
+        (item) => `${String(item.type || "").toLowerCase()}-${String(item.number || "").toLowerCase()}`,
+      );
+
+      const existingIds = new Set<string>();
+      const idChunkSize = 100;
+      for (let index = 0; index < candidateIds.length; index += idChunkSize) {
+        const chunk = candidateIds.slice(index, index + idChunkSize);
+        const existingRows = await fetchSupabaseRows<{ id: string }>(
+          "bills",
+          `id=in.(${buildQuotedInFilter(chunk)})`,
+          { cache: "no-store", select: "id" },
+        ).catch(() => []);
+        existingRows.forEach((row) => existingIds.add(row.id));
+      }
+
+      const newBillRows = candidateListItems
+        .filter((item, index) => !existingIds.has(candidateIds[index]))
+        .map((item) => {
+          const bill = normalizeCongressBillListItem(item);
+          return mapBillToRow(bill, item);
+        });
+
+      if (newBillRows.length > 0) {
+        await upsertStoredBills(newBillRows);
+        billsInserted += newBillRows.length;
+      }
+    } catch (error) {
+      failures.push({ bioguideId: politician.id, reason: getErrorMessage(error) });
+    }
+  }
+
+  return {
+    membersProcessed,
+    membersTotal: limitedPoliticians.length,
+    billsDiscovered,
+    billsInserted,
+    failures,
+  };
 }
 
 export async function syncLegislationFromCongress(options?: {

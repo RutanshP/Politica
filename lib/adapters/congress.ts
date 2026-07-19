@@ -7,6 +7,8 @@ import type {
   CongressCommitteeListItem,
   CongressMemberDetailPayload,
   CongressMemberListItem,
+  CongressMemberSponsoredLegislationItem,
+  CongressMemberSponsoredLegislationPayload,
   CongressBillTextPayload,
 } from "@/types/congress";
 
@@ -317,6 +319,38 @@ export async function fetchCongressMemberDetail(bioguideId: string) {
     },
   );
   return (await response.json()) as CongressMemberDetailPayload;
+}
+
+const MEMBER_SPONSORED_LEGISLATION_PAGE_LIMIT = 250;
+// Safety backstop against a runaway pagination loop -- no member has sponsored anywhere near
+// 5,000 bills across their career.
+const MEMBER_SPONSORED_LEGISLATION_MAX_ITEMS = 5000;
+
+/**
+ * A member's full sponsored-bill history across every congress they've served, not just the one
+ * currently synced into the bills table. Congress.gov's `sponsoredLegislation.count` on the member
+ * detail payload is a career total; this is the endpoint that actually backs that count.
+ */
+export async function fetchCongressMemberSponsoredLegislation(bioguideId: string) {
+  const items: CongressMemberSponsoredLegislationItem[] = [];
+  let offset = 0;
+
+  for (;;) {
+    const payload = await fetchCongressJson<CongressMemberSponsoredLegislationPayload>(
+      `/member/${bioguideId}/sponsored-legislation`,
+      { limit: MEMBER_SPONSORED_LEGISLATION_PAGE_LIMIT, offset },
+    );
+    const pageItems = payload.sponsoredLegislation ?? [];
+    items.push(...pageItems);
+
+    if (pageItems.length < MEMBER_SPONSORED_LEGISLATION_PAGE_LIMIT || items.length >= MEMBER_SPONSORED_LEGISLATION_MAX_ITEMS) {
+      break;
+    }
+
+    offset += MEMBER_SPONSORED_LEGISLATION_PAGE_LIMIT;
+  }
+
+  return items;
 }
 
 export async function fetchCongressCommittees(options?: {

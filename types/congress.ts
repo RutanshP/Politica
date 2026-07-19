@@ -136,6 +136,30 @@ export interface CongressMemberListItem {
   updateDate?: string;
 }
 
+export interface CongressMemberSponsoredLegislationItem {
+  congress?: number | string;
+  type?: string;
+  number?: string | number;
+  title?: string;
+  introducedDate?: string;
+  latestAction?: {
+    actionDate?: string;
+    text?: string;
+  };
+  policyArea?: {
+    name?: string;
+  };
+  url?: string;
+}
+
+export interface CongressMemberSponsoredLegislationPayload {
+  sponsoredLegislation?: CongressMemberSponsoredLegislationItem[];
+  pagination?: {
+    count?: number;
+    next?: string;
+  };
+}
+
 export interface CongressMemberDetailPayload {
   member?: CongressMemberListItem & {
     addressInformation?: {
