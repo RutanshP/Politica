@@ -1,5 +1,6 @@
 import { classifyVote } from "@/lib/vote-classification";
 import { deleteSupabaseRows, fetchSupabasePage, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
+import { VOTES_CACHE_TAG } from "@/lib/supabase/cache-tags";
 import type { VotePosition, Vote } from "@/types/civic";
 import type { VotePositionRow, VoteRow } from "@/types/supabase";
 import { normalizePartyLabel, normalizeStateLabel } from "@/lib/utils";
@@ -58,9 +59,33 @@ function mapRowToVote(row: VoteRow, positions: VotePositionRow[]): Vote {
   };
 }
 
+// Page-rendering-only variant of listStoredVotePositionsByVoteIds -- that function is also called
+// from the federal/state sync pipelines (legislation-sync.ts, state-sync.ts), which genuinely
+// need current DB state, so it stays on cache: "no-store". Every sync route already calls
+// revalidateTag(VOTES_CACHE_TAG) on write, so cached reads here refresh on sync, not per request.
+async function listCachedVotePositionsByVoteIds(voteIds: string[]) {
+  if (voteIds.length === 0) {
+    return [] as VotePositionRow[];
+  }
+
+  const chunkSize = 100;
+  const rows: VotePositionRow[] = [];
+  for (let index = 0; index < voteIds.length; index += chunkSize) {
+    const chunk = voteIds.slice(index, index + chunkSize);
+    const result = await fetchSupabaseRows<VotePositionRow>(
+      "vote_positions",
+      `vote_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc,name.asc`,
+      { paginateAll: true, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
+    );
+    rows.push(...result);
+  }
+
+  return rows;
+}
+
 export async function listStoredVotes() {
-  const voteRows = await fetchSupabaseRows<VoteRow>("votes", "order=date_label.desc", { cache: "no-store", paginateAll: true, select: voteDisplaySelect });
-  const positionRows = await listStoredVotePositionsByVoteIds(voteRows.map((row) => row.id));
+  const voteRows = await fetchSupabaseRows<VoteRow>("votes", "order=date_label.desc", { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] });
+  const positionRows = await listCachedVotePositionsByVoteIds(voteRows.map((row) => row.id));
 
   const positionsByVoteId = new Map<string, VotePositionRow[]>();
   for (const row of positionRows) {
@@ -73,9 +98,9 @@ export async function listStoredVotes() {
 }
 
 export async function listStoredVotesByBillId(billId: string) {
-  const voteRows = await fetchSupabaseRows<VoteRow>("votes", `bill_id=eq.${encodeURIComponent(billId)}&order=date_label.desc`, { cache: "no-store", paginateAll: true, select: voteDisplaySelect });
+  const voteRows = await fetchSupabaseRows<VoteRow>("votes", `bill_id=eq.${encodeURIComponent(billId)}&order=date_label.desc`, { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] });
   const wantedVoteIds = new Set(voteRows.map((row) => row.id));
-  const positionRows = await listStoredVotePositionsByVoteIds([...wantedVoteIds]);
+  const positionRows = await listCachedVotePositionsByVoteIds([...wantedVoteIds]);
   const positionsByVoteId = new Map<string, VotePositionRow[]>();
   for (const row of positionRows) {
     if (!wantedVoteIds.has(row.vote_id)) continue;
@@ -91,7 +116,7 @@ export async function listStoredVotesByPoliticianId(politicianId: string) {
   const positionRows = await fetchSupabaseRows<VotePositionRow>(
     "vote_positions",
     `politician_id=eq.${encodeURIComponent(politicianId)}&order=vote_id.asc`,
-    { cache: "no-store", paginateAll: true, select: votePositionDisplaySelect },
+    { paginateAll: true, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
   );
 
   const voteIds = [...new Set(positionRows.map((row) => row.vote_id))];
@@ -102,7 +127,7 @@ export async function listStoredVotesByPoliticianId(politicianId: string) {
   const voteRows = await fetchSupabaseRows<VoteRow>(
     "votes",
     `id=in.(${buildQuotedInFilter(voteIds)})&order=date_label.desc`,
-    { cache: "no-store", paginateAll: true, select: voteDisplaySelect },
+    { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] },
   );
 
   const positionsByVoteId = new Map<string, VotePositionRow[]>();
@@ -119,7 +144,7 @@ export async function listStoredVotePositionContextByPoliticianId(politicianId: 
   const positionRows = await fetchSupabaseRows<VotePositionRow>(
     "vote_positions",
     `politician_id=eq.${encodeURIComponent(politicianId)}&order=vote_id.asc`,
-    { cache: "no-store", paginateAll: true, select: votePositionDisplaySelect },
+    { paginateAll: true, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
   );
 
   const voteIds = [...new Set(positionRows.map((row) => row.vote_id))];
@@ -130,7 +155,7 @@ export async function listStoredVotePositionContextByPoliticianId(politicianId: 
   return fetchSupabaseRows<VotePositionRow>(
     "vote_positions",
     `vote_id=in.(${buildQuotedInFilter(voteIds)})&order=vote_id.asc,name.asc`,
-    { cache: "no-store", paginateAll: true, select: votePositionDisplaySelect },
+    { paginateAll: true, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
   );
 }
 
