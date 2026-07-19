@@ -74,6 +74,9 @@ export async function fetchFecCandidateTotals(candidateId: string, cycle = 2024)
 // current FEC data, and its results are persisted to Supabase anyway).
 // ---------------------------------------------------------------------------
 
+const FEC_RATE_LIMIT_RETRIES = 3;
+const FEC_RATE_LIMIT_BACKOFF_MS = 20000;
+
 async function fetchFecJsonFresh<T>(
   pathname: string,
   params?: Record<string, string | number | undefined>,
@@ -88,17 +91,31 @@ async function fetchFecJsonFresh<T>(
     }
   }
 
-  const response = await fetch(url.toString(), {
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(30000),
-  });
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(url.toString(), {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(30000),
+    });
 
-  if (!response.ok) {
-    throw new Error(`FEC API request failed: ${response.status} ${response.statusText} (${pathname})`);
+    if (response.status === 429 && attempt < FEC_RATE_LIMIT_RETRIES) {
+      // The hourly key also enforces a short-window burst limit; honor
+      // Retry-After when present, otherwise back off long enough for the
+      // rolling window to clear.
+      const retryAfterSeconds = Number(response.headers.get("retry-after"));
+      const waitMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds * 1000
+        : FEC_RATE_LIMIT_BACKOFF_MS * (attempt + 1);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(`FEC API request failed: ${response.status} ${response.statusText} (${pathname})`);
+    }
+
+    return (await response.json()) as T;
   }
-
-  return (await response.json()) as T;
 }
 
 export interface FecCandidateTotalsRow {

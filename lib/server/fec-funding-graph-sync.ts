@@ -25,7 +25,9 @@ import type { CandidateFinanceSnapshotRow } from "@/types/supabase";
 
 const DEFAULT_CHUNK_LIMIT = 60;
 const DEFAULT_CYCLE = 2026;
-const PER_POLITICIAN_DELAY_MS = 200;
+// ~5 sequential FEC calls per member; this pause keeps the overall pace near
+// one call/second, under both the hourly cap and the short-window burst limit.
+const PER_POLITICIAN_DELAY_MS = 1500;
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -112,15 +114,15 @@ export async function syncFundingGraphFromFec(options?: FecFundingGraphSyncOptio
         || committees.find((row) => row.designation === "A")
         || committees[0];
 
-      const [byEmployer, bySize, scheduleE] = await Promise.all([
-        principal?.committee_id
-          ? fetchFecScheduleAByEmployer(principal.committee_id, cycle).catch(() => [])
-          : Promise.resolve([]),
-        principal?.committee_id
-          ? fetchFecScheduleABySize(principal.committee_id, cycle).catch(() => [])
-          : Promise.resolve([]),
-        fetchFecScheduleEByCandidate(candidateId, cycle).catch(() => []),
-      ]);
+      // Sequential rather than parallel: parallel bursts trip the FEC API's
+      // short-window rate limit well before the hourly cap.
+      const byEmployer = principal?.committee_id
+        ? await fetchFecScheduleAByEmployer(principal.committee_id, cycle).catch(() => [])
+        : [];
+      const bySize = principal?.committee_id
+        ? await fetchFecScheduleABySize(principal.committee_id, cycle).catch(() => [])
+        : [];
+      const scheduleE = await fetchFecScheduleEByCandidate(candidateId, cycle).catch(() => []);
 
       const payloads: FecPoliticianPayloads = { cycle, totals, committees, byEmployer, bySize, scheduleE };
       const rows = buildFecGraphRows(
