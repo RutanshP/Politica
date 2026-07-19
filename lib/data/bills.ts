@@ -20,8 +20,6 @@ export const BILL_DIRECTORY_PAGE_SIZE = 20;
 export interface BillsDirectorySearchParams {
   page?: string;
   q?: string;
-  level?: string;
-  state?: string;
   chamber?: string;
   status?: string;
   session?: string;
@@ -86,8 +84,6 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
       pageSize: BILL_DIRECTORY_PAGE_SIZE,
       filters: {
         query: "",
-        level: "All levels",
-        state: "All states",
         chamber: "Both",
         status: "All statuses",
         session: "All sessions",
@@ -97,15 +93,13 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
         sortBy: "Recent activity",
       },
       options: {
-        levels: ["All levels"],
-        states: ["All states"],
         chambers: ["Both"],
         statuses: ["All statuses"],
         sessions: ["All sessions"],
         topics: ["All topics"],
         sponsors: ["Any sponsor"],
         committees: ["Any committee"],
-        sortOptions: ["Recent activity", "Bill number", "Title", "Level"],
+        sortOptions: ["Recent activity", "Bill number", "Title"],
       },
     };
   }
@@ -113,8 +107,6 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
   const page = parsePositiveInt(searchParams.page, 1);
   const filters = {
     query: (searchParams.q || "").trim(),
-    level: searchParams.level || "All levels",
-    state: searchParams.state || "All states",
     chamber: searchParams.chamber || "Both",
     status: searchParams.status || "All statuses",
     session: searchParams.session || "All sessions",
@@ -130,8 +122,6 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
         page,
         pageSize: BILL_DIRECTORY_PAGE_SIZE,
         query: filters.query,
-        level: filters.level,
-        state: filters.state,
         chamber: filters.chamber,
         status: filters.status,
         session: filters.session,
@@ -154,15 +144,13 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
       facetRows.filter((row) => row.facet === facet).map((row) => row.value);
 
     const options = {
-      levels: ["All levels", ...sortLabelsAlphabetically(facetValues("level"))],
-      states: ["All states", ...sortLabelsAlphabetically(facetValues("state"))],
       chambers: ["Both", ...sortLabelsAlphabetically(facetValues("chamber"))],
       statuses: ["All statuses", ...sortLabelsAlphabetically(facetValues("status"))],
       sessions: ["All sessions", ...sortLabelsAlphabetically(facetValues("session"))],
       topics: ["All topics", ...sortLabelsAlphabetically(facetValues("topic"))],
       sponsors: ["Any sponsor", ...sortLabelsAlphabetically(facetValues("sponsor"))],
       committees: ["Any committee", ...sortLabelsAlphabetically(facetValues("committee"))],
-      sortOptions: ["Recent activity", "Bill number", "Title", "Level"],
+      sortOptions: ["Recent activity", "Bill number", "Title"],
     };
 
     const result = withData(
@@ -195,15 +183,13 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
       pageSize: BILL_DIRECTORY_PAGE_SIZE,
       filters,
       options: {
-        levels: ["All levels"],
-        states: ["All states"],
         chambers: ["Both"],
         statuses: ["All statuses"],
         sessions: ["All sessions"],
         topics: ["All topics"],
         sponsors: ["Any sponsor"],
         committees: ["Any committee"],
-        sortOptions: ["Recent activity", "Bill number", "Title", "Level"],
+        sortOptions: ["Recent activity", "Bill number", "Title"],
       },
     };
   }

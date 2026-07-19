@@ -58,8 +58,6 @@ export interface StoredBillsPageQuery {
   page: number;
   pageSize: number;
   query?: string;
-  level?: string;
-  state?: string;
   chamber?: string;
   status?: string;
   session?: string;
@@ -74,23 +72,16 @@ export interface StoredBillsPageQuery {
 // appear in the bills directory -- they are procedural votes, not legislation.
 export const VOTE_PLACEHOLDER_SPONSOR_ID = "federal-vote-pending";
 
+// State legislation is not synced yet (the OpenStates cron only pulls legislators and votes, not
+// bills) -- the directory is federal-only until that pipeline exists. See bill_directory_facets
+// for the matching scope on the dropdown facets.
 function buildStoredBillsPageFilterQuery(filters: Omit<StoredBillsPageQuery, "page" | "pageSize" | "sortBy">) {
   const congressSession = `${getDefaultCongress()}th Congress`;
   const conditions = [
-    `or(jurisdiction_type.eq.state,and(jurisdiction_type.eq.federal,session.eq.${congressSession}))`,
+    `jurisdiction_type.eq.federal`,
+    `session.eq.${congressSession}`,
     `sponsor_id.neq.${VOTE_PLACEHOLDER_SPONSOR_ID}`,
   ];
-
-  if (filters.level === "Federal") {
-    conditions.push(`jurisdiction_type.eq.federal`);
-    conditions.push(`session.eq.${congressSession}`);
-  } else if (filters.level === "State") {
-    conditions.push("jurisdiction_type.eq.state");
-  }
-
-  if (filters.state && filters.state !== "All states") {
-    conditions.push(`state.eq.${filters.state}`);
-  }
 
   if (filters.chamber && filters.chamber !== "Both") {
     conditions.push(`chamber.eq.${filters.chamber}`);
@@ -135,10 +126,6 @@ function buildStoredBillsOrder(sortBy?: string) {
 
   if (sortBy === "Title") {
     return "order=title.asc";
-  }
-
-  if (sortBy === "Level") {
-    return "order=jurisdiction_type.asc,state.asc,number.asc";
   }
 
   // last_action_at is a display string ("Mar 4, 2025"), so ordering by it sorts alphabetically

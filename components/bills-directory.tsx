@@ -28,8 +28,6 @@ export function BillsDirectory({
   pageSize: number;
   filters: {
     query: string;
-    level: string;
-    state: string;
     chamber: string;
     status: string;
     session: string;
@@ -39,8 +37,6 @@ export function BillsDirectory({
     sortBy: string;
   };
   options: {
-    levels: string[];
-    states: string[];
     chambers: string[];
     statuses: string[];
     sessions: string[];
@@ -110,8 +106,6 @@ export function BillsDirectory({
 
       <FilterBar
         filters={[
-          { label: "Level", value: filters.level, options: options.levels },
-          { label: "State", value: filters.state, options: options.states },
           { label: "Chamber", value: filters.chamber, options: options.chambers },
           { label: "Status", value: filters.status, options: options.statuses },
           { label: "Session", value: filters.session, options: options.sessions },
@@ -121,8 +115,6 @@ export function BillsDirectory({
           { label: "Sort by", value: filters.sortBy, options: options.sortOptions },
         ]}
         onChange={(label, value) => {
-          if (label === "Level") updateParams({ level: value });
-          if (label === "State") updateParams({ state: value });
           if (label === "Chamber") updateParams({ chamber: value });
           if (label === "Status") updateParams({ status: value });
           if (label === "Session") updateParams({ session: value });

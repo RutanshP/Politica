@@ -30,11 +30,11 @@ export default async function BillsPage({
     <div className="space-y-6">
       <PageHeader
         eyebrow="Bills explorer"
-        title="Explore legislation"
-        description="Search and filter legislation across chambers, committees, sponsors, sessions, and issue clusters."
+        title="Explore federal legislation"
+        description="Search and filter U.S. Congress bills across chambers, committees, sponsors, sessions, and issue clusters."
         actions={<SourceBadge label={getBillsSourceLabel(source)} live={live} />}
       />
-      <SectionCard title="Bills table" description="Every row links deeper into the bill, committee, and sponsor profile.">
+      <SectionCard title="Bills table" description="Every row links deeper into the bill, committee, and sponsor profile. State legislation isn't tracked yet — this covers federal bills only.">
         <BillsDirectory
           bills={bills}
           committeeSlugs={committeeSlugs}
