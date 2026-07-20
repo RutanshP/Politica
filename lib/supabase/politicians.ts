@@ -3,7 +3,7 @@ import { cache } from "react";
 import { POLITICIANS_CACHE_TAG } from "@/lib/supabase/cache-tags";
 import type { Politician } from "@/types/civic";
 import type { PoliticianRow } from "@/types/supabase";
-import { fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
+import { fetchSupabaseRows, updateSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
 import { normalizeDistrictSeat, normalizeOfficeTitle, normalizePartyLabel, normalizePersonLookup, normalizeStateCode, normalizeStateLabel } from "@/lib/utils";
 
 type RawCongressTerm = {
@@ -574,6 +574,9 @@ export const listStoredPoliticians = cache(async (options?: {
   const conditions = [
     options?.jurisdictionType ? `jurisdiction_type=eq.${options.jurisdictionType}` : "",
     options?.stateCode ? `state_code=eq.${options.stateCode.toUpperCase()}` : "",
+    // Exclude members who have left office (kept for historical vote history but
+    // not part of the current directory). NULL is treated as current for safety.
+    "is_current=not.is.false",
     "order=name.asc",
   ].filter(Boolean);
 
@@ -645,4 +648,16 @@ export async function getStoredPoliticianById(id: string) {
 
 export async function upsertStoredPoliticians(rows: PoliticianRow[]) {
   return upsertSupabaseRows("politicians", rows, "id");
+}
+
+/**
+ * Marks members who have left office as not-current so they drop out of the
+ * directory while their vote history is preserved. Called by the roster sync
+ * with the set of members Congress.gov no longer reports as current, plus any
+ * departed vote-only records. No-op on an empty list.
+ */
+export async function markPoliticiansDeparted(ids: string[]) {
+  if (ids.length === 0) return;
+  const inList = ids.map((id) => `"${id.replace(/"/g, '""')}"`).join(",");
+  await updateSupabaseRows("politicians", `id=in.(${inList})`, { is_current: false });
 }

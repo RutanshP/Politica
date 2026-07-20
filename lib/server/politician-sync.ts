@@ -6,7 +6,7 @@ import {
 import { fetchSupabaseRows } from "@/lib/supabase/rest";
 import { buildSourceFingerprint, classifyFreshness, normalizeSourceUpdatedAt } from "@/lib/server/sync-freshness";
 import { mergeStoredPoliticianStats } from "@/lib/server/politician-stat-deltas";
-import { upsertStoredPoliticians } from "@/lib/supabase/politicians";
+import { markPoliticiansDeparted, upsertStoredPoliticians } from "@/lib/supabase/politicians";
 import type { PoliticianRow } from "@/types/supabase";
 
 const POLITICIAN_PAGE_SIZE = Number.parseInt(
@@ -223,6 +223,8 @@ export async function syncPoliticiansFromCongress(options?: {
         source_fingerprint: freshness.sourceFingerprint,
         last_profile_synced_at: new Date().toISOString(),
         last_stats_recomputed_at: stored?.last_stats_recomputed_at || null,
+        // Present in the Congress.gov currentMember list, so (re)mark as serving.
+        is_current: true,
       };
       updatedMembers.push({
         ...buildMemberLabel({
@@ -261,11 +263,30 @@ export async function syncPoliticiansFromCongress(options?: {
     await upsertStoredPoliticians(uniqueRows);
   }
 
+  // Retire members Congress.gov no longer reports as current so they drop out of
+  // the directory (vote history is preserved). Only safe on a full scan: with a
+  // partial page the current-member set is incomplete and would wrongly retire
+  // everyone off-page. Departed vote-only records (federal_votes source) are also
+  // caught here, since they are never in the current-member list.
+  const isFullScan = requestedOffset === 0 && requestedLimit === undefined;
+  const currentMemberIds = new Set(
+    members.map((member) => member.bioguideId).filter((id): id is string => Boolean(id)),
+  );
+  let departed = 0;
+  if (isFullScan && existingRows.length > 0 && currentMemberIds.size > 0) {
+    const departedIds = existingRows
+      .map((row) => row.id)
+      .filter((id) => !currentMemberIds.has(id));
+    departed = departedIds.length;
+    await markPoliticiansDeparted(departedIds);
+  }
+
   return {
     synced: uniqueRows.length,
     newPoliticians,
     changedPoliticians,
     unchangedPoliticiansSkipped,
+    departed,
     updatedMembers,
     skippedMembers,
     scannedMembers: members.length,

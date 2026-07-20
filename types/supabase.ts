@@ -55,6 +55,7 @@ export interface PoliticianRow {
   source_fingerprint?: string | null;
   last_profile_synced_at?: string | null;
   last_stats_recomputed_at?: string | null;
+  is_current?: boolean;
   synced_at: string;
   raw_payload?: unknown;
   raw_member: unknown;

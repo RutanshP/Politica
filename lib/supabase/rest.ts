@@ -360,6 +360,30 @@ export async function upsertSupabaseRowsInChunks<T extends object>(
   return written;
 }
 
+export async function updateSupabaseRows<T extends object>(
+  pathname: string,
+  query: string,
+  patch: T,
+) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase is not configured");
+  }
+
+  const response = await fetch(buildRestMutationUrl(pathname, query), {
+    method: "PATCH",
+    headers: buildHeaders({
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    }),
+    body: JSON.stringify(patch),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Supabase update failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`);
+  }
+}
+
 export async function deleteSupabaseRows(pathname: string, query: string) {
   if (!isSupabaseConfigured()) {
     throw new Error("Supabase is not configured");
