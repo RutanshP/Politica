@@ -83,6 +83,28 @@ async function listCachedVotePositionsByVoteIds(voteIds: string[]) {
   return rows;
 }
 
+// Fetch votes by id in chunks. A member can have hundreds of stored positions,
+// and a single `id=in.(...)` filter for all of them produces a multi-kilobyte
+// URL that, with the auth/Range headers, overflows undici's header-size limit
+// (UND_ERR_HEADERS_OVERFLOW) and makes the whole read throw. Chunking keeps each
+// request small. Results are re-sorted to preserve the global date ordering.
+async function listVotesByIds(voteIds: string[]) {
+  if (voteIds.length === 0) return [] as VoteRow[];
+  const chunkSize = 100;
+  const rows: VoteRow[] = [];
+  for (let index = 0; index < voteIds.length; index += chunkSize) {
+    const chunk = voteIds.slice(index, index + chunkSize);
+    const result = await fetchSupabaseRows<VoteRow>(
+      "votes",
+      `id=in.(${buildQuotedInFilter(chunk)})&order=date_label.desc`,
+      { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] },
+    );
+    rows.push(...result);
+  }
+  rows.sort((left, right) => (right.date_label || "").localeCompare(left.date_label || ""));
+  return rows;
+}
+
 export async function listStoredVotes() {
   const voteRows = await fetchSupabaseRows<VoteRow>("votes", "order=date_label.desc", { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] });
   const positionRows = await listCachedVotePositionsByVoteIds(voteRows.map((row) => row.id));
@@ -124,11 +146,7 @@ export async function listStoredVotesByPoliticianId(politicianId: string) {
     return [];
   }
 
-  const voteRows = await fetchSupabaseRows<VoteRow>(
-    "votes",
-    `id=in.(${buildQuotedInFilter(voteIds)})&order=date_label.desc`,
-    { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] },
-  );
+  const voteRows = await listVotesByIds(voteIds);
 
   const positionsByVoteId = new Map<string, VotePositionRow[]>();
   for (const row of positionRows) {
@@ -152,11 +170,9 @@ export async function listStoredVotePositionContextByPoliticianId(politicianId: 
     return [];
   }
 
-  return fetchSupabaseRows<VotePositionRow>(
-    "vote_positions",
-    `vote_id=in.(${buildQuotedInFilter(voteIds)})&order=vote_id.asc,name.asc`,
-    { paginateAll: true, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
-  );
+  // Chunked to avoid the multi-kilobyte `vote_id=in.(...)` URL overflowing
+  // undici's header limit; see listVotesByIds.
+  return listCachedVotePositionsByVoteIds(voteIds);
 }
 
 export async function listStoredVotePositionContextByPoliticianIds(politicianIds: string[]) {
