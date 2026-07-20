@@ -327,11 +327,20 @@ export async function listStoredBillsByIds(billIds: string[], includeDetails = f
     return [];
   }
 
-  const rows = await fetchSupabaseRows<BillRow>(
-    "bills",
-    `id=in.(${buildQuotedInFilter(billIds)})`,
-    { tags: [BILLS_CACHE_TAG], select: BILL_LIST_SELECT, paginateAll: true },
-  );
+  // Chunk the id filter: a single id=in.(...) over hundreds of ids builds a
+  // multi-kilobyte URL that overflows undici's header limit and makes the fetch
+  // throw (UND_ERR_HEADERS_OVERFLOW). sortBillsByActivity below restores order.
+  const chunkSize = 100;
+  const rows: BillRow[] = [];
+  for (let index = 0; index < billIds.length; index += chunkSize) {
+    const chunk = billIds.slice(index, index + chunkSize);
+    const part = await fetchSupabaseRows<BillRow>(
+      "bills",
+      `id=in.(${buildQuotedInFilter(chunk)})`,
+      { tags: [BILLS_CACHE_TAG], select: BILL_LIST_SELECT, paginateAll: true },
+    );
+    rows.push(...part);
+  }
 
   if (!includeDetails) {
     return sortBillsByActivity(
@@ -480,8 +489,9 @@ export async function listStoredBillVersionRowsByBillIds(billIds: string[]) {
 }
 
 export async function replaceStoredBillActions(billIds: string[], rows: BillActionRow[]) {
-  if (billIds.length > 0) {
-    await deleteSupabaseRows("bill_actions", `bill_id=in.(${buildQuotedInFilter(billIds)})`);
+  for (let index = 0; index < billIds.length; index += 100) {
+    const chunk = billIds.slice(index, index + 100);
+    await deleteSupabaseRows("bill_actions", `bill_id=in.(${buildQuotedInFilter(chunk)})`);
   }
 
   if (rows.length === 0) {
@@ -492,8 +502,9 @@ export async function replaceStoredBillActions(billIds: string[], rows: BillActi
 }
 
 export async function replaceStoredBillVersions(billIds: string[], rows: BillVersionRow[]) {
-  if (billIds.length > 0) {
-    await deleteSupabaseRows("bill_versions", `bill_id=in.(${buildQuotedInFilter(billIds)})`);
+  for (let index = 0; index < billIds.length; index += 100) {
+    const chunk = billIds.slice(index, index + 100);
+    await deleteSupabaseRows("bill_versions", `bill_id=in.(${buildQuotedInFilter(chunk)})`);
   }
 
   if (rows.length === 0) {
