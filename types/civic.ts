@@ -261,7 +261,7 @@ export interface SearchEntity {
 
 export interface SyncPipelineSummary {
   pipeline: string;
-  status: "success" | "partial" | "failed" | "running";
+  status: "success" | "partial" | "failed" | "running" | "skipped";
   startedAt?: string;
   finishedAt?: string;
   recordCount: number;

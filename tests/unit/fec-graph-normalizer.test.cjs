@@ -117,6 +117,30 @@ test("buildFecGraphRows labels employer aggregates and skips non-employers", () 
   assert.ok(employerEdges.every((edge) => edge.is_aggregate === true));
 });
 
+test("buildFecGraphRows merges employer spellings that share a slug into one edge", () => {
+  // FEC reports the same employer under several spellings; they normalize to one
+  // slug and must merge, or the chunk emits two edges with the same id and the
+  // upsert batch fails (Postgres 21000).
+  const { entities, edges } = buildFecGraphRows(POLITICIAN, "H8NY15148", payloads({
+    byEmployer: [
+      { employer: "GOOGLE", total: 20000, count: 100 },
+      { employer: "Google", total: 15000, count: 80 },
+      { employer: "  google ", total: 5000, count: 20 },
+    ],
+  }));
+
+  const googleEntities = entities.filter((entity) => entity.id === "fec-emp-google");
+  assert.equal(googleEntities.length, 1, "one merged employer entity");
+
+  const googleEdges = edges.filter((edge) => edge.source_entity_id === "fec-emp-google");
+  assert.equal(googleEdges.length, 1, "one merged employer edge (no duplicate id)");
+  assert.equal(googleEdges[0].amount, 40000, "merged edge sums the variant totals");
+  assert.equal(googleEdges[0].transaction_count, 200, "merged edge sums the variant counts");
+
+  const edgeIds = edges.map((edge) => edge.id);
+  assert.equal(new Set(edgeIds).size, edgeIds.length, "no duplicate edge ids in the batch");
+});
+
 test("buildFecGraphRows marks small-dollar as a subset of individual giving", () => {
   const { edges } = buildFecGraphRows(POLITICIAN, "H8NY15148", payloads());
   const smallEdge = edges.find((edge) => edge.source_entity_id === "fec-small-O000172");

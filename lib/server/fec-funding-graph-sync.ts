@@ -25,13 +25,6 @@ import type { CandidateFinanceSnapshotRow } from "@/types/supabase";
 
 const DEFAULT_CHUNK_LIMIT = 60;
 const DEFAULT_CYCLE = 2026;
-// ~5 sequential FEC calls per member; this pause keeps the overall pace near
-// one call/second, under both the hourly cap and the short-window burst limit.
-const PER_POLITICIAN_DELAY_MS = 1500;
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export interface FecFundingGraphSyncOptions {
   /** Politicians per run; ~5 FEC calls each against a 1,000 req/hour key. */
@@ -92,9 +85,12 @@ export async function syncFundingGraphFromFec(options?: FecFundingGraphSyncOptio
   }
   queue = queue.slice(0, limit);
 
+  // Keyed by id so a chunk never sends a batch with duplicate constrained
+  // values, which Postgres rejects (21000: ON CONFLICT cannot affect a row
+  // twice). Entities and employer nodes are legitimately shared across members.
   const entityRowsById = new Map<string, GraphEntityRow>();
-  const edgeRows: GraphEdgeRow[] = [];
-  const snapshotRows: CandidateFinanceSnapshotRow[] = [];
+  const edgeRowsById = new Map<string, GraphEdgeRow>();
+  const snapshotRowsById = new Map<string, CandidateFinanceSnapshotRow>();
   const failures: Array<{ slug: string; error: string }> = [];
   const syncedPoliticianEntityIds: string[] = [];
 
@@ -142,8 +138,10 @@ export async function syncFundingGraphFromFec(options?: FecFundingGraphSyncOptio
       for (const entity of rows.entities) {
         entityRowsById.set(entity.id, entity);
       }
-      edgeRows.push(...rows.edges);
-      snapshotRows.push(rows.snapshot);
+      for (const edge of rows.edges) {
+        edgeRowsById.set(edge.id, edge);
+      }
+      snapshotRowsById.set(rows.snapshot.id, rows.snapshot);
       syncedPoliticianEntityIds.push(`pol-${politician.id}`);
     } catch (error) {
       failures.push({
@@ -151,11 +149,13 @@ export async function syncFundingGraphFromFec(options?: FecFundingGraphSyncOptio
         error: error instanceof Error ? error.message : "FEC sync failed",
       });
     }
-
-    await delay(PER_POLITICIAN_DELAY_MS);
+    // Per-call pacing is handled by the rate gate in lib/adapters/fec.ts, so no
+    // per-member delay is needed here.
   }
 
   const entityRows = [...entityRowsById.values()];
+  const edgeRows = [...edgeRowsById.values()];
+  const snapshotRows = [...snapshotRowsById.values()];
   await upsertGraphEntities(entityRows);
   await upsertGraphEdges(edgeRows);
   await upsertCandidateFinanceSnapshots(snapshotRows);

@@ -77,6 +77,24 @@ export async function fetchFecCandidateTotals(candidateId: string, cycle = 2024)
 const FEC_RATE_LIMIT_RETRIES = 3;
 const FEC_RATE_LIMIT_BACKOFF_MS = 20000;
 
+// The FEC key allows 60 requests/minute. Rather than fire calls as fast as
+// possible and recover from 429s with backoff (which makes throughput lurch
+// between fast and stalled), pace every fresh call ~1.1s apart so a single
+// worker sustains ~54/min and never trips the limit. Slots are reserved
+// atomically, so even a burst of concurrent calls comes out evenly spaced.
+const MIN_FEC_INTERVAL_MS = 1100;
+let fecNextAllowedAt = 0;
+
+async function fecRateGate() {
+  const now = Date.now();
+  const scheduledAt = Math.max(now, fecNextAllowedAt);
+  fecNextAllowedAt = scheduledAt + MIN_FEC_INTERVAL_MS;
+  const wait = scheduledAt - now;
+  if (wait > 0) {
+    await new Promise((resolve) => setTimeout(resolve, wait));
+  }
+}
+
 async function fetchFecJsonFresh<T>(
   pathname: string,
   params?: Record<string, string | number | undefined>,
@@ -92,6 +110,7 @@ async function fetchFecJsonFresh<T>(
   }
 
   for (let attempt = 0; ; attempt += 1) {
+    await fecRateGate();
     const response = await fetch(url.toString(), {
       cache: "no-store",
       headers: { Accept: "application/json" },

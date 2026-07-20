@@ -311,40 +311,53 @@ export function buildFecGraphRows(
   }
 
   // Top employers of itemized individual contributors, explicitly labeled as
-  // employee aggregates -- never corporate contributions.
-  const employers = payloads.byEmployer
-    .filter((row) => isRealEmployer(row.employer) && (row.total || 0) > 0)
-    .slice(0, 8);
-  for (const employerRow of employers) {
-    const employerLabel = employerRow.employer!.trim();
-    const employerSlug = slugifySegment(employerLabel).slice(0, 60) || "employer";
-    const entityId = `fec-emp-${employerSlug}`;
-    if (!entities.some((entity) => entity.id === entityId)) {
-      entities.push({
-        id: entityId,
-        slug: entityId,
-        entity_type: "employer",
-        label: `Employees of ${employerLabel}`,
-        subtitle: "Aggregated employee contributions",
-        image_url: null,
-        metadata: {
-          aggregationType: "contributions grouped by contributor-reported employer",
-          methodology:
-            "Itemized individual contributions grouped by the employer field each contributor reported. This is not a contribution by the organization itself.",
-          employer: employerLabel,
-        },
-        source_system: "fec_sync",
-        source_id: entityId,
-        source_url: filingsUrl,
-        synced_at: syncedAt,
-      });
+  // employee aggregates -- never corporate contributions. FEC reports the same
+  // employer under multiple spellings ("GOOGLE", "Google", "Google Inc"); these
+  // normalize to one slug, so merge their totals before emitting a single entity
+  // and edge per slug. Without this, two rows sharing a slug would produce two
+  // edges with the same id and the upsert batch would fail (Postgres 21000).
+  const employerAggregates = new Map<string, { label: string; total: number; count: number }>();
+  for (const row of payloads.byEmployer) {
+    if (!isRealEmployer(row.employer) || (row.total || 0) <= 0) continue;
+    const label = row.employer!.trim();
+    const slug = slugifySegment(label).slice(0, 60) || "employer";
+    const existing = employerAggregates.get(slug);
+    if (existing) {
+      existing.total += round(row.total);
+      existing.count += row.count ?? 0;
+    } else {
+      employerAggregates.set(slug, { label, total: round(row.total), count: row.count ?? 0 });
     }
+  }
+  const topEmployers = [...employerAggregates.entries()]
+    .sort((left, right) => right[1].total - left[1].total)
+    .slice(0, 8);
+  for (const [employerSlug, aggregate] of topEmployers) {
+    const entityId = `fec-emp-${employerSlug}`;
+    entities.push({
+      id: entityId,
+      slug: entityId,
+      entity_type: "employer",
+      label: `Employees of ${aggregate.label}`,
+      subtitle: "Aggregated employee contributions",
+      image_url: null,
+      metadata: {
+        aggregationType: "contributions grouped by contributor-reported employer",
+        methodology:
+          "Itemized individual contributions grouped by the employer field each contributor reported. This is not a contribution by the organization itself.",
+        employer: aggregate.label,
+      },
+      source_system: "fec_sync",
+      source_id: entityId,
+      source_url: filingsUrl,
+      synced_at: syncedAt,
+    });
     edges.push(aggregateEdge(
       `emp-${employerSlug}-${politician.id}-${cycle}`,
       entityId,
       "employee_contributions",
-      round(employerRow.total),
-      employerRow.count ?? null,
+      aggregate.total,
+      aggregate.count || null,
     ));
   }
 

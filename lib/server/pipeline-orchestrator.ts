@@ -4,11 +4,45 @@ import { listRunningSyncRuns, upsertSyncErrors, upsertSyncRuns } from "@/lib/sup
 import type { SyncPipelineSummary } from "@/types/civic";
 import type { SyncErrorRow, SyncRunRow } from "@/types/supabase";
 
+// A client whose request times out (e.g. curl --max-time) does NOT abort the
+// Next.js route handler: the worker keeps running server-side. If the caller
+// then fires another chunk, a second worker starts concurrently, and since our
+// sync workers share a process-wide FEC rate gate they progressively starve one
+// another until none finish. This in-process lock guarantees at most one worker
+// per pipeline per server process, so an abandoned request can never spawn an
+// overlapping worker. It also protects the nightly cron from accidental double
+// triggers. State is intentionally module-level (resets on server restart).
+const runningPipelines = new Set<string>();
+
 export async function runPipeline(
   pipeline: string,
   worker: () => Promise<{ recordCount: number; metadata?: unknown }>,
 ): Promise<SyncPipelineSummary> {
   const startedAt = new Date().toISOString();
+
+  if (runningPipelines.has(pipeline)) {
+    return {
+      pipeline,
+      status: "skipped",
+      startedAt,
+      finishedAt: startedAt,
+      recordCount: 0,
+      metadata: { skipped: true, reason: "A run for this pipeline is already in progress" },
+    };
+  }
+  runningPipelines.add(pipeline);
+  try {
+    return await runPipelineLocked(pipeline, worker, startedAt);
+  } finally {
+    runningPipelines.delete(pipeline);
+  }
+}
+
+async function runPipelineLocked(
+  pipeline: string,
+  worker: () => Promise<{ recordCount: number; metadata?: unknown }>,
+  startedAt: string,
+): Promise<SyncPipelineSummary> {
   const staleRunningRows = await listRunningSyncRuns(pipeline).catch(() => []);
   if (staleRunningRows.length > 0) {
     await upsertSyncRuns(
