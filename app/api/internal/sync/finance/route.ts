@@ -7,6 +7,7 @@ import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   if (!isAuthorizedSyncRequest(request)) {

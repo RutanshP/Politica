@@ -6,6 +6,8 @@ import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 
 export const dynamic = "force-dynamic";
+// Long-running sync: Vercel's default function timeout is too short.
+export const maxDuration = 300;
 
 /**
  * Populates the funding-network graph from the FEC API in staleness-ordered

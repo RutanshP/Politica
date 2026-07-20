@@ -7,6 +7,7 @@ import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 import { syncPoliticiansFromCongress } from "@/lib/server/politician-sync";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   if (!isAuthorizedSyncRequest(request)) {
