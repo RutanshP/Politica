@@ -90,10 +90,15 @@ test("buildFecGraphRows wires money edges into the principal committee, IEs into
   assert.ok(entityIds.has("pol-O000172"));
   assert.ok(entityIds.has("fec-cmte-C00639591"), "principal (P) committee chosen over joint fundraiser");
 
-  const moneyEdges = edges.filter((edge) => edge.relationship_type === "contributed_to");
-  assert.ok(moneyEdges.every((edge) => edge.target_entity_id === "fec-cmte-C00639591"));
-  assert.ok(moneyEdges.every((edge) => edge.is_aggregate === true), "totals-derived edges are aggregates");
-  assert.ok(moneyEdges.every((edge) => edge.election_cycle === 2026));
+  // Tier 2 -> center: the individual-donors hub and the PAC aggregate contribute
+  // straight to the principal committee.
+  const hubEdges = edges.filter((edge) =>
+    edge.relationship_type === "contributed_to"
+    && ["fec-ind-O000172", "fec-pacagg-O000172"].includes(edge.source_entity_id));
+  assert.equal(hubEdges.length, 2, "individual hub + PAC aggregate feed the committee");
+  assert.ok(hubEdges.every((edge) => edge.target_entity_id === "fec-cmte-C00639591"));
+  assert.ok(hubEdges.every((edge) => edge.is_aggregate === true), "totals-derived edges are aggregates");
+  assert.ok(hubEdges.every((edge) => edge.election_cycle === 2026));
 
   const ieEdges = edges.filter((edge) => edge.relationship_type.startsWith("independent_spending"));
   assert.equal(ieEdges.length, 2);
@@ -115,6 +120,27 @@ test("buildFecGraphRows labels employer aggregates and skips non-employers", () 
   const employerEdges = edges.filter((edge) => edge.relationship_type === "employee_contributions");
   assert.equal(employerEdges.length, 2);
   assert.ok(employerEdges.every((edge) => edge.is_aggregate === true));
+  assert.ok(employerEdges.every((edge) => edge.target_entity_id === "fec-ind-O000172"),
+    "employer aggregates feed the individual-donors hub (tier 1 -> tier 2), not the committee");
+});
+
+test("buildFecGraphRows builds a three-tier money flow into the committee", () => {
+  const { edges } = buildFecGraphRows(POLITICIAN, "H8NY15148", payloads());
+
+  // Tier 1 -> tier 2: employers and small-dollar feed the individual-donors hub.
+  const intoHub = edges.filter((edge) => edge.target_entity_id === "fec-ind-O000172");
+  assert.ok(intoHub.some((edge) => edge.source_entity_id.startsWith("fec-emp-")), "employers feed the hub");
+  assert.ok(intoHub.some((edge) => edge.source_entity_id === "fec-small-O000172"), "small-dollar feeds the hub");
+
+  // Tier 2 -> center: the hub itself contributes to the committee.
+  const hubOut = edges.find((edge) => edge.source_entity_id === "fec-ind-O000172");
+  assert.equal(hubOut.target_entity_id, "fec-cmte-C00639591", "the hub contributes to the committee");
+
+  // Tier-1 sources never bypass the hub (that would flatten the graph back to a star).
+  const bypass = edges.filter((edge) =>
+    (edge.source_entity_id.startsWith("fec-emp-") || edge.source_entity_id === "fec-small-O000172")
+    && edge.target_entity_id === "fec-cmte-C00639591");
+  assert.equal(bypass.length, 0, "tier-1 sources route through the hub, not straight to the committee");
 });
 
 test("buildFecGraphRows merges employer spellings that share a slug into one edge", () => {

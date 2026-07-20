@@ -174,7 +174,9 @@ export interface FundingGraphFilters {
 }
 
 export const DEFAULT_FUNDING_GRAPH_FILTERS: FundingGraphFilters = {
-  depth: 2,
+  // Three tiers of money flow — employer/small-dollar -> individual hub -> committee
+  // -> politician — need a depth-3 walk from the center for the outer tier to render.
+  depth: 3,
   groupSmallDonors: true,
   showLegislative: true,
   showLobbying: true,

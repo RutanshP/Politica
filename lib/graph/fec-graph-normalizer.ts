@@ -209,6 +209,16 @@ export function buildFecGraphRows(
   const moneyTargetId = committeeEntityId || politicianEntityId;
   const filingsUrl = `https://www.fec.gov/data/candidate/${candidateId}/?cycle=${cycle}`;
 
+  // Tier structure: employers and small-dollar are breakdowns of individual
+  // giving, so they feed the Individual-donors hub (tier 1 -> tier 2), which in
+  // turn contributes to the committee (tier 2 -> center). PACs contribute to the
+  // committee directly. This yields a real multi-tier network rather than a star
+  // of every source pointing at the committee. When there is no individual hub
+  // (no itemized/unitemized individual giving), the breakdowns fall back to the
+  // committee so nothing is orphaned.
+  const individualEntityId = individual > 0 ? `fec-ind-${politician.id}` : undefined;
+  const donorRollupTarget = individualEntityId || moneyTargetId;
+
   const aggregateEdge = (
     idSuffix: string,
     sourceEntityId: string,
@@ -216,10 +226,11 @@ export function buildFecGraphRows(
     amount: number,
     transactionCount: number | null,
     metadata: Record<string, unknown> = {},
+    targetEntityId: string = moneyTargetId,
   ): GraphEdgeRow => ({
     id: `fec-${idSuffix}`,
     source_entity_id: sourceEntityId,
-    target_entity_id: moneyTargetId,
+    target_entity_id: targetEntityId,
     relationship_type: relationshipType,
     relationship_direction: "directed",
     amount,
@@ -285,6 +296,7 @@ export function buildFecGraphRows(
       smallDollar,
       smallDollarBucket?.count ?? null,
       { subsetOf: `fec-ind-${politician.id}-${cycle}` },
+      donorRollupTarget,
     ));
   }
 
@@ -358,6 +370,8 @@ export function buildFecGraphRows(
       "employee_contributions",
       aggregate.total,
       aggregate.count || null,
+      {},
+      donorRollupTarget,
     ));
   }
 
