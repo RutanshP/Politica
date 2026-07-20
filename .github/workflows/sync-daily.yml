@@ -37,11 +37,17 @@ jobs:
       - name: Run syncs
         run: |
           set -uo pipefail
+          APP_URL="${APP_URL%/}"   # tolerate a trailing slash in the secret
           post() {
             path="$1"
-            code=$(curl -sS -o /tmp/resp -w "%{http_code}" --max-time 320 \
-              -X POST -H "Authorization: Bearer $SYNC_SECRET" "$APP_URL$path" 2>/dev/null || echo 000)
-            echo "POST $path -> HTTP $code"
+            # -L follows redirects (a 308 preserves POST + body). num_redirects/
+            # url_effective reveal *where* it went if a redirect is in the way
+            # (e.g. -> vercel.com/sso means Deployment Protection is on).
+            out=$(curl -sS -L --max-time 320 -o /tmp/resp \
+              -w "%{http_code} redirects=%{num_redirects} final=%{url_effective}" \
+              -X POST -H "Authorization: Bearer $SYNC_SECRET" "$APP_URL$path" 2>/dev/null || echo "000 redirects=? final=?")
+            echo "POST $path -> $out"
+            code="${out%% *}"
             head -c 300 /tmp/resp 2>/dev/null; echo
             # A single timed-out/failed chunk shouldn't abort the whole run.
             case "$code" in 2*) return 0 ;; *) echo "::warning::$path returned $code"; return 0 ;; esac
