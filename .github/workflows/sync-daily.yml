@@ -1,0 +1,69 @@
+name: Politica daily sync
+
+# Runs the data syncs on GitHub's servers (free, no per-job timeout) by calling
+# the deployed Vercel app. Running the sync *on* Vercel keeps Vercel's cache
+# fresh. Requires two repo secrets:
+#   POLITICA_APP_URL     e.g. https://politica.vercel.app  (no trailing slash)
+#   POLITICA_SYNC_SECRET same value as in Vercel's env
+on:
+  schedule:
+    - cron: "0 10 * * *" # daily at 10:00 UTC
+  workflow_dispatch: {} # manual "Run workflow" button
+
+concurrency:
+  group: politica-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      APP_URL: ${{ secrets.POLITICA_APP_URL }}
+      SYNC_SECRET: ${{ secrets.POLITICA_SYNC_SECRET }}
+      # FEC chunk size. Keep small so each call fits Vercel's function timeout
+      # (Hobby = 60s). Raise on Vercel Pro (up to ~limit=40) for faster coverage.
+      FEC_LIMIT: "8"
+      # How many FEC chunks per run. 8 x 8 = ~64 members/day, rotating by
+      # staleness — matches the previous nightly design; the initial full
+      # backfill is already done.
+      FEC_CHUNKS: "8"
+    steps:
+      - name: Check secrets
+        run: |
+          test -n "$APP_URL" || { echo "::error::POLITICA_APP_URL secret is not set"; exit 1; }
+          test -n "$SYNC_SECRET" || { echo "::error::POLITICA_SYNC_SECRET secret is not set"; exit 1; }
+
+      - name: Run syncs
+        run: |
+          set -uo pipefail
+          post() {
+            path="$1"
+            code=$(curl -sS -o /tmp/resp -w "%{http_code}" --max-time 320 \
+              -X POST -H "Authorization: Bearer $SYNC_SECRET" "$APP_URL$path" 2>/dev/null || echo 000)
+            echo "POST $path -> HTTP $code"
+            head -c 300 /tmp/resp 2>/dev/null; echo
+            # A single timed-out/failed chunk shouldn't abort the whole run.
+            case "$code" in 2*) return 0 ;; *) echo "::warning::$path returned $code"; return 0 ;; esac
+          }
+
+          echo "== Federal roster (new/departed members) =="
+          post "/api/internal/sync/politicians?limit=250"
+
+          echo "== Recent bills + votes =="
+          post "/api/internal/sync/legislation?offset=0&limit=25&syncVotes=true"
+
+          echo "== FEC funding rotation ($FEC_CHUNKS x limit=$FEC_LIMIT) =="
+          i=1
+          while [ "$i" -le "$FEC_CHUNKS" ]; do
+            post "/api/internal/sync/fec-funding-graph?limit=$FEC_LIMIT"
+            i=$((i + 1))
+          done
+
+          echo "== News =="
+          post "/api/internal/sync/news"
+
+          echo "== Rebuild derived data =="
+          post "/api/internal/rebuild"
+
+          echo "Daily sync complete."
