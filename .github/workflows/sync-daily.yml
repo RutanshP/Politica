@@ -7,7 +7,9 @@ name: Politica daily sync
 #   POLITICA_SYNC_SECRET same value as in Vercel's env
 on:
   schedule:
-    - cron: "0 10 * * *" # daily at 10:00 UTC
+    # ~10:23 UTC = ~3:23 AM Pacific. Deliberately off the top of the hour: GitHub
+    # runs schedules best-effort and drops/delays many at :00 under load.
+    - cron: "23 10 * * *"
   workflow_dispatch: {} # manual "Run workflow" button
 
 concurrency:
@@ -69,7 +71,9 @@ jobs:
           echo "== News =="
           post "/api/internal/sync/news"
 
-          echo "== Rebuild derived data =="
-          post "/api/internal/rebuild"
+          echo "== Rebuild derived data (one part at a time to fit the function budget) =="
+          for part in issues entities search analytics; do
+            post "/api/internal/rebuild?only=$part"
+          done
 
           echo "Daily sync complete."

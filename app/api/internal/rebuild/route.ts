@@ -14,29 +14,38 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+// Each rebuild scans the whole dataset. Running all four at once (the old
+// Promise.all) peaks memory hard enough to crash a constrained serverless
+// function. They now run one at a time, and `?only=<name>` runs a single one so
+// a caller (e.g. the GitHub Actions workflow) can spread them across separate
+// function invocations, each with its own memory/time budget.
+const REBUILDERS = {
+  issues: { pipeline: "issue_rebuild", run: rebuildIssuesFromStoredData },
+  entities: { pipeline: "entity_rebuild", run: rebuildEntitiesFromStoredData },
+  search: { pipeline: "search_rebuild", run: rebuildSearchIndexFromStoredData },
+  analytics: { pipeline: "analytics_rebuild", run: rebuildAnalyticsFromStoredData },
+} as const;
+
+type RebuildName = keyof typeof REBUILDERS;
+
 export async function POST(request: Request) {
   if (!isAuthorizedSyncRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [issues, entities, search, analytics] = await Promise.all([
-    runPipeline("issue_rebuild", async () => {
-      const rebuilt = await rebuildIssuesFromStoredData();
+  const only = new URL(request.url).searchParams.get("only");
+  const names: RebuildName[] = only && only in REBUILDERS
+    ? [only as RebuildName]
+    : (Object.keys(REBUILDERS) as RebuildName[]);
+
+  const results: Record<string, unknown> = {};
+  for (const name of names) {
+    const { pipeline, run } = REBUILDERS[name];
+    results[name] = await runPipeline(pipeline, async () => {
+      const rebuilt = await run();
       return { recordCount: rebuilt.rebuilt, metadata: rebuilt };
-    }),
-    runPipeline("entity_rebuild", async () => {
-      const rebuilt = await rebuildEntitiesFromStoredData();
-      return { recordCount: rebuilt.rebuilt, metadata: rebuilt };
-    }),
-    runPipeline("search_rebuild", async () => {
-      const rebuilt = await rebuildSearchIndexFromStoredData();
-      return { recordCount: rebuilt.rebuilt, metadata: rebuilt };
-    }),
-    runPipeline("analytics_rebuild", async () => {
-      const rebuilt = await rebuildAnalyticsFromStoredData();
-      return { recordCount: rebuilt.rebuilt, metadata: rebuilt };
-    }),
-  ]);
+    });
+  }
 
   revalidatePoliticaCaches();
 
@@ -47,6 +56,8 @@ export async function POST(request: Request) {
   revalidatePath("/news");
   revalidatePath("/entities");
 
-  const status = [issues, entities, search, analytics].some((item) => item.status === "failed") ? 500 : 200;
-  return NextResponse.json({ issues, entities, search, analytics }, { status });
+  const status = Object.values(results).some((item) => (item as { status?: string }).status === "failed")
+    ? 500
+    : 200;
+  return NextResponse.json(results, { status });
 }
