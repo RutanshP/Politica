@@ -30,6 +30,12 @@ jobs:
       # staleness — matches the previous nightly design; the initial full
       # backfill is already done.
       FEC_CHUNKS: "8"
+      # How many bill pages to walk per run, most-recently-updated first. Congress
+      # touches hundreds of bills a day, so a single limit=25 page never reaches
+      # brand-new introductions (they sit below all the existing bills getting new
+      # actions). 8 x 25 = top 200 updated bills/night keeps new bills flowing in.
+      BILL_CHUNKS: "8"
+      BILL_LIMIT: "25"
     steps:
       - name: Check secrets
         run: |
@@ -58,8 +64,14 @@ jobs:
           echo "== Federal roster (new/departed members) =="
           post "/api/internal/sync/politicians?limit=250"
 
-          echo "== Recent bills + votes =="
-          post "/api/internal/sync/legislation?offset=0&limit=25&syncVotes=true"
+          echo "== Recent bills + votes (page through most-recently-updated) =="
+          off=0
+          i=1
+          while [ "$i" -le "$BILL_CHUNKS" ]; do
+            post "/api/internal/sync/legislation?offset=$off&limit=$BILL_LIMIT&syncVotes=true"
+            off=$((off + BILL_LIMIT))
+            i=$((i + 1))
+          done
 
           echo "== FEC funding rotation ($FEC_CHUNKS x limit=$FEC_LIMIT) =="
           i=1

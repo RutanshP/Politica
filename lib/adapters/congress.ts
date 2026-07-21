@@ -223,6 +223,11 @@ export async function fetchCongressBills(options?: {
     {
       limit: options?.limit ?? 20,
       offset: options?.offset ?? 0,
+      // Pin the ordering to most-recently-updated first. This is Congress.gov's
+      // current default, but the incremental sync depends on it (it walks the top
+      // of this list each night), so make it explicit rather than trust the default.
+      // URLSearchParams encodes the space as `+`, which the API expects.
+      sort: "updateDate desc",
     },
   );
 
