@@ -11,8 +11,8 @@ import {
   getCommitteeSourceLabel,
   isLiveCommitteeSource,
 } from "@/lib/data/committees";
-import { getPoliticiansData } from "@/lib/data/politicians";
 import { listStoredBillsByIds } from "@/lib/supabase/bills";
+import { listStoredPoliticiansByIds } from "@/lib/supabase/politicians";
 import { deriveCommitteeSector, normalizeCommitteeField } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
@@ -33,11 +33,12 @@ export default async function CommitteePage({
 
   // One id=in.(...) read for the active bills instead of a getBillData() call per bill -- each
   // of which was its own bill + actions + versions + 2 sync-run round trips.
-  const [{ politicians }, activeBills] = await Promise.all([
-    getPoliticiansData(),
+  const [members, activeBills] = await Promise.all([
+    // Only this committee's roster. Loading every politician to filter it down was the single
+    // largest egress cost in the app -- ~3MB per committee page, 380+ of them per build.
+    listStoredPoliticiansByIds(committee.memberIds),
     listStoredBillsByIds(committee.activeBillIds).catch(() => [] as Bill[]),
   ]);
-  const members = politicians.filter((politician) => committee.memberIds.includes(politician.id));
   const sector = deriveCommitteeSector(committee);
 
   return (

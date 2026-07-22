@@ -123,10 +123,19 @@ export async function syncLobbyingFilings(options: {
     fetchPageWithRetry(options.year, filingType, page),
   );
 
-  const rows = [head, ...pageResults]
+  const normalized = [head, ...pageResults]
     .flatMap((page) => page.results)
     .map(normalizeLdaFiling)
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+  /*
+   * Deduplicated before writing. LDA pages are not a stable snapshot -- filings shift between
+   * pages as new ones are posted, so one slice can return the same filing_uuid twice. Postgres
+   * rejects that outright ("ON CONFLICT DO UPDATE command cannot affect row a second time"), and
+   * the whole batch failed with a 500, which is what kept stalling the ingest.
+   */
+  const byUuid = new Map(normalized.map((row) => [row.filing_uuid, row]));
+  const rows = [...byUuid.values()];
 
   if (rows.length > 0) {
     await upsertSupabaseRowsInChunks("lobbying_filings", rows, "filing_uuid", 250);

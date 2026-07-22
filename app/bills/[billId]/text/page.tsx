@@ -59,9 +59,21 @@ export default async function BillTextPage({
         ) : versions.length > 0 ? (
           // Fallback: the text could not be fetched/parsed (site unreachable, no XML, etc.).
           <div className="space-y-4">
+            {/*
+              Two different situations, and conflating them made a transient upstream failure look
+              like a permanent property of the bill.
+            */}
             <EmptyState
-              title="Inline text unavailable for this version"
-              description="The formatted bill text could not be loaded right now. You can open the official document directly."
+              title={
+                textSource
+                  ? "Could not load the formatted text right now"
+                  : "No inline text published for this version"
+              }
+              description={
+                textSource
+                  ? "congress.gov did not return a readable document for this version. This is usually temporary — reload in a moment, or open the official document directly."
+                  : "This version has no machine-readable document to render inline. The official document is linked below."
+              }
             />
             <div className="grid gap-3 md:grid-cols-2">
               {versions.map((version) => (

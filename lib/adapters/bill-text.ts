@@ -183,44 +183,88 @@ function countChars(nodes: BillTextNode[]): number {
  * @param xmlUrl the "Formatted XML" document URL stored on the bill version.
  * @returns the parsed document, or null if the fetch/parse failed (caller falls back to the link).
  */
+const BILL_TEXT_FETCH_TIMEOUT_MS = 10_000;
+const BILL_TEXT_FETCH_ATTEMPTS = 3;
+
+async function fetchBillTextXml(xmlUrl: string, bypassCache: boolean) {
+  for (let attempt = 1; attempt <= BILL_TEXT_FETCH_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(xmlUrl, {
+        headers: {
+          Accept: "application/xml",
+          // The default runtime User-Agent is a common trigger for upstream throttling.
+          "User-Agent": "Politica/1.0 (civic data viewer)",
+        },
+        // Without a timeout a hung upstream blocks the whole render.
+        signal: AbortSignal.timeout(BILL_TEXT_FETCH_TIMEOUT_MS),
+        ...(bypassCache
+          ? { cache: "no-store" as const }
+          : {
+              // Cached in the Data Cache: the first viewer pays the fetch, everyone else is served
+              // the parsed result until revalidation. Tagged so a sync can bust it if needed.
+              next: { revalidate: 21600, tags: ["politica:bill-text"] },
+            }),
+      });
+
+      // 4xx is a real answer -- retrying will not change it. Only retry transport errors and 5xx.
+      if (response.ok) return await response.text();
+      if (response.status >= 400 && response.status < 500) return null;
+    } catch {
+      // Timeout or transport failure; fall through to the retry.
+    }
+
+    if (attempt < BILL_TEXT_FETCH_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+    }
+  }
+
+  return null;
+}
+
+function parseBillTextXml(xml: string): BillTextDocument | null {
+  const parser = new XMLParser({ ignoreAttributes: true, preserveOrder: true, trimValues: false });
+  const tree = parser.parse(xml) as OrderedNode[];
+
+  const body = findBody(tree);
+  if (!body) return null;
+
+  sequentialId = 0;
+  const nodes: BillTextNode[] = [];
+  for (const node of body) {
+    const tag = tagOf(node);
+    if (tag && STRUCTURAL_TAGS.has(tag)) {
+      nodes.push(buildNode(node, tag, 0));
+    }
+  }
+
+  if (nodes.length === 0) return null;
+
+  return {
+    officialTitle: findOfficialTitle(tree),
+    nodes,
+    charCount: countChars(nodes),
+    sectionCount: nodes.length,
+  };
+}
+
 export async function fetchBillTextDocument(xmlUrl: string): Promise<BillTextDocument | null> {
   if (!/^https?:\/\/[^ ]+\.xml$/i.test(xmlUrl)) {
     return null;
   }
 
   try {
-    const response = await fetch(xmlUrl, {
-      headers: { Accept: "application/xml" },
-      // Cached in the Data Cache: the first viewer pays the fetch, everyone else is served the
-      // parsed result until revalidation. Tagged so a sync can bust it if needed.
-      next: { revalidate: 21600, tags: ["politica:bill-text"] },
-    });
-    if (!response.ok) return null;
+    const cached = await fetchBillTextXml(xmlUrl, false);
+    const parsed = cached ? parseBillTextXml(cached) : null;
+    if (parsed) return parsed;
 
-    const xml = await response.text();
-    const parser = new XMLParser({ ignoreAttributes: true, preserveOrder: true, trimValues: false });
-    const tree = parser.parse(xml) as OrderedNode[];
-
-    const body = findBody(tree);
-    if (!body) return null;
-
-    sequentialId = 0;
-    const nodes: BillTextNode[] = [];
-    for (const node of body) {
-      const tag = tagOf(node);
-      if (tag && STRUCTURAL_TAGS.has(tag)) {
-        nodes.push(buildNode(node, tag, 0));
-      }
-    }
-
-    if (nodes.length === 0) return null;
-
-    return {
-      officialTitle: findOfficialTitle(tree),
-      nodes,
-      charCount: countChars(nodes),
-      sectionCount: nodes.length,
-    };
+    /*
+     * The cached response was missing or did not parse as bill XML. congress.gov answers
+     * throttling and error pages with a 200, and Next caches a 200 for the full revalidate window
+     * -- so one bad response poisoned this URL for six hours and the tab read "Inline text
+     * unavailable" even though the document was fine. Bypass the cache once before giving up.
+     */
+    const fresh = await fetchBillTextXml(xmlUrl, true);
+    return fresh ? parseBillTextXml(fresh) : null;
   } catch {
     return null;
   }

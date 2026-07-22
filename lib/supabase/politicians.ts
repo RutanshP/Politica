@@ -559,6 +559,16 @@ const POLITICIAN_LIST_SELECT = [
 ].join(",");
 
 /**
+ * Display-only projection: the same columns minus `raw_member`, which is 59% of this table's row
+ * bytes and is read solely to repair blank names and districts during the list merge. Any read
+ * that renders a known set of members does not need it.
+ */
+const POLITICIAN_DISPLAY_SELECT = POLITICIAN_LIST_SELECT
+  .split(",")
+  .filter((column) => column !== "raw_member")
+  .join(",");
+
+/**
  * @param options.fresh sync pipelines must observe current rows to compute diffs; the render
  * path reads through the cache.
  * @param options.jurisdictionType / options.stateCode scope the read. The directory only ever
@@ -634,6 +644,40 @@ export async function getStoredPoliticianBySlug(slug: string) {
   const identityKey = getPoliticianIdentityKey(rawMatch);
   const mergedMatch = mergedRows.find((row) => getPoliticianIdentityKey(row) === identityKey);
   return mergedMatch ? mapRowToPolitician(mergedMatch) : undefined;
+}
+
+/**
+ * The members of one committee, fetched by id.
+ *
+ * The committee page used to call getPoliticiansData() and filter the result down to its own
+ * members -- downloading all 1,575 politicians, ~3MB with the raw_member blob, to render a
+ * roster of a dozen. With 380+ committee pages prerendered per build that was over a gigabyte of
+ * egress per build, and it was the largest single contributor to a 5.3GB day.
+ *
+ * `raw_member` is deliberately excluded: it is 59% of the row bytes and nothing on this path
+ * reads it.
+ */
+export async function listStoredPoliticiansByIds(ids: string[]) {
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+
+  const rows: PoliticianRow[] = [];
+  const chunkSize = 100;
+
+  for (let index = 0; index < uniqueIds.length; index += chunkSize) {
+    const chunk = uniqueIds.slice(index, index + chunkSize);
+    const filter = chunk.map((id) => `"${id.replace(/"/g, '\\"')}"`).join(",");
+    const chunkRows = await fetchSupabaseRows<PoliticianRow>(
+      "politicians",
+      `id=in.(${filter})&order=name.asc`,
+      { select: POLITICIAN_DISPLAY_SELECT, tags: [POLITICIANS_CACHE_TAG], paginateAll: true },
+    );
+    rows.push(...chunkRows);
+  }
+
+  return rows.map(mapRowToPolitician);
 }
 
 export async function getStoredPoliticianById(id: string) {
