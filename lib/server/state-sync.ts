@@ -19,6 +19,7 @@ import { replaceStoredCommitteeMemberships } from "@/lib/supabase/committees";
 import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import { appendStoredVotes, fetchPoliticianVoteStatCounters, listStoredVoteHeaders } from "@/lib/supabase/votes";
 import { applyBillSponsorStatDeltas, buildBillSponsorStatDeltas } from "@/lib/server/politician-stat-deltas";
+import { reconcilePoliticianVoteStats } from "@/lib/server/politician-stat-backfill";
 import { applyVoteStatCountersToPoliticians, toVoteStatCounterMap } from "@/lib/server/vote-stats";
 import { buildSourceFingerprint, classifyFreshness, normalizeSourceUpdatedAt } from "@/lib/server/sync-freshness";
 import { normalizeChamber, normalizeOfficeTitle, normalizePersonLookup, normalizeStateLabel, slugifySegment } from "@/lib/utils";
@@ -796,6 +797,14 @@ export async function syncStateLegislationFromOpenStates(
       ? appendStoredVotes(voteRows, uniqueVotePositionRows)
       : Promise.resolve([]),
   ]);
+
+  // Authoritative recompute, after the roll calls and politician rows above have been written.
+  // See reconcile_politician_vote_stats: it reads vote_positions inside the database.
+  if (uniqueVotePositionRows.length > 0) {
+    await reconcilePoliticianVoteStats(
+      [...new Set(uniqueVotePositionRows.map((row) => row.politician_id))],
+    ).catch(() => undefined);
+  }
 
   if (staleStateBillIds.length > 0) {
     for (let index = 0; index < staleStateBillIds.length; index += 100) {

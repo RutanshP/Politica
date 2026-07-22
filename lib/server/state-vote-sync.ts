@@ -1,8 +1,7 @@
 import { fetchOpenStatesBillsWithVotes } from "@/lib/adapters/openstates";
 import { appendStoredVotes } from "@/lib/supabase/votes";
 import { fetchSupabaseRows } from "@/lib/supabase/rest";
-import { upsertStoredPoliticians } from "@/lib/supabase/politicians";
-import { buildUpdatedPoliticianRowsFromVotePositions } from "@/lib/server/vote-stats";
+import { reconcilePoliticianVoteStats } from "@/lib/server/politician-stat-backfill";
 import { normalizeChamber, normalizePersonLookup } from "@/lib/utils";
 import type { OpenStatesBill, OpenStatesVote } from "@/types/openstates";
 import type { PoliticianRow, VotePositionRow, VoteRow } from "@/types/supabase";
@@ -264,22 +263,17 @@ export async function syncStateVotesFromOpenStates(options: { state: string; dry
 
   await appendStoredVotes(voteRows, positionRows);
 
-  // Recompute from the member's full stored history rather than the delta, so re-running the sync
-  // is idempotent instead of double-counting positions it already imported.
-  const affectedIds = new Set(positionRows.map((row) => row.politician_id));
-  const affectedRows = politicianRows.filter((row) => affectedIds.has(row.id));
+  /*
+   * Recompute from the member's full stored history rather than the batch, so re-running the sync
+   * is idempotent instead of double-counting positions it already imported. This path always did
+   * that correctly; it now shares the SQL implementation with the federal syncs, which also keeps
+   * the member's whole position history from being pulled into the app just to be counted.
+   *
+   * Runs after appendStoredVotes above -- the counters are read from vote_positions.
+   */
+  const affectedIds = [...new Set(positionRows.map((row) => row.politician_id))];
+  const reconciled = await reconcilePoliticianVoteStats(affectedIds);
 
-  const storedPositions = await fetchSupabaseRows<VotePositionRow>(
-    "vote_positions",
-    `politician_id=in.(${[...affectedIds].map((id) => `"${id.replace(/"/g, '\\"')}"`).join(",")})&order=vote_id.asc`,
-    { cache: "no-store", paginateAll: true, pageSize: 1000, select: "vote_id,politician_id,party,vote" },
-  );
-
-  const updated = buildUpdatedPoliticianRowsFromVotePositions(affectedRows, storedPositions);
-  if (updated.length > 0) {
-    await upsertStoredPoliticians(updated);
-  }
-
-  result.politiciansUpdated = updated.length;
+  result.politiciansUpdated = reconciled.corrected;
   return result;
 }

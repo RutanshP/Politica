@@ -178,10 +178,16 @@ export interface VoteStatReconcileResult {
  *
  * Runs entirely in Postgres and is idempotent, so it is safe on a schedule.
  */
-export async function reconcilePoliticianVoteStats(): Promise<VoteStatReconcileResult> {
+export async function reconcilePoliticianVoteStats(
+  politicianIds?: string[],
+): Promise<VoteStatReconcileResult> {
+  if (politicianIds && politicianIds.length === 0) {
+    return { examined: 0, corrected: 0, at: new Date().toISOString() };
+  }
+
   const rows = await invokeSupabaseRpc<Array<{ examined: number; corrected: number }>>(
     "reconcile_politician_vote_stats",
-    {},
+    { p_politician_ids: politicianIds ?? null },
     { cache: "no-store" },
   );
 

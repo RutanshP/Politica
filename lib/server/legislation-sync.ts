@@ -55,6 +55,7 @@ import {
   replaceStoredVotes,
 } from "@/lib/supabase/votes";
 import { applyBillSponsorStatDeltas, buildBillSponsorStatDeltas } from "@/lib/server/politician-stat-deltas";
+import { reconcilePoliticianVoteStats } from "@/lib/server/politician-stat-backfill";
 import { applyVoteStatCountersToPoliticians, toVoteStatCounterMap } from "@/lib/server/vote-stats";
 import { buildSourceFingerprint, classifyFreshness, normalizeSourceUpdatedAt } from "@/lib/server/sync-freshness";
 import { normalizePersonLookup, slugifySegment } from "@/lib/utils";
@@ -1169,6 +1170,17 @@ async function refreshStoredFederalVotes(options?: {
     voteBundle.positionRows,
   );
 
+  /*
+   * Authoritative, and deliberately last: the counters are computed from vote_positions inside
+   * the database, so this has to run after the roll calls above have actually been written. The
+   * in-flight recompute earlier in this function reads the pre-write state.
+   */
+  if (shouldRecomputeVoteStats && voteBundle.positionRows.length > 0) {
+    await reconcilePoliticianVoteStats(
+      [...new Set(voteBundle.positionRows.map((row) => row.politician_id))],
+    ).catch(() => undefined);
+  }
+
   return {
     billsSynced: 0,
     detailedBillsSynced: 0,
@@ -2133,6 +2145,18 @@ export async function syncLegislationFromCongress(options?: {
       } catch (error) {
         voteSyncWarning = `Federal votes write failed: ${getErrorMessage(error)}`;
       }
+    }
+
+    /*
+     * Authoritative recompute, deliberately after both the roll-call write above and the
+     * politician upsert before it. Counters are derived from vote_positions inside the database,
+     * so running this earlier would read the pre-write state -- and running it before the
+     * politician upsert would let that upsert's in-memory stats overwrite the corrected values.
+     */
+    if (!voteSyncWarning && positionRows.length > 0) {
+      await reconcilePoliticianVoteStats(
+        [...new Set(positionRows.map((row) => row.politician_id))],
+      ).catch(() => undefined);
     }
 
     if (staleBillsDeleted.length > 0) {

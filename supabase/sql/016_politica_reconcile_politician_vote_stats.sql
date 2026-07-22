@@ -3,7 +3,14 @@
 --
 -- Rewrites politicians.stats from politician_vote_stat_counters, and is safe to re-run: it only
 -- writes rows whose stored counters actually disagree with the computed ones.
-create or replace function public.reconcile_politician_vote_stats()
+-- Takes an optional id list so a sync can reconcile just the members it touched. Syncs call this
+-- as their final step, after the roll calls and any politician rows have been written: it reads
+-- vote_positions inside the database, so running it earlier would compute counters from the
+-- pre-write state, and running it before the politician upsert would let stale in-memory stats
+-- overwrite the corrected ones.
+create or replace function public.reconcile_politician_vote_stats(
+  p_politician_ids text[] default null
+)
 returns table (examined bigint, corrected bigint)
 language plpgsql
 as $$
@@ -26,8 +33,9 @@ begin
     coalesce(c.against_party_count, 0) as against_party_count,
     coalesce(c.with_party_count, 0) + coalesce(c.against_party_count, 0) as comparable
   from public.politicians p
-  left join public.politician_vote_stat_counters() c on c.politician_id = p.id
-  where c.politician_id is not null or p.stats ? 'totalVotes';
+  left join public.politician_vote_stat_counters(p_politician_ids) c on c.politician_id = p.id
+  where (p_politician_ids is null or p.id = any(p_politician_ids))
+    and (c.politician_id is not null or p.stats ? 'totalVotes');
 
   select count(*) into v_examined from _reconcile;
 
