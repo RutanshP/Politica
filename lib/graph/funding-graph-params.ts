@@ -28,7 +28,7 @@ const csvParam = <T extends readonly [string, ...string[]]>(allowed: T) =>
 
 export const fundingGraphQuerySchema = z.object({
   cycle: z.coerce.number().int().min(1990).max(2100).optional(),
-  depth: z.coerce.number().int().min(1).max(3).default(DEFAULT_FUNDING_GRAPH_FILTERS.depth),
+  depth: z.coerce.number().int().min(1).max(4).default(DEFAULT_FUNDING_GRAPH_FILTERS.depth),
   minimumAmount: z.coerce.number().min(0).optional(),
   maximumAmount: z.coerce.number().min(0).optional(),
   nodeTypes: csvParam(FUNDING_GRAPH_ENTITY_TYPES).optional(),

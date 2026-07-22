@@ -124,7 +124,7 @@ export async function buildPoliticianFundingGraph(
     let frontier = [centerEntity.id];
     const collectedEdges = new Map<string, GraphEdgeRow>();
 
-    for (let level = 0; level < Math.max(1, Math.min(filters.depth, 3)); level += 1) {
+    for (let level = 0; level < Math.max(1, Math.min(filters.depth, 4)); level += 1) {
       const edgeRows = await listGraphEdgesTouching(frontier).catch(() => [] as GraphEdgeRow[]);
       const nextFrontier: string[] = [];
       for (const edge of edgeRows) {
