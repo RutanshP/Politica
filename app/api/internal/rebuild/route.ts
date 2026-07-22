@@ -5,26 +5,30 @@ import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
 import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 import {
+  loadRebuildInputs,
   rebuildAnalyticsFromStoredData,
   rebuildEntitiesFromStoredData,
   rebuildIssuesFromStoredData,
   rebuildSearchIndexFromStoredData,
+  type RebuildInputs,
 } from "@/lib/server/rebuilds";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-// Each rebuild scans the whole dataset. Running all four at once (the old
-// Promise.all) peaks memory hard enough to crash a constrained serverless
-// function. They now run one at a time, and `?only=<name>` runs a single one so
-// a caller (e.g. the GitHub Actions workflow) can spread them across separate
-// function invocations, each with its own memory/time budget.
-const REBUILDERS = {
+// Each rebuild derives from the same stored datasets. We load them once (loadRebuildInputs) and
+// pass them to every rebuild, then run the rebuilds one at a time. Loading once -- rather than each
+// rebuild re-fetching the corpus -- is what keeps Supabase egress down and keeps peak memory low
+// enough not to crash the function.
+const REBUILDERS: Record<string, {
+  pipeline: string;
+  run: (inputs: RebuildInputs) => Promise<{ rebuilt: number; at: string }>;
+}> = {
   issues: { pipeline: "issue_rebuild", run: rebuildIssuesFromStoredData },
   entities: { pipeline: "entity_rebuild", run: rebuildEntitiesFromStoredData },
   search: { pipeline: "search_rebuild", run: rebuildSearchIndexFromStoredData },
   analytics: { pipeline: "analytics_rebuild", run: rebuildAnalyticsFromStoredData },
-} as const;
+};
 
 type RebuildName = keyof typeof REBUILDERS;
 
@@ -38,11 +42,14 @@ export async function POST(request: Request) {
     ? [only as RebuildName]
     : (Object.keys(REBUILDERS) as RebuildName[]);
 
+  // Load the shared corpus once and reuse it across every rebuild in this invocation.
+  const inputs = await loadRebuildInputs();
+
   const results: Record<string, unknown> = {};
   for (const name of names) {
     const { pipeline, run } = REBUILDERS[name];
     results[name] = await runPipeline(pipeline, async () => {
-      const rebuilt = await run();
+      const rebuilt = await run(inputs);
       return { recordCount: rebuilt.rebuilt, metadata: rebuilt };
     });
   }

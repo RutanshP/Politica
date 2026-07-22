@@ -83,9 +83,14 @@ jobs:
           echo "== News =="
           post "/api/internal/sync/news"
 
-          echo "== Rebuild derived data (one part at a time to fit the function budget) =="
-          for part in issues entities search analytics; do
-            post "/api/internal/rebuild?only=$part"
-          done
+          # Derived data (issues/entities/search/analytics) changes slowly and each rebuild scans
+          # the whole corpus, so rebuilding daily was the main Supabase egress drain. Run it weekly
+          # (Sundays). One call now loads the corpus once and rebuilds all parts in sequence.
+          if [ "$(date -u +%u)" = "7" ]; then
+            echo "== Rebuild derived data (weekly) =="
+            post "/api/internal/rebuild"
+          else
+            echo "== Skipping derived-data rebuild (only runs Sundays) =="
+          fi
 
           echo "Daily sync complete."

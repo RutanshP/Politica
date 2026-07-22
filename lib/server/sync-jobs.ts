@@ -3,6 +3,7 @@ import { syncLegislationFromCongress } from "@/lib/server/legislation-sync";
 import { syncNewsFromApi } from "@/lib/server/news-sync";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 import {
+  loadRebuildInputs,
   rebuildAnalyticsFromStoredData,
   rebuildEntitiesFromStoredData,
   rebuildIssuesFromStoredData,
@@ -50,28 +51,30 @@ export async function syncPoliticiansCommitteesAndFinanceDaily() {
 }
 
 export async function rebuildSearchAndAnalyticsWeekly() {
-  const [issues, entities, search, analytics, news] = await Promise.all([
-    runPipeline("issue_rebuild", async () => {
-      const result = await rebuildIssuesFromStoredData();
-      return { recordCount: result.rebuilt, metadata: result };
-    }),
-    runPipeline("entity_rebuild", async () => {
-      const result = await rebuildEntitiesFromStoredData();
-      return { recordCount: result.rebuilt, metadata: result };
-    }),
-    runPipeline("search_rebuild", async () => {
-      const result = await rebuildSearchIndexFromStoredData();
-      return { recordCount: result.rebuilt, metadata: result };
-    }),
-    runPipeline("analytics_rebuild", async () => {
-      const result = await rebuildAnalyticsFromStoredData();
-      return { recordCount: result.rebuilt, metadata: result };
-    }),
-    runPipeline("news_sync", async () => {
-      const result = await syncNewsFromApi();
-      return { recordCount: result.synced, metadata: result };
-    }),
-  ]);
+  // Load the shared corpus once, then rebuild sequentially. The old Promise.all had each rebuild
+  // re-fetch the corpus (heavy Supabase egress) and held several copies in memory at once (OOM).
+  const inputs = await loadRebuildInputs();
+
+  const issues = await runPipeline("issue_rebuild", async () => {
+    const result = await rebuildIssuesFromStoredData(inputs);
+    return { recordCount: result.rebuilt, metadata: result };
+  });
+  const entities = await runPipeline("entity_rebuild", async () => {
+    const result = await rebuildEntitiesFromStoredData(inputs);
+    return { recordCount: result.rebuilt, metadata: result };
+  });
+  const search = await runPipeline("search_rebuild", async () => {
+    const result = await rebuildSearchIndexFromStoredData(inputs);
+    return { recordCount: result.rebuilt, metadata: result };
+  });
+  const analytics = await runPipeline("analytics_rebuild", async () => {
+    const result = await rebuildAnalyticsFromStoredData();
+    return { recordCount: result.rebuilt, metadata: result };
+  });
+  const news = await runPipeline("news_sync", async () => {
+    const result = await syncNewsFromApi();
+    return { recordCount: result.synced, metadata: result };
+  });
 
   return {
     issues,

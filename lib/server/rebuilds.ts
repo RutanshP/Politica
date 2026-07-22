@@ -5,7 +5,7 @@ import { slugifySegment } from "@/lib/utils";
 import { listStoredBills } from "@/lib/supabase/bills";
 import { listStoredCommittees } from "@/lib/supabase/committees";
 import { replaceStoredEntities } from "@/lib/supabase/entities";
-import { replaceStoredIssues } from "@/lib/supabase/issues";
+import { listStoredIssues, replaceStoredIssues } from "@/lib/supabase/issues";
 import { listStoredNewsItems } from "@/lib/supabase/news";
 import { listStoredPoliticians } from "@/lib/supabase/politicians";
 import { replaceStoredSearchDocuments } from "@/lib/supabase/search";
@@ -19,8 +19,34 @@ import type {
   SearchDocumentRow,
 } from "@/types/supabase";
 
-export async function rebuildIssuesFromStoredData() {
-  const bills = await listStoredBills();
+/**
+ * The stored datasets every rebuild derives from. Loading these once and passing them to each
+ * rebuild avoids re-downloading the full bills table (~30 MB) several times per run -- previously
+ * `search` alone fetched it twice plus `fresh: true` cache-bypassed politicians/committees, so a
+ * single nightly rebuild pulled the corpus 5-6x. That repeated egress was the dominant driver of
+ * the Supabase egress overage, and the redundant in-memory copies were what OOM'd the function.
+ */
+export interface RebuildInputs {
+  bills: Awaited<ReturnType<typeof listStoredBills>>;
+  politicians: Awaited<ReturnType<typeof listStoredPoliticians>>;
+  committees: Awaited<ReturnType<typeof listStoredCommittees>>;
+  issues: Awaited<ReturnType<typeof listStoredIssues>>;
+  news: Awaited<ReturnType<typeof listStoredNewsItems>>;
+}
+
+export async function loadRebuildInputs(): Promise<RebuildInputs> {
+  const [bills, politicians, committees, issues, news] = await Promise.all([
+    listStoredBills(),
+    listStoredPoliticians(),
+    listStoredCommittees(),
+    listStoredIssues().catch(() => []),
+    listStoredNewsItems().catch(() => []),
+  ]);
+  return { bills, politicians, committees, issues, news };
+}
+
+export async function rebuildIssuesFromStoredData(inputs?: RebuildInputs) {
+  const bills = inputs?.bills ?? await listStoredBills();
   const byTopic = new Map<string, typeof bills>();
 
   for (const bill of bills) {
@@ -68,14 +94,8 @@ export async function rebuildIssuesFromStoredData() {
   };
 }
 
-export async function rebuildSearchIndexFromStoredData() {
-  const [bills, politicians, committees, issues, news] = await Promise.all([
-    listStoredBills(),
-    listStoredPoliticians({ fresh: true }),
-    listStoredCommittees({ fresh: true }),
-    listStoredBills().then(() => import("@/lib/supabase/issues")).then((module) => module.listStoredIssues()).catch(() => []),
-    listStoredNewsItems().catch(() => []),
-  ]);
+export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
+  const { bills, politicians, committees, issues, news } = inputs ?? await loadRebuildInputs();
 
   const docs: SearchDocumentRow[] = [
     ...bills.map((bill) => ({
@@ -158,14 +178,8 @@ export async function rebuildSearchIndexFromStoredData() {
   };
 }
 
-export async function rebuildEntitiesFromStoredData() {
-  const [bills, politicians, committees, issues, news] = await Promise.all([
-    listStoredBills(),
-    listStoredPoliticians({ fresh: true }),
-    listStoredCommittees({ fresh: true }),
-    import("@/lib/supabase/issues").then((module) => module.listStoredIssues()).catch(() => []),
-    listStoredNewsItems().catch(() => []),
-  ]);
+export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
+  const { bills, politicians, committees, issues, news } = inputs ?? await loadRebuildInputs();
 
   const entityRows: EntityRow[] = [
     ...bills.map((bill) => ({
@@ -268,6 +282,9 @@ export async function rebuildEntitiesFromStoredData() {
   };
 }
 
+// Analytics derives from getDerivedAnalyticsData(), which loads its own datasets, so unlike the
+// other rebuilds it takes no shared inputs. (A zero-arg function is still assignable where the
+// caller passes the shared inputs -- the extra argument is simply ignored.)
 export async function rebuildAnalyticsFromStoredData() {
   const analytics = await getDerivedAnalyticsData();
   const rows: AnalyticsSnapshotRow[] = [{
