@@ -1,10 +1,6 @@
 # States still needing a full legislator + roll-call sync.
 # One per line. sync-states.sh removes each on success; TX is already done.
-pa
 il
-nc
-fl
-oh
 ca
 ga
 ny

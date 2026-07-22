@@ -161,14 +161,9 @@ export default async function PoliticianProfilePage({
         </SectionCard>
       </section>
       <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <SectionCard title="Sponsored bills">
-          {sponsoredBills.length < politician.stats.billsIntroduced ? (
-            <p className="mb-4 text-sm text-[var(--muted)]">
-              The official source reports {politician.stats.billsIntroduced} introduced bills, but the current stored bill sync window only contains {sponsoredBills.length} connected records for this member.
-            </p>
-          ) : null}
+        <SectionCard title="Sponsored bills" description="5 most recent. Open the Bills tab for the full list.">
           <div id="bills" className="grid gap-4 lg:grid-cols-1">
-            {sponsoredBills.length > 0 ? sponsoredBills.map((bill: Bill) => (
+            {sponsoredBills.length > 0 ? sponsoredBills.slice(0, 5).map((bill: Bill) => (
               <Link
                 key={bill.id}
                 href={`/bills/${bill.id}`}
@@ -191,6 +186,14 @@ export default async function PoliticianProfilePage({
               />
             )}
           </div>
+          {sponsoredBills.length > 5 ? (
+            <Link
+              href={`/politicians/${politician.slug}/bills`}
+              className="mt-4 inline-flex font-semibold text-[var(--accent)]"
+            >
+              View all {sponsoredBills.length} sponsored bills →
+            </Link>
+          ) : null}
         </SectionCard>
         <SectionCard title="Committees, votes, and funding overview">
           <div id="committees" className="space-y-4">
