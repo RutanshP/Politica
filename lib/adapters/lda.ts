@@ -58,7 +58,33 @@ function buildHeaders() {
   };
 }
 
+/*
+ * The throttle is a rate over a window, not a per-burst limit, so retrying alone is not enough:
+ * several workers backing off in lockstep just collide again. Requests are paced through a single
+ * chained promise, the same approach the OpenStates adapter uses.
+ */
+const MIN_REQUEST_INTERVAL_MS = Number(process.env.POLITICA_LDA_MIN_INTERVAL_MS || 1200);
+let requestChain: Promise<unknown> = Promise.resolve();
+
+function paced<T>(work: () => Promise<T>): Promise<T> {
+  const result = requestChain.then(work, work);
+  requestChain = result
+    .then(
+      () => new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_INTERVAL_MS)),
+      () => new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_INTERVAL_MS)),
+    );
+  return result;
+}
+
 export async function fetchLdaFilingsPage(options: {
+  year: number;
+  filingType?: string;
+  page: number;
+}): Promise<LdaPage<LdaFilingRecord>> {
+  return paced(() => fetchLdaFilingsPageUncontrolled(options));
+}
+
+async function fetchLdaFilingsPageUncontrolled(options: {
   year: number;
   filingType?: string;
   page: number;

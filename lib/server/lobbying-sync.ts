@@ -20,7 +20,7 @@ import type { GraphEdgeRow, GraphEntityRow } from "@/types/funding-graph";
  * without any single invocation running for an hour.
  */
 const DEFAULT_PAGE_BUDGET = 40;
-const REQUEST_CONCURRENCY = 3;
+const REQUEST_CONCURRENCY = 2;
 
 export interface LobbyingSyncResult {
   year: number;

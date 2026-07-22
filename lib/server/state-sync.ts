@@ -4,6 +4,7 @@ import {
   fetchOpenStatesBillDetail,
   fetchOpenStatesBills,
   fetchOpenStatesCommitteeDetail,
+  fetchOpenStatesChamberOrgIds,
   fetchOpenStatesCommittees,
   fetchOpenStatesPeople,
   fetchOpenStatesVotes,
@@ -264,6 +265,8 @@ export async function syncStateLegislationFromOpenStates(
     let bills: Awaited<ReturnType<typeof fetchOpenStatesBills>>;
     let committees: Awaited<ReturnType<typeof fetchOpenStatesCommittees>>;
     let votes: Awaited<ReturnType<typeof fetchOpenStatesVotes>>;
+    // parent organization id -> chamber, so committees can be classified as they are written.
+    let chamberOrgIds = new Map<string, "upper" | "lower">();
 
     try {
       // scope=people skips bills, committees and votes. Those paths fetch a detail document per
@@ -291,6 +294,11 @@ export async function syncStateLegislationFromOpenStates(
           fetchOpenStatesCommittees(state),
           fetchOpenStatesVotes(state),
         ]);
+      }
+
+      // Two extra requests per state, and only when committees are actually being written.
+      if (committees.length > 0) {
+        chamberOrgIds = await fetchOpenStatesChamberOrgIds(state).catch(() => new Map());
       }
     } catch (error) {
       stateFailures.push({
@@ -392,6 +400,16 @@ export async function syncStateLegislationFromOpenStates(
         detail = await fetchOpenStatesCommitteeDetail(committee.id).catch(() => committee);
       }
 
+      /*
+       * OpenStates never puts a chamber on a committee -- it sends classification "committee" and
+       * a parent_id naming the chamber organization, and that organization is not exposed by the
+       * v3 API. Resolving the parent map (see fetchOpenStatesChamberOrgIds) is the only way to
+       * classify these, and without it 369 of 389 stored state committees had no chamber at all.
+       */
+      const parentChamber = detail.parent_id
+        ? chamberOrgIds.get(detail.parent_id)
+        : undefined;
+
       const committeeName = detail.name || `${state.toUpperCase()} Legislature`;
       const committeeId = `${state}-${detail.id || slugifySegment(committeeName)}`;
       const committeeSlug = slugifySegment(`${state}-${committeeName}-${committeeId}`);
@@ -403,7 +421,10 @@ export async function syncStateLegislationFromOpenStates(
         id: committeeId,
         slug: committeeSlug,
         name: committeeName,
-        chamber: detail.classification || detail.chamber || "State Legislature",
+        chamber: normalizeChamber(parentChamber)
+          || normalizeChamber(detail.classification || detail.chamber)
+          || detail.classification
+          || "State Legislature",
         jurisdiction: detail.jurisdiction?.name || `${state.toUpperCase()} legislative activity`,
         chair,
         ranking_member: rankingMember,

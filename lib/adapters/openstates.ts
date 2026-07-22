@@ -196,6 +196,37 @@ export async function fetchOpenStatesCommitteeDetail(committeeId: string) {
 }
 
 /**
+ * Maps each chamber organization id to its chamber for one state.
+ *
+ * A state committee never carries its own chamber: the payload is only
+ * {id, name, classification: "committee", parent_id, extras}, and the parent is an Organization,
+ * which v3 does not expose (`/committees/{parent_id}` returns "No such Committee"). That left 369
+ * of 389 stored state committees with no resolvable chamber.
+ *
+ * The list endpoint does accept a `chamber` filter, and the committees it returns carry the
+ * parent id -- so asking for each chamber in turn reveals which parent org is which. One page per
+ * chamber is enough, since every committee in a chamber shares that chamber's parent.
+ */
+export async function fetchOpenStatesChamberOrgIds(state: string) {
+  const byParentId = new Map<string, "upper" | "lower">();
+
+  for (const chamber of ["upper", "lower"] as const) {
+    const payload = await fetchOpenStatesWithJurisdictionFallback<{ results?: OpenStatesCommittee[] }>(
+      "/committees",
+      state,
+      { chamber, page: 1, per_page: OPENSTATES_PER_PAGE },
+    ).catch(() => ({ results: [] as OpenStatesCommittee[] }));
+
+    for (const committee of payload.results ?? []) {
+      const parentId = (committee as { parent_id?: string }).parent_id;
+      if (parentId) byParentId.set(parentId, chamber);
+    }
+  }
+
+  return byParentId;
+}
+
+/**
  * OpenStates v3 has no /votes endpoint -- it returns 404. This used to call it and swallow the
  * failure with `.catch(() => [])`, so state vote sync reported success while importing nothing,
  * which is why every state legislator has zero attendance.

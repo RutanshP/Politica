@@ -76,6 +76,12 @@ export interface OpenStatesCommittee {
   classification?: string;
   chamber?: string;
   parent?: string;
+  /**
+   * OCD id of the organization this committee hangs off -- the chamber for a top-level committee,
+   * another committee for a subcommittee. It is the only chamber signal OpenStates provides, since
+   * `chamber` is absent on committee payloads and the parent organization has no API endpoint.
+   */
+  parent_id?: string;
   email?: string;
   image?: string;
   members?: Array<{
