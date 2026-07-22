@@ -213,7 +213,10 @@ export function mapPoliticianToRow(politician: Politician, rawMember: unknown): 
     last_profile_synced_at: now,
     last_stats_recomputed_at: null,
     synced_at: now,
-    raw_payload: rawMember,
+    // raw_member holds the source Congress.gov blob (~433KB per 250 rows). raw_payload used to hold
+    // a byte-identical copy; every reader uses `raw_member ?? raw_payload`, so the copy was dead
+    // weight. Keep the key present but null (all rows in a bulk upsert must share keys -- PGRST102).
+    raw_payload: null,
     raw_member: rawMember,
   };
 }

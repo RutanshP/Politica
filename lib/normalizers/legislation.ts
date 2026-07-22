@@ -60,10 +60,12 @@ export function mapBillToRow(
     last_versions_synced_at: options?.lastVersionsSyncedAt || null,
     last_votes_synced_at: options?.lastVotesSyncedAt || null,
     synced_at: now,
-    // Coalesce to null: JSON.stringify omits undefined keys, and PostgREST rejects a bulk upsert
-    // whose objects do not all share the same keys (PGRST102). A list-only bill has no raw
-    // payload while a detailed one does, so without this the two cannot go in one chunk.
-    raw_payload: rawBill ?? null,
+    // raw_bill holds the source blob (the incremental sync reads it to avoid re-fetching detail).
+    // raw_payload used to hold a byte-identical copy, which doubled this table's TOAST size for no
+    // benefit -- nothing reads it (the "raw available" badge falls back to raw_bill). Keep the key
+    // present but always null: PostgREST rejects a bulk upsert whose objects don't all share keys
+    // (PGRST102), so the column must appear on every row in a chunk.
+    raw_payload: null,
     raw_bill: rawBill ?? null,
   };
 }
