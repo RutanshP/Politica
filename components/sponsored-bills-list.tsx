@@ -1,22 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 
+import { Badge, Tag } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { IconTile } from "@/components/ui/icon-tile";
+import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
+import { BILL_STATUS_TONE } from "@/components/ui/tones";
 import type { Bill } from "@/types/civic";
 
 const PAGE_SIZE = 24;
-
-function statusTone(status: string) {
-  const value = status.toLowerCase();
-  if (value.includes("became law") || value.includes("passed") || value.includes("enacted")) {
-    return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  }
-  if (value.includes("failed") || value.includes("vetoed")) {
-    return "bg-rose-50 text-rose-700 border-rose-200";
-  }
-  return "bg-slate-50 text-slate-600 border-slate-200";
-}
 
 export function SponsoredBillsList({ bills }: { bills: Bill[] }) {
   const [query, setQuery] = useState("");
@@ -35,19 +30,23 @@ export function SponsoredBillsList({ bills }: { bills: Bill[] }) {
   const shown = filtered.slice(0, visible);
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-3.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setVisible(PAGE_SIZE);
-          }}
-          placeholder="Search by number, title, topic, or status"
-          className="w-full max-w-md rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--accent)]"
-        />
-        <p className="text-sm text-[var(--muted)]">
+        <div className="relative flex min-w-0 max-w-md flex-1 items-center">
+          <Search className="pointer-events-none absolute left-3.5 h-4 w-4 text-[var(--faint)]" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setVisible(PAGE_SIZE);
+            }}
+            placeholder="Search by number, title, topic, or status"
+            aria-label="Search sponsored bills"
+            className="h-9.5 w-full min-w-0 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] pl-10 pr-3.5 text-[13.5px] outline-none transition placeholder:text-[var(--faint)] focus:border-[var(--line-2)] focus:bg-[var(--panel-2)]"
+          />
+        </div>
+        <p className="num text-xs text-[var(--muted)]">
           {filtered.length} of {bills.length} shown
         </p>
       </div>
@@ -58,44 +57,43 @@ export function SponsoredBillsList({ bills }: { bills: Bill[] }) {
             <Link
               key={bill.id}
               href={`/bills/${bill.id}`}
-              className="flex flex-col rounded-2xl border border-[var(--line)] bg-white p-4 transition hover:border-[var(--accent)]"
+              className="flex flex-col gap-2 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] p-3.5 transition hover:border-[var(--line-2)] hover:bg-[var(--panel-2)]"
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-[var(--accent)]">{bill.number}</span>
-                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusTone(bill.status)}`}>
-                  {bill.status}
+              <div className="flex items-center gap-2.5">
+                <IconTile tone={topicVisual(bill.topic).tone}>
+                  <TopicIcon topic={bill.topic} />
+                </IconTile>
+                <span className="text-[13px] font-semibold text-[var(--accent-2)]">
+                  {bill.number}
                 </span>
+                <Badge tone={BILL_STATUS_TONE[bill.status] ?? "slate"} className="ml-auto">
+                  {bill.status}
+                </Badge>
               </div>
-              <p className="mt-2 text-sm font-semibold text-[var(--ink)]">{bill.title}</p>
+              <p className="text-[13px] font-medium leading-snug text-[var(--ink)]">
+                {bill.title}
+              </p>
               {bill.latestAction ? (
-                <p className="mt-2 text-xs text-[var(--muted)]">
+                <p className="text-xs text-[var(--muted)]">
                   {bill.latestAction}
-                  {bill.lastActionAt ? ` — ${bill.lastActionAt}` : ""}
+                  {bill.lastActionAt ? ` · ${bill.lastActionAt}` : ""}
                 </p>
               ) : null}
-              {bill.topic ? (
-                <span className="mt-3 inline-flex w-fit rounded-full bg-[var(--surface,#f4f4f5)] px-2.5 py-0.5 text-xs text-[var(--muted)]">
-                  {bill.topic}
-                </span>
-              ) : null}
+              {bill.topic ? <Tag className="mt-auto w-fit">{bill.topic}</Tag> : null}
             </Link>
           ))}
         </div>
       ) : (
-        <p className="rounded-2xl border border-dashed border-[var(--line)] bg-white p-6 text-center text-sm text-[var(--muted)]">
+        <p className="rounded-[var(--r-md)] border border-dashed border-[var(--line-2)] p-6 text-center text-[13px] text-[var(--muted)]">
           No sponsored bills match “{query}”.
         </p>
       )}
 
       {visible < filtered.length ? (
         <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => setVisible((current) => current + PAGE_SIZE)}
-            className="rounded-full border border-[var(--line)] bg-white px-5 py-2 text-sm font-semibold text-[var(--ink)] transition hover:border-[var(--accent)]"
-          >
+          <Button onClick={() => setVisible((current) => current + PAGE_SIZE)}>
             Show more ({filtered.length - visible} remaining)
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

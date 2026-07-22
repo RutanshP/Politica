@@ -20,7 +20,7 @@ export default async function NewsPage() {
             {news.map((item) => (
               <article
                 key={item.id}
-                className="rounded-[28px] border border-[var(--line)] bg-white p-5"
+                className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-5"
               >
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
                   {item.source} | {item.publishedAt}
@@ -32,7 +32,7 @@ export default async function NewsPage() {
                   {item.summary}
                 </p>
                 {item.url ? (
-                  <a href={item.url} className="mt-4 inline-flex text-sm font-semibold text-[var(--accent)]">
+                  <a href={item.url} className="mt-4 inline-flex text-sm font-semibold text-[var(--accent-2)]">
                     Open source article
                   </a>
                 ) : null}

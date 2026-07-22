@@ -167,7 +167,7 @@ function CanvasInner({
           getEntityTheme(
             (node.data as { entityType?: FundingGraphEntityType }).entityType || "issue",
           ).color}
-        className="!h-24 !w-36 rounded-xl border border-[var(--line)]"
+        className="!h-24 !w-36 rounded-[var(--r-sm)] border border-[var(--line)]"
       />
       <Controls showInteractive={false} />
       <Background gap={26} size={1.2} color="#d9e1ef" />
@@ -175,14 +175,14 @@ function CanvasInner({
         <button
           type="button"
           onClick={() => fitView({ padding: 0.15, duration: 300 })}
-          className="flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] shadow-sm hover:bg-slate-50"
+          className="flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--panel-2)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] hover:bg-white/3"
         >
           <Crosshair size={13} /> Fit view
         </button>
         <button
           type="button"
           onClick={() => exportGraphCsv(nodes, edges)}
-          className="flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] shadow-sm hover:bg-slate-50"
+          className="flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--panel-2)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] hover:bg-white/3"
         >
           <Download size={13} /> CSV
         </button>

@@ -29,7 +29,7 @@ export function PoliticianFlowNode({ data }: NodeProps & FlowNodeShape) {
   const theme = getEntityTheme("politician");
   return (
     <div
-      className={`rounded-3xl border-2 bg-white px-5 py-4 shadow-[0_24px_60px_rgba(37,99,235,0.22)] transition-opacity ${
+      className={`rounded-[var(--r-lg)] border-2 bg-[var(--panel-2)] px-5 py-4 transition-opacity ${
         data.dimmed ? "opacity-30" : "opacity-100"
       }`}
       style={{ borderColor: theme.color, minWidth: 220 }}
@@ -40,7 +40,8 @@ export function PoliticianFlowNode({ data }: NodeProps & FlowNodeShape) {
       <Handle id="right-in" type="target" position={Position.Right} style={hiddenHandleStyle} />
       <div className="flex items-center gap-3">
         <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-bold text-white"
+          // Entity colors are lifted for the dark canvas, so the initials sit dark-on-light here.
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-bold text-[var(--canvas)]"
           style={{ background: theme.color }}
         >
           {initialsOf(data.label)}
@@ -68,7 +69,7 @@ export function EntityFlowNode({ data }: NodeProps & FlowNodeShape) {
   if (data.zoomedOut) {
     return (
       <div
-        className={`flex h-9 w-9 items-center justify-center rounded-full border-2 bg-white transition-opacity ${
+        className={`flex h-9 w-9 items-center justify-center rounded-full border-2 bg-[var(--panel-2)] transition-opacity ${
           data.dimmed ? "opacity-30" : "opacity-100"
         }`}
         style={{ borderColor: theme.color }}
@@ -82,9 +83,9 @@ export function EntityFlowNode({ data }: NodeProps & FlowNodeShape) {
 
   return (
     <div
-      className={`rounded-2xl border bg-white px-3.5 py-2.5 shadow-[0_12px_32px_rgba(15,23,42,0.10)] transition-opacity ${
+      className={`rounded-[var(--r-md)] border bg-[var(--panel-2)] px-3.5 py-2.5 transition-opacity ${
         data.dimmed ? "opacity-30" : "opacity-100"
-      } ${data.selected ? "ring-2 ring-offset-1" : ""}`}
+      } ${data.selected ? "ring-2 ring-offset-1 ring-offset-[var(--canvas)]" : ""}`}
       style={{
         borderColor: `${theme.color}55`,
         minWidth: 168,

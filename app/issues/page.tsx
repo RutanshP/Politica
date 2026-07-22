@@ -46,7 +46,7 @@ export default async function IssuesPage() {
           <DataTable
             columns={["Issue", "Description", "Active bills", "Recent votes", "Bipartisan support"]}
             rows={issues.map((issue) => [
-              <Link key={issue.id} href={`/issues/${issue.slug}`} className="font-semibold text-[var(--accent)]">
+              <Link key={issue.id} href={`/issues/${issue.slug}`} className="font-semibold text-[var(--accent-2)]">
                 {issue.name}
               </Link>,
               issue.description,

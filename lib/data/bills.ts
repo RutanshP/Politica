@@ -34,6 +34,15 @@ function parsePositiveInt(value?: string, fallback = 1) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
+/** Corpus-wide aggregates for the bills directory rail. See getBillsDirectoryData. */
+export interface BillCorpusSummary {
+  total: number;
+  byStatus: Array<{ value: string; total: number }>;
+  topTopics: Array<{ value: string; total: number }>;
+}
+
+const EMPTY_CORPUS: BillCorpusSummary = { total: 0, byStatus: [], topTopics: [] };
+
 export async function getBillsData() {
   if (!isSupabaseConfigured()) {
     return {
@@ -101,6 +110,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
         committees: ["Any committee"],
         sortOptions: ["Recent activity", "Bill number", "Title"],
       },
+      corpus: EMPTY_CORPUS,
     };
   }
 
@@ -153,6 +163,24 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
       sortOptions: ["Recent activity", "Bill number", "Title"],
     };
 
+    /*
+     * Aggregates for the directory rail. These are counts over the entire federal bill set from
+     * the facets RPC, deliberately independent of the current filter -- the rail is a map of the
+     * corpus ("what is in here"), not a restatement of the result count already in the toolbar.
+     */
+    const facetCounts = (facet: string) =>
+      facetRows
+        .filter((row) => row.facet === facet && typeof row.total === "number")
+        .map((row) => ({ value: row.value, total: row.total as number }))
+        .sort((left, right) => right.total - left.total);
+
+    const statusCounts = facetCounts("status");
+    const corpus = {
+      total: statusCounts.reduce((sum, row) => sum + row.total, 0),
+      byStatus: statusCounts,
+      topTopics: facetCounts("topic").slice(0, 6),
+    };
+
     const result = withData(
       total > 0 ? "supabase" : "unavailable",
       "federal_legislation_sync",
@@ -173,6 +201,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
       pageSize: BILL_DIRECTORY_PAGE_SIZE,
       filters,
       options,
+      corpus,
     };
   } catch (error) {
     return {
@@ -191,6 +220,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
         committees: ["Any committee"],
         sortOptions: ["Recent activity", "Bill number", "Title"],
       },
+      corpus: EMPTY_CORPUS,
     };
   }
 }

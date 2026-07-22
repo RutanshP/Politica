@@ -1,6 +1,11 @@
 import type { Bill, Committee } from "@/types/civic";
 import type { BillActionRow, BillRow, BillVersionRow, CommitteeRow } from "@/types/supabase";
-import { formatSummaryText, normalizeStateLabel, slugifySegment } from "@/lib/utils";
+import {
+  formatInlineText,
+  formatSummaryText,
+  normalizeStateLabel,
+  slugifySegment,
+} from "@/lib/utils";
 
 function parseDateLabel(value: string) {
   const timestamp = Date.parse(value);
@@ -105,7 +110,7 @@ export function mapRowToBill(
     id: row.id,
     slug: row.slug || undefined,
     number: row.number,
-    title: row.title,
+    title: formatInlineText(row.title),
     summary: formatSummaryText(row.summary),
     jurisdiction: row.jurisdiction,
     country: row.country,
@@ -117,7 +122,7 @@ export function mapRowToBill(
     sponsorName: row.sponsor_name,
     committeeId: row.committee_id,
     committeeName: row.committee_name,
-    latestAction: row.latest_action,
+    latestAction: formatInlineText(row.latest_action),
     lastActionAt: row.last_action_at,
     introducedAt: row.introduced_at,
     session: row.session,

@@ -1,28 +1,62 @@
 @import "tailwindcss";
 @import "@xyflow/react/dist/style.css";
 
+/*
+ * Politica runs a single dark theme. There is deliberately no light palette and no toggle --
+ * every surface is designed against the dark ground, so a naive inversion would break the
+ * semantic colors (pass/fail) and the party colors at the same time.
+ *
+ * Separation between surfaces comes from a 1px hairline plus the value gap between --canvas
+ * and --panel, never from a drop shadow. Radii cap at --r-lg (16px): the old UI used 28-32px
+ * radii with 60px shadows, which read as floating bubbles rather than a console.
+ */
 :root {
-  --canvas: #edf2f9;
-  --panel: rgba(255, 255, 255, 0.92);
-  --panel-strong: #ffffff;
-  --sidebar: #0f172a;
-  --sidebar-soft: #16233e;
-  --sidebar-ink: #d8e3f8;
-  --ink: #0f172a;
-  --muted: #5f6d85;
-  --line: rgba(148, 163, 184, 0.22);
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --success: #16a34a;
-  --warning: #d97706;
-  --danger: #dc2626;
+  --canvas: #0a0e17;
+  --panel: #111726;
+  --panel-2: #161d2e;
+  --panel-3: #1b2336;
+  --sidebar: #080c15;
+
+  --line: rgba(255, 255, 255, 0.07);
+  --line-2: rgba(255, 255, 255, 0.12);
+
+  --ink: #e8edf7;
+  --muted: #8b95ad;
+  --faint: #5c6780;
+
+  --accent: #6366f1;
+  --accent-2: #818cf8;
+  --accent-soft: rgba(99, 102, 241, 0.14);
+
+  /* Semantic tones are kept distinct from --accent so "passed"/"failed" never reads as branding. */
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.13);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.13);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.13);
+  --info: #60a5fa;
+  --info-soft: rgba(96, 165, 250, 0.13);
+
+  --party-d: #3b82f6;
+  --party-d-soft: rgba(59, 130, 246, 0.14);
+  --party-r: #ef4444;
+  --party-r-soft: rgba(239, 68, 68, 0.14);
+  --party-i: #a78bfa;
+  --party-i-soft: rgba(167, 139, 250, 0.14);
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
 }
 
 @theme inline {
   --color-background: var(--canvas);
   --color-foreground: var(--ink);
-  --font-sans: "Segoe UI", "Avenir Next", "Trebuchet MS", sans-serif;
-  --font-display: "Arial Narrow", "Avenir Next Condensed", "Trebuchet MS", sans-serif;
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: "Cascadia Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 * {
@@ -31,10 +65,14 @@
 
 html {
   scroll-behavior: smooth;
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -44,10 +82,79 @@ a {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+  color: inherit;
 }
 
+/* Native select popups render in the OS light theme without this. */
+select option {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+/* Digits that stack in columns (tables, stat tiles, vote counts) must not jitter. */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+  background-clip: content-box;
+}
+
+/* --- react-flow dark overrides (funding graph) --- */
 .react-flow__panel {
   margin: 0;
+}
+.react-flow__background {
+  background: var(--canvas);
+}
+.react-flow__controls-button {
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  fill: currentColor;
+}
+.react-flow__controls-button:hover {
+  background: var(--panel-3);
+}
+.react-flow__attribution {
+  background: transparent;
+  color: var(--faint);
+}
+.react-flow__minimap {
+  background: var(--panel);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

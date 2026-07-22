@@ -17,7 +17,10 @@ function NodeContent({ node }: { node: BillTextNode }) {
   return (
     <div
       style={{ marginLeft: indent }}
-      className={cn(node.quoted && "rounded-lg border-l-2 border-slate-300 bg-slate-50 py-2 pl-3 pr-2")}
+      className={cn(
+        node.quoted
+          && "rounded-md border-l-2 border-[var(--line-2)] bg-white/3 py-2 pl-3 pr-2",
+      )}
     >
       {heading ? (
         <p className={cn("font-semibold text-[var(--ink)]", node.level === 0 ? "text-base" : "text-sm")}>
@@ -25,7 +28,7 @@ function NodeContent({ node }: { node: BillTextNode }) {
         </p>
       ) : null}
       {node.text ? (
-        <p className="mt-1 text-sm leading-7 text-slate-700">{node.text}</p>
+        <p className="mt-1 text-[13px] leading-7 text-[var(--muted)]">{node.text}</p>
       ) : null}
       {node.children.length > 0 ? (
         <div className="mt-3 space-y-3">
@@ -77,8 +80,14 @@ export function BillTextViewer({
       {/* Table of contents */}
       <aside className="space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Contents</p>
-          <button type="button" onClick={toggleAll} className="text-xs font-semibold text-[var(--accent)]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
+            Contents
+          </p>
+          <button
+            type="button"
+            onClick={toggleAll}
+            className="text-xs font-medium text-[var(--accent-2)] hover:text-[#a5adff]"
+          >
             {allOpen ? "Collapse all" : "Expand all"}
           </button>
         </div>
@@ -88,7 +97,7 @@ export function BillTextViewer({
               key={item.id}
               href={`#${item.id}`}
               onClick={() => setExpanded((prev) => new Set(prev).add(item.id))}
-              className="block truncate rounded-lg px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100 hover:text-[var(--ink)]"
+              className="block truncate rounded-md px-2 py-1.5 text-[13px] text-[var(--muted)] transition hover:bg-[var(--panel-2)] hover:text-[var(--ink)]"
             >
               {item.label}
             </a>
@@ -97,7 +106,7 @@ export function BillTextViewer({
         {sourceUrl ? (
           <a
             href={sourceUrl}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--accent)]"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent-2)] hover:text-[#a5adff]"
           >
             <ExternalLink className="h-3.5 w-3.5" /> Official source{versionLabel ? ` · ${versionLabel}` : ""}
           </a>
@@ -110,11 +119,15 @@ export function BillTextViewer({
           const isOpen = expanded.has(node.id);
           const heading = [node.enum, node.header].filter(Boolean).join(" ") || "Section";
           return (
-            <section key={node.id} id={node.id} className="scroll-mt-24 rounded-3xl border border-[var(--line)] bg-white">
+            <section
+              key={node.id}
+              id={node.id}
+              className="scroll-mt-24 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)]"
+            >
               <button
                 type="button"
                 onClick={() => toggle(node.id)}
-                className="flex w-full items-center gap-3 px-5 py-4 text-left"
+                className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-white/2"
               >
                 {isOpen ? (
                   <ChevronDown className="h-4 w-4 shrink-0 text-[var(--muted)]" />
@@ -124,8 +137,10 @@ export function BillTextViewer({
                 <span className="font-semibold text-[var(--ink)]">{heading}</span>
               </button>
               {isOpen ? (
-                <div className="border-t border-[var(--line)] px-5 py-4">
-                  {node.text ? <p className="mb-3 text-sm leading-7 text-slate-700">{node.text}</p> : null}
+                <div className="border-t border-[var(--line)] px-4 py-3.5">
+                  {node.text ? (
+                    <p className="mb-3 text-[13px] leading-7 text-[var(--muted)]">{node.text}</p>
+                  ) : null}
                   <div className="space-y-3">
                     {node.children.map((child) => (
                       <NodeContent key={child.id} node={child} />

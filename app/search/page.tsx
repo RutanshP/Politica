@@ -36,10 +36,10 @@ export default async function SearchPage({
               <Link
                 key={`${result.type}-${result.id}`}
                 href={result.href}
-                className="block rounded-3xl border border-[var(--line)] bg-white p-5 transition hover:border-[var(--accent)]"
+                className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-5 transition hover:border-[var(--line-2)]"
               >
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  <span className="rounded-full bg-white/6 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
                     {result.type}
                   </span>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
@@ -47,7 +47,7 @@ export default async function SearchPage({
                   </p>
                 </div>
                 <p className="mt-3 text-lg font-semibold text-[var(--ink)]">{result.label}</p>
-                <p className="mt-1 text-sm font-medium text-[var(--accent)]">{result.title}</p>
+                <p className="mt-1 text-sm font-medium text-[var(--accent-2)]">{result.title}</p>
                 <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{result.description}</p>
               </Link>
             ))}

@@ -1,8 +1,10 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useEffect } from "react";
 
 import { cn } from "@/lib/utils";
+import { IconButton } from "@/components/ui/button";
 
 export function Modal({
   open,
@@ -15,26 +17,36 @@ export function Modal({
   children: React.ReactNode;
   onClose: () => void;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
   return (
     <div
       className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 transition",
+        "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 transition",
         open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
+      aria-hidden={!open}
     >
-      <div className="w-full max-w-2xl rounded-[32px] border border-white/60 bg-[var(--panel-strong)] p-6 shadow-[0_30px_80px_rgba(15,23,42,0.24)]">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-2xl font-semibold text-[var(--ink)]">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full border border-[var(--line)] bg-white p-2 text-[var(--muted)]"
-            aria-label="Close modal"
-          >
-            <X className="h-4 w-4" />
-          </button>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="w-full max-w-2xl rounded-[var(--r-lg)] border border-[var(--line-2)] bg-[var(--panel)] shadow-[0_24px_60px_rgba(0,0,0,0.5)]"
+      >
+        <div className="flex items-center gap-3 border-b border-[var(--line)] px-4 py-3.5">
+          <h2 className="text-sm font-semibold text-[var(--ink)]">{title}</h2>
+          <IconButton label="Close" onClick={onClose} className="ml-auto" bordered>
+            <X />
+          </IconButton>
         </div>
-        <div className="mt-5">{children}</div>
+        <div className="px-4 py-4">{children}</div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { ButtonLink } from "@/components/ui/button";
 
 export function EmptyState({
   title,
@@ -12,19 +12,16 @@ export function EmptyState({
   actionHref?: string;
 }) {
   return (
-    <div className="rounded-[28px] border border-dashed border-[var(--line)] bg-white/80 px-6 py-12 text-center">
-      <h3 className="font-display text-xl font-semibold text-[var(--ink)]">{title}</h3>
-      <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-[var(--muted)]">
+    <div className="rounded-[var(--r-md)] border border-dashed border-[var(--line-2)] px-6 py-10 text-center">
+      <h3 className="text-sm font-semibold text-[var(--ink)]">{title}</h3>
+      <p className="mx-auto mt-2 max-w-xl text-[13px] leading-relaxed text-[var(--muted)]">
         {description}
       </p>
       {actionLabel && actionHref ? (
-        <div className="mt-5">
-          <Link
-            href={actionHref}
-            className="inline-flex rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
-          >
+        <div className="mt-4 flex justify-center">
+          <ButtonLink href={actionHref} variant="primary">
             {actionLabel}
-          </Link>
+          </ButtonLink>
         </div>
       ) : null}
     </div>

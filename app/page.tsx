@@ -1,269 +1,291 @@
 import {
   Activity,
-  ArrowRight,
   Building2,
-  Clock3,
-  Landmark,
+  CalendarClock,
+  CheckCircle2,
+  FileText,
+  Flame,
+  Layers,
   Newspaper,
+  Scale,
+  Star,
+  Vote,
 } from "lucide-react";
 import Link from "next/link";
 
-import { ChartCard } from "@/components/chart-card";
-import { EntityBadge } from "@/components/entity-badge";
-import { PageHeader } from "@/components/page-header";
-import { SectionCard } from "@/components/section-card";
+import { WatchlistPreview } from "@/components/home/watchlist-preview";
 import { SourceBadge } from "@/components/source-badge";
-import { SparklineCard, TrendLineChart } from "@/components/trend-charts";
-import { StatusPill } from "@/components/status-pill";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/card";
+import { IconTile } from "@/components/ui/icon-tile";
+import { ListRow, Rank } from "@/components/ui/list-row";
+import { MeterRow } from "@/components/ui/meter";
+import { StatTile, deltaFromSeries } from "@/components/ui/stat-tile";
+import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
+import { BILL_STATUS_TONE } from "@/components/ui/tones";
 import { getDashboardData } from "@/lib/data/dashboard";
+import { getIssuesData } from "@/lib/data/issues";
+import type { Bill } from "@/types/civic";
 
 export const revalidate = 21600;
 
+function seriesValue(series: Array<{ label: string; value: number }>, label: string) {
+  return series.find((point) => point.label === label)?.value ?? 0;
+}
+
 export default async function HomePage() {
-  const { analytics, feed } = await getDashboardData();
+  const [{ analytics, feed }, issuesData] = await Promise.all([
+    getDashboardData(),
+    getIssuesData(),
+  ]);
+
   const live = analytics.activeBills > 0;
-  const featuredBill = feed.trendingBills[0];
-  const secondaryBills = feed.trendingBills.slice(1, 4);
+
+  /*
+   * Only `introductionsSeries` is an actual time series (buildMonthlySeries in
+   * lib/data/analytics.ts), so it is the only tile that can honestly carry a period-over-period
+   * delta. `activitySeries` is a status distribution -- comparing its last two points would be
+   * "Signed vs Passed", which is not a change over time.
+   */
+  const introductions = analytics.introductionsSeries;
+  const introducedThisPeriod = introductions.at(-1)?.value ?? 0;
+  const introductionsDelta = deltaFromSeries(introductions);
+  const clearedChamber =
+    seriesValue(analytics.activitySeries, "Passed") + seriesValue(analytics.activitySeries, "Signed");
+
+  // Most active issues, ranked by the bill count already stored on each issue.
+  const rankedIssues = [...issuesData.issues]
+    .sort((left, right) => right.stats.activeBills - left.stats.activeBills)
+    .slice(0, 5);
+  const issueMax = rankedIssues[0]?.stats.activeBills ?? 0;
+
+  const activity = [
+    ...feed.recentlyPassed.slice(0, 2).map((bill) => ({ bill, kind: "passed" as const })),
+    ...feed.trendingBills.slice(0, 2).map((bill) => ({ bill, kind: "action" as const })),
+  ];
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Civic intelligence"
-        title="Good morning, Alex."
-        description="Here is a connected view of the bills, votes, committees, money, and movement shaping the week."
-        actions={
-          <>
-            <SourceBadge
-              label={live ? "Stored dashboard data" : "Dashboard awaiting stored data"}
-              live={live}
-            />
-            <Link
-              href="/analytics"
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent-strong)]"
-            >
-              Open analytics
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </>
-        }
-      />
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SparklineCard
-          title="Active bills"
-          value={analytics.activeBills.toLocaleString()}
-          change="Tracked from the current stored bill set"
-          icon={<Landmark className="h-4 w-4" />}
-          tone="emerald"
-          data={analytics.activitySeries}
-        />
-        <SparklineCard
-          title="Upcoming votes"
-          value={analytics.upcomingVotes.toString()}
-          change="Derived from floor and passed-chamber activity"
-          icon={<Clock3 className="h-4 w-4" />}
-          tone="amber"
-          data={analytics.voteCadenceSeries}
-        />
-        <SparklineCard
-          title="Tracked committees"
-          value={analytics.committees.toString()}
-          change="Committee records available in the current dataset"
-          icon={<Building2 className="h-4 w-4" />}
-          tone="sky"
-          data={analytics.committeeSeries}
-        />
-        <SparklineCard
-          title="Watchlist hits"
-          value={analytics.watchlistHits.toString()}
-          change="Derived from recent bill and committee activity"
-          icon={<Activity className="h-4 w-4" />}
-          tone="rose"
-          data={analytics.alertSeries}
-        />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-        <div className="space-y-6">
-          <SectionCard
-            title="Trending now"
-            description="Fast-moving bills with strong cross-links into sponsors, committees, and issue areas."
-          >
-            {feed.trendingBills.length > 0 ? (
-              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-                {featuredBill ? (
-                  <Link
-                    href={`/bills/${featuredBill.id}`}
-                    className="rounded-[32px] border border-[var(--line)] bg-[linear-gradient(135deg,_#0f172a,_#1e3a8a)] p-6 text-white transition hover:-translate-y-0.5"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/70">
-                          {featuredBill.number}
-                        </p>
-                        <h3 className="mt-3 text-2xl font-semibold leading-tight">
-                          {featuredBill.title}
-                        </h3>
-                      </div>
-                      <StatusPill status={featuredBill.status} />
-                    </div>
-                    <p className="mt-4 max-w-2xl text-sm leading-6 text-white/80">
-                      {featuredBill.summary}
-                    </p>
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      <EntityBadge>{featuredBill.topic}</EntityBadge>
-                      <EntityBadge tone="subtle">{featuredBill.sponsorName}</EntityBadge>
-                      <EntityBadge tone="subtle">{featuredBill.committeeName}</EntityBadge>
-                    </div>
-                  </Link>
-                ) : null}
-                <div className="grid gap-4">
-                  {secondaryBills.map((bill) => (
-                    <Link
-                      key={bill.id}
-                      href={`/bills/${bill.id}`}
-                      className="rounded-3xl border border-[var(--line)] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-[0_20px_50px_rgba(15,23,42,0.08)]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-                            {bill.number}
-                          </p>
-                          <h3 className="mt-2 text-sm font-semibold text-[var(--ink)]">
-                            {bill.title}
-                          </h3>
-                        </div>
-                        <StatusPill status={bill.status} />
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <EntityBadge>{bill.topic}</EntityBadge>
-                        <EntityBadge tone="subtle">{bill.sponsorName}</EntityBadge>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-[var(--muted)]">
-                Run the legislation sync to populate the dashboard.
-              </p>
-            )}
-          </SectionCard>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ChartCard
-              title="Bill introductions over time"
-              description="A month-level pulse across the current stored dataset."
-            >
-              <TrendLineChart data={analytics.introductionsSeries} />
-            </ChartCard>
-            <SectionCard
-              title="Recently passed"
-              description="The most recent bills to clear a chamber or final signature step."
-            >
-              {feed.recentlyPassed.length > 0 ? (
-                <div className="space-y-3">
-                  {feed.recentlyPassed.map((bill) => (
-                    <Link
-                      key={bill.id}
-                      href={`/bills/${bill.id}`}
-                      className="flex items-center justify-between rounded-2xl border border-[var(--line)] px-4 py-3 transition hover:border-[var(--accent)]"
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--ink)]">
-                          {bill.number}
-                        </p>
-                        <p className="text-sm text-[var(--muted)]">{bill.title}</p>
-                      </div>
-                      <div className="text-right">
-                        <StatusPill status={bill.status} />
-                        <p className="mt-2 text-xs text-[var(--muted)]">
-                          {bill.lastActionAt}
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-[var(--muted)]">
-                  No passed-chamber items are available in the current dataset.
-                </p>
-              )}
-            </SectionCard>
-          </div>
+    <div>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Welcome back, Alex</h1>
+          <p className="mt-1 text-[13.5px] text-[var(--muted)]">
+            Here is what has moved across Congress in the current stored dataset.
+          </p>
         </div>
+        <SourceBadge
+          label={live ? "Stored dashboard data" : "Dashboard awaiting stored data"}
+          live={live}
+        />
+      </div>
 
-        <div className="space-y-6">
-          <SectionCard
-            title="Upcoming votes"
-            description="Floor action inferred from the latest stored bill statuses."
-          >
-            {feed.upcomingVotes.length > 0 ? (
-              <div className="space-y-3">
-                {feed.upcomingVotes.map((vote) => (
-                  <Link
-                    key={vote.id}
-                    href={`/bills/${vote.billId}/votes`}
-                    className="block rounded-2xl border border-[var(--line)] p-4 transition hover:border-[var(--accent)]"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--ink)]">
-                          {vote.billNumber}
-                        </p>
-                        <p className="text-sm text-[var(--muted)]">{vote.title}</p>
-                      </div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                        {vote.chamber}
-                      </p>
-                    </div>
-                    <p className="mt-3 text-xs text-[var(--muted)]">
-                      {vote.dateLabel}
-                    </p>
-                  </Link>
-                ))}
-              </div>
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <StatTile
+          label="Active bills"
+          value={analytics.activeBills.toLocaleString()}
+          icon={<FileText />}
+          tone="indigo"
+          footnote="In the current stored bill set"
+        />
+        <StatTile
+          label="Introduced this period"
+          value={introducedThisPeriod.toLocaleString()}
+          icon={<Activity />}
+          tone="sky"
+          delta={introductionsDelta}
+          footnote="Latest month vs. the one before"
+        />
+        <StatTile
+          label="Cleared a chamber"
+          value={clearedChamber.toLocaleString()}
+          icon={<CheckCircle2 />}
+          tone="emerald"
+          footnote="Passed chamber or signed"
+        />
+        <StatTile
+          label="Upcoming votes"
+          value={analytics.upcomingVotes.toLocaleString()}
+          icon={<Vote />}
+          tone="sky"
+          footnote="On the floor or awaiting action"
+        />
+        <StatTile
+          label="Committees tracked"
+          value={analytics.committees.toLocaleString()}
+          icon={<Building2 />}
+          tone="indigo"
+          footnote="Committee records stored"
+        />
+        <StatTile
+          label="Tracked issues"
+          value={issuesData.issues.length.toLocaleString()}
+          icon={<Scale />}
+          tone="amber"
+          footnote="Linked to stored legislation"
+        />
+      </div>
+
+      <div className="mb-3.5 grid gap-3.5 xl:grid-cols-3">
+        <Card>
+          <CardHeader
+            title="Legislative activity"
+            icon={<Activity />}
+            actionLabel="View all"
+            actionHref="/bills"
+          />
+          <CardBody tight>
+            {activity.length > 0 ? (
+              activity.map(({ bill, kind }) => (
+                <ListRow
+                  key={`${kind}-${bill.id}`}
+                  href={`/bills/${bill.id}`}
+                  leading={
+                    <IconTile tone={topicVisual(bill.topic).tone}>
+                      <TopicIcon topic={bill.topic} />
+                    </IconTile>
+                  }
+                  title={`${bill.number} · ${bill.title}`}
+                  subtitle={`${bill.latestAction} · ${bill.lastActionAt}`}
+                  trailing={<Badge tone={BILL_STATUS_TONE[bill.status]}>{bill.chamber}</Badge>}
+                />
+              ))
             ) : (
-              <p className="text-sm text-[var(--muted)]">
-                No upcoming floor items are available from the current dataset.
+              <p className="px-2 py-6 text-[13px] text-[var(--muted)]">
+                Run the legislation sync to populate activity.
               </p>
             )}
-          </SectionCard>
+          </CardBody>
+          <CardFooter label="View all legislative activity" href="/bills" />
+        </Card>
 
-          <SectionCard
-            title="News pulse"
-            description="Derived headlines tied directly to tracked bills and entities."
-          >
-            {feed.news.length > 0 ? (
-              <div className="space-y-3">
-                {feed.news.map((item) => (
-                  <Link
-                    key={item.id}
-                    href="/news"
-                    className="flex gap-3 rounded-2xl border border-[var(--line)] p-4 transition hover:border-[var(--accent)]"
-                  >
-                    <div className="rounded-2xl bg-slate-100 p-2 text-[var(--accent)]">
-                      <Newspaper className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--ink)]">
-                        {item.headline}
-                      </p>
-                      <p className="mt-1 text-sm text-[var(--muted)]">
-                        {item.source} | {item.publishedAt}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+        <Card>
+          <CardHeader
+            title="Trending bills"
+            icon={<Flame />}
+            actionLabel="View all"
+            actionHref="/bills"
+          />
+          <CardBody tight>
+            {feed.trendingBills.length > 0 ? (
+              feed.trendingBills.map((bill: Bill, index: number) => (
+                <ListRow
+                  key={bill.id}
+                  href={`/bills/${bill.id}`}
+                  leading={<Rank>{index + 1}</Rank>}
+                  title={`${bill.number} · ${bill.title}`}
+                  subtitle={bill.sponsorName}
+                  trailing={<Badge tone={BILL_STATUS_TONE[bill.status]}>{bill.status}</Badge>}
+                />
+              ))
             ) : (
-              <p className="text-sm text-[var(--muted)]">
+              <p className="px-2 py-6 text-[13px] text-[var(--muted)]">
+                No stored bills are available yet.
+              </p>
+            )}
+          </CardBody>
+          <CardFooter label="View all bills" href="/bills" />
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="News pulse"
+            icon={<Newspaper />}
+            actionLabel="View all"
+            actionHref="/news"
+          />
+          <CardBody tight>
+            {feed.news.length > 0 ? (
+              feed.news.map((item) => (
+                <ListRow
+                  key={item.id}
+                  href="/news"
+                  leading={
+                    <IconTile tone="amber">
+                      <Newspaper />
+                    </IconTile>
+                  }
+                  title={item.headline}
+                  subtitle={`${item.source} · ${item.publishedAt}`}
+                />
+              ))
+            ) : (
+              <p className="px-2 py-6 text-[13px] text-[var(--muted)]">
                 No stored news items are available yet.
               </p>
             )}
-          </SectionCard>
-        </div>
-      </section>
+          </CardBody>
+          <CardFooter label="View all news" href="/news" />
+        </Card>
+      </div>
+
+      <div className="grid gap-3.5 xl:grid-cols-3">
+        <Card>
+          <CardHeader title="Upcoming votes" icon={<CalendarClock />} />
+          <CardBody tight>
+            {feed.upcomingVotes.length > 0 ? (
+              feed.upcomingVotes.map((vote) => (
+                <ListRow
+                  key={vote.id}
+                  href={`/bills/${vote.billId}/votes`}
+                  leading={
+                    <IconTile tone="sky">
+                      <Vote />
+                    </IconTile>
+                  }
+                  title={`${vote.billNumber} · ${vote.title}`}
+                  subtitle={`${vote.chamber} · ${vote.dateLabel}`}
+                />
+              ))
+            ) : (
+              <p className="px-2 py-6 text-[13px] text-[var(--muted)]">
+                No floor items are available from the current dataset.
+              </p>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Most active issues"
+            icon={<Layers />}
+            actionLabel="All issues"
+            actionHref="/issues"
+          />
+          <CardBody>
+            {rankedIssues.length > 0 ? (
+              rankedIssues.map((issue) => (
+                <Link key={issue.id} href={`/issues/${issue.slug}`} className="block">
+                  <MeterRow
+                    label={issue.name}
+                    icon={<TopicIcon topic={issue.name} />}
+                    value={issue.stats.activeBills}
+                    max={issueMax}
+                    display={issue.stats.activeBills}
+                  />
+                </Link>
+              ))
+            ) : (
+              <p className="py-6 text-[13px] text-[var(--muted)]">
+                No stored issues are available yet.
+              </p>
+            )}
+          </CardBody>
+          <CardFooter label="Explore all issues" href="/issues" />
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Your watchlist"
+            icon={<Star />}
+            actionLabel="Manage"
+            actionHref="/watchlist"
+          />
+          <CardBody tight>
+            <WatchlistPreview />
+          </CardBody>
+          <CardFooter label="Open watchlist" href="/watchlist" />
+        </Card>
+      </div>
     </div>
   );
 }

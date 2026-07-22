@@ -10,23 +10,25 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4 rounded-[32px] border border-white/60 bg-[var(--panel)] px-6 py-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] lg:flex-row lg:items-end lg:justify-between">
-      <div>
+    <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="min-w-0">
         {eyebrow ? (
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--muted)]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight text-[var(--ink)]">
+        <h1 className="mt-1 text-[26px] font-semibold tracking-[-0.02em] text-[var(--ink)]">
           {title}
         </h1>
         {description ? (
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">
+          <p className="mt-1.5 max-w-3xl text-[13.5px] leading-relaxed text-[var(--muted)]">
             {description}
           </p>
         ) : null}
       </div>
-      {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+      {actions ? (
+        <div className="flex flex-none flex-wrap items-center gap-2">{actions}</div>
+      ) : null}
     </div>
   );
 }

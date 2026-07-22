@@ -49,6 +49,28 @@ export function formatSummaryText(value?: string | null): string {
     .trim();
 }
 
+/**
+ * Single-line variant of formatSummaryText, for fields rendered inline: titles, action labels,
+ * headlines. Congress.gov ships these with markup too ("Housing for the 21st Century Act<br/>"),
+ * which showed up literally in tables and card headings.
+ */
+export function formatInlineText(value?: string | null): string {
+  return formatSummaryText(value).replace(/\s*\n+\s*/g, " ").trim();
+}
+
+/** "Jul 15, 2026" from an ISO timestamp; passes through anything it can't parse. */
+export function formatDateLabel(value?: string | null): string {
+  if (!value) return "";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  return new Date(parsed).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export function initials(name: string) {
   return name
     .split(" ")

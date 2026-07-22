@@ -1,11 +1,14 @@
 "use client";
 
+import { Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { DataTable } from "@/components/data-table";
 import { FilterBar } from "@/components/filter-bar";
 import { Pagination } from "@/components/pagination";
+import { Card } from "@/components/ui/card";
+import { Toolbar } from "@/components/ui/layout";
 import { deriveCommitteeSector, normalizeCommitteeField, sortLabelsAlphabetically } from "@/lib/utils";
 import type { Committee } from "@/types/civic";
 
@@ -88,11 +91,9 @@ export function CommitteesDirectory({
   const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-[28px] border border-[var(--line)] bg-white p-5">
-        <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-          Search committees
-        </label>
+    <div className="flex flex-col gap-3.5">
+      <div className="relative flex items-center">
+        <Search className="pointer-events-none absolute left-3.5 h-4 w-4 text-[var(--faint)]" />
         <input
           type="search"
           value={query}
@@ -100,8 +101,9 @@ export function CommitteesDirectory({
             setQuery(event.target.value);
             setPage(1);
           }}
-          placeholder="Search committees by name, chamber, jurisdiction, or sector..."
-          className="mt-3 w-full rounded-full border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-700 outline-none"
+          placeholder="Search committees by name, chamber, jurisdiction, or sector…"
+          aria-label="Search committees"
+          className="h-10 w-full min-w-0 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] pl-10 pr-3.5 text-[13.5px] outline-none transition placeholder:text-[var(--faint)] focus:border-[var(--line-2)] focus:bg-[var(--panel-2)]"
         />
       </div>
 
@@ -123,21 +125,60 @@ export function CommitteesDirectory({
         }}
       />
 
-      <DataTable
-        columns={["Committee", "Sector", "Chamber", "Jurisdiction", "Active bills", "Upcoming hearing"]}
-        rows={pageRows.map((committee) => [
-          <Link key={committee.id} href={`/committees/${committee.slug}`} className="font-semibold text-[var(--accent)]">
-            {committee.name}
-          </Link>,
-          committee.sector,
-          committee.chamber,
-          committee.jurisdiction,
-          committee.activeBillIds.length,
-          committee.hearingLabel,
-        ])}
-      />
+      <Card>
+        <Toolbar>
+          <span className="text-[13px]">
+            <b className="num">{filtered.length.toLocaleString()}</b>{" "}
+            <span className="text-[var(--muted)]">
+              {filtered.length === 1 ? "committee" : "committees"} · sorted by{" "}
+              {sortBy.toLowerCase()}
+            </span>
+          </span>
+        </Toolbar>
 
-      <Pagination page={currentPage} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} />
+        <DataTable
+          emptyMessage="No committees match these filters."
+          columns={[
+            "Committee",
+            "Sector",
+            "Chamber",
+            "Jurisdiction",
+            { label: "Active bills", align: "right" },
+            "Upcoming hearing",
+          ]}
+          rows={pageRows.map((committee) => [
+            <Link
+              key={committee.id}
+              href={`/committees/${committee.slug}`}
+              className="font-semibold text-[var(--accent-2)] hover:underline"
+            >
+              {committee.name}
+            </Link>,
+            <span key={`${committee.id}-sector`} className="text-[var(--muted)]">
+              {committee.sector}
+            </span>,
+            <span key={`${committee.id}-chamber`} className="text-[var(--muted)]">
+              {committee.chamber}
+            </span>,
+            <span key={`${committee.id}-jur`} className="text-[var(--muted)]">
+              {committee.jurisdiction}
+            </span>,
+            <span key={`${committee.id}-bills`} className="num">
+              {committee.activeBillIds.length}
+            </span>,
+            <span key={`${committee.id}-hearing`} className="text-[var(--muted)]">
+              {committee.hearingLabel}
+            </span>,
+          ])}
+        />
+
+        <Pagination
+          page={currentPage}
+          pageSize={PAGE_SIZE}
+          total={filtered.length}
+          onPageChange={setPage}
+        />
+      </Card>
     </div>
   );
 }

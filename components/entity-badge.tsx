@@ -1,5 +1,6 @@
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
+/** Kept for the many call sites that predate the shared Badge tone vocabulary. */
 export function EntityBadge({
   children,
   tone = "brand",
@@ -7,16 +8,5 @@ export function EntityBadge({
   children: React.ReactNode;
   tone?: "brand" | "subtle";
 }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold",
-        tone === "brand"
-          ? "bg-blue-50 text-blue-700"
-          : "bg-slate-100 text-slate-600",
-      )}
-    >
-      {children}
-    </span>
-  );
+  return <Badge tone={tone === "brand" ? "indigo" : "slate"}>{children}</Badge>;
 }

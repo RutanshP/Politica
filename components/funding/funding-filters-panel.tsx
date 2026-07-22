@@ -37,11 +37,11 @@ function Toggle({
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-          checked ? "bg-[var(--accent)]" : "bg-slate-300"
+          checked ? "bg-[var(--accent)]" : "bg-[var(--line-2)]"
         }`}
       >
         <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+          className={`absolute top-0.5 h-4 w-4 rounded-full bg-[var(--panel-2)] shadow transition-transform ${
             checked ? "translate-x-4.5 left-0.5" : "left-0.5"
           }`}
           style={{ transform: checked ? "translateX(16px)" : "translateX(0)" }}
@@ -96,7 +96,7 @@ export function FundingFiltersPanel({
         <button
           type="button"
           onClick={onReset}
-          className="text-xs font-semibold text-[var(--accent)] hover:underline"
+          className="text-xs font-semibold text-[var(--accent-2)] hover:underline"
         >
           Reset
         </button>
@@ -108,7 +108,7 @@ export function FundingFiltersPanel({
           value={filters.cycle ?? ""}
           onChange={(event) =>
             onChange({ cycle: event.target.value ? Number(event.target.value) : undefined })}
-          className="mt-1 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs"
+          className="mt-1 w-full rounded-[var(--r-sm)] border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs"
         >
           <option value="">All cycles</option>
           {availableCycles.map((cycle) => (
@@ -119,7 +119,7 @@ export function FundingFiltersPanel({
 
       <div>
         <label className="text-xs font-semibold text-[var(--ink)]">Minimum amount</label>
-        <div className="mt-1 flex items-center gap-1 rounded-xl border border-[var(--line)] bg-white px-3 py-2">
+        <div className="mt-1 flex items-center gap-1 rounded-[var(--r-sm)] border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2">
           <span className="text-xs text-[var(--muted)]">$</span>
           <input
             inputMode="numeric"
@@ -137,7 +137,7 @@ export function FundingFiltersPanel({
           <button
             type="button"
             onClick={() => onChange({ nodeTypes: undefined })}
-            className="text-[10px] font-semibold text-[var(--accent)] hover:underline"
+            className="text-[10px] font-semibold text-[var(--accent-2)] hover:underline"
           >
             Select all
           </button>

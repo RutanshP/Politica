@@ -85,7 +85,7 @@ export default async function BillVotesPage({
             <SectionCard title="Vote details">
               <div className="space-y-4">
                 {votes.length > 1 ? (
-                  <div className="rounded-3xl border border-[var(--line)] bg-white p-4">
+                  <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
                       Vote records
                     </p>
@@ -97,12 +97,12 @@ export default async function BillVotesPage({
                           className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${
                             item.id === vote.id
                               ? "bg-[var(--accent)] text-white"
-                              : "border border-[var(--line)] bg-white text-[var(--ink)]"
+                              : "border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)]"
                           }`}
                         >
                           {item.dateLabel}
                           {!isSubstantiveVote(item.category ?? "policy") ? (
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] ${item.id === vote.id ? "bg-white/25" : "bg-slate-100 text-slate-600"}`}>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] ${item.id === vote.id ? "bg-white/25" : "bg-white/6 text-[var(--muted)]"}`}>
                               {VOTE_CATEGORY_META[item.category ?? "policy"].label}
                             </span>
                           ) : null}
@@ -111,7 +111,7 @@ export default async function BillVotesPage({
                     </div>
                   </div>
                 ) : null}
-                <div className="rounded-3xl border border-[var(--line)] bg-white p-4">
+                <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
                       Result
@@ -125,7 +125,7 @@ export default async function BillVotesPage({
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {voteStats.map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-[var(--line)] bg-white p-4">
+                    <div key={label} className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
                         {label}
                       </p>

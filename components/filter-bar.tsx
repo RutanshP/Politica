@@ -1,5 +1,11 @@
 "use client";
 
+import { FilterRow, FilterSelect } from "@/components/ui/filter-select";
+
+/**
+ * Compatibility wrapper for pages that still pass label-keyed filters. New screens should use
+ * FilterSelect directly, which keys on the querystring param rather than the display label.
+ */
 export function FilterBar({
   filters,
   onChange,
@@ -8,28 +14,16 @@ export function FilterBar({
   onChange?: (label: string, value: string) => void;
 }) {
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <FilterRow>
       {filters.map((filter) => (
-        <label
+        <FilterSelect
           key={filter.label}
-          className="rounded-2xl border border-[var(--line)] bg-white px-4 py-3"
-        >
-          <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-            {filter.label}
-          </span>
-          <select
-            value={filter.value}
-            onChange={(event) => onChange?.(filter.label, event.target.value)}
-            className="mt-2 w-full bg-transparent text-sm text-[var(--ink)] outline-none"
-          >
-            {(filter.options ?? [filter.value]).map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
+          label={filter.label}
+          value={filter.value}
+          options={filter.options ?? [filter.value]}
+          onChange={(value) => onChange?.(filter.label, value)}
+        />
       ))}
-    </div>
+    </FilterRow>
   );
 }

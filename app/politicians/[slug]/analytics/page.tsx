@@ -66,7 +66,7 @@ export default async function PoliticianAnalyticsPage({
         </ChartCard>
         <SectionCard title="Bipartisan index">
           <div className="space-y-4">
-            <div className="rounded-3xl border border-[var(--line)] bg-white p-5">
+            <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
                 Index
               </p>
@@ -79,7 +79,7 @@ export default async function PoliticianAnalyticsPage({
             </div>
             <div className="grid grid-cols-2 gap-3">
               {metricCards.map(([label, value]) => (
-                <div key={label} className="rounded-2xl border border-[var(--line)] bg-white p-4">
+                <div key={label} className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
                     {label}
                   </p>

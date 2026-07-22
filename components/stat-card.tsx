@@ -8,14 +8,16 @@ export function StatCard({
   detail?: string;
 }) {
   return (
-    <div className="rounded-[28px] border border-white/60 bg-[var(--panel)] p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+    <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] p-3.5">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
         {label}
       </p>
-      <p className="mt-3 font-display text-4xl font-semibold text-[var(--ink)]">
+      <p className="num mt-2 text-2xl font-semibold tracking-[-0.02em] text-[var(--ink)]">
         {value}
       </p>
-      {detail ? <p className="mt-2 text-sm text-[var(--muted)]">{detail}</p> : null}
+      {detail ? (
+        <p className="mt-1.5 text-[11.5px] leading-snug text-[var(--faint)]">{detail}</p>
+      ) : null}
     </div>
   );
 }

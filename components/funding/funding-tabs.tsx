@@ -91,12 +91,12 @@ export function FundingTabs({
             ["Independent support", totals.independentSupport],
             ["Independent opposition", totals.independentOpposition],
           ].map(([label, amount]) => (
-            <div key={String(label)} className="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+            <div key={String(label)} className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">{label}</p>
               <p className="mt-1 text-lg font-bold text-[var(--ink)]">{formatMoneyExact(Number(amount))}</p>
             </div>
           ))}
-          <div className="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+          <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] px-4 py-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Small-dollar share</p>
             <p className="mt-1 text-lg font-bold text-[var(--ink)]">{totals.smallDollarPercentage}%</p>
           </div>
@@ -113,7 +113,7 @@ export function FundingTabs({
             <button
               key="from"
               type="button"
-              className="font-semibold text-[var(--accent)] hover:underline"
+              className="font-semibold text-[var(--accent-2)] hover:underline"
               onClick={() => onSelectNode(edge.source)}
             >
               {nodesById.get(edge.source)?.data.label || edge.source}
@@ -151,7 +151,7 @@ export function FundingTabs({
               <button
                 key="label"
                 type="button"
-                className="font-semibold text-[var(--accent)] hover:underline"
+                className="font-semibold text-[var(--accent-2)] hover:underline"
                 onClick={() => onSelectNode(node.id)}
               >
                 {node.data.label}
@@ -180,7 +180,7 @@ export function FundingTabs({
               <button
                 key="label"
                 type="button"
-                className="font-semibold text-[var(--accent)] hover:underline"
+                className="font-semibold text-[var(--accent-2)] hover:underline"
                 onClick={() => onSelectNode(node.id)}
               >
                 {node.data.label}
@@ -231,7 +231,7 @@ export function FundingTabs({
               <button
                 key="entity"
                 type="button"
-                className="font-semibold text-[var(--accent)] hover:underline"
+                className="font-semibold text-[var(--accent-2)] hover:underline"
                 onClick={() => other && onSelectNode(other.id)}
               >
                 {other?.data.label ?? "—"}
@@ -294,7 +294,7 @@ export function FundingTabs({
             onClick={() => setActive(tab)}
             className={`shrink-0 border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
               active === tab
-                ? "border-[var(--accent)] text-[var(--accent)]"
+                ? "border-[var(--accent)] text-[var(--accent-2)]"
                 : "border-transparent text-[var(--muted)] hover:text-[var(--ink)]"
             }`}
           >

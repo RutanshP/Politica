@@ -64,15 +64,15 @@ export default async function PoliticianVotesPage({
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard title="Voting profile">
           <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-[var(--line)] bg-white p-4">
+            <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">With party</p>
               <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.votesWithParty}%` : "N/A"}</p>
             </div>
-            <div className="rounded-2xl border border-[var(--line)] bg-white p-4">
+            <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">Against party</p>
               <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.votesAgainstParty}%` : "N/A"}</p>
             </div>
-            <div className="rounded-2xl border border-[var(--line)] bg-white p-4">
+            <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">Attendance</p>
               <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.attendance}%` : "N/A"}</p>
             </div>
@@ -90,10 +90,10 @@ export default async function PoliticianVotesPage({
                 <Link
                   key={vote.id}
                   href={vote.billId ? `/bills/${vote.billId}/votes` : `/politicians/${politician.slug}/votes`}
-                  className="block rounded-2xl border border-[var(--line)] bg-white p-4 transition hover:border-[var(--accent)]"
+                  className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4 transition hover:border-[var(--line-2)]"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold text-[var(--accent)]">{vote.billNumber}</p>
+                    <p className="font-semibold text-[var(--accent-2)]">{vote.billNumber}</p>
                     <VoteTypeBadge category={vote.category} />
                   </div>
                   <p className="mt-1 text-sm text-[var(--ink)]">{vote.title}</p>

@@ -72,7 +72,7 @@ export default async function MoneyDashboardPage() {
         </SectionCard>
       </section>
       <SectionCard title="Open graph">
-        <div className="flex items-center justify-between rounded-3xl border border-[var(--line)] bg-white px-5 py-4">
+        <div className="flex items-center justify-between rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] px-5 py-4">
           <p className="text-sm text-[var(--muted)]">
             Use the graph explorer for interactive network analysis across politicians, PACs, bills, issues, and committees.
           </p>

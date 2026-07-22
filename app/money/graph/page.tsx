@@ -38,7 +38,7 @@ export default async function FundingGraphPage() {
               "Graph depth: 1-hop / 2-hop / 3-hop",
               "Flows: PAC, sponsorship, committee review",
             ].map((item) => (
-              <div key={item} className="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <div key={item} className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] px-4 py-3">
                 {item}
               </div>
             ))}

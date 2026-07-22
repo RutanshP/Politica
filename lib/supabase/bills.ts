@@ -208,6 +208,8 @@ export async function getStoredBillsPage(query: StoredBillsPageQuery) {
 export interface BillDirectoryFacetRow {
   facet: string;
   value: string;
+  /** Row count for this facet value across the whole federal set (not just the current page). */
+  total?: number;
 }
 
 /**

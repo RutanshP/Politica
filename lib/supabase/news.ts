@@ -1,4 +1,5 @@
 import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
+import { formatDateLabel, formatInlineText } from "@/lib/utils";
 import type { NewsItem } from "@/types/civic";
 import type { NewsEntityLinkRow, NewsItemRow } from "@/types/supabase";
 
@@ -6,11 +7,12 @@ function mapRowToNewsItem(row: NewsItemRow): NewsItem {
   return {
     id: row.id,
     canonicalId: row.canonical_id || undefined,
-    headline: row.headline,
+    headline: formatInlineText(row.headline),
     source: row.source,
-    publishedAt: row.published_at,
+    // Stored as a raw ISO timestamp; every consumer renders it directly.
+    publishedAt: formatDateLabel(row.published_at),
     relatedIds: row.related_ids,
-    summary: row.summary,
+    summary: formatInlineText(row.summary),
     url: row.url || undefined,
     sourceMetadata: {
       sourceSystem: row.source_system,

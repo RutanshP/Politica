@@ -73,9 +73,9 @@ export default async function IssuePage({
               <Link
                 key={bill.id}
                 href={`/bills/${bill.id}`}
-                className="block rounded-2xl border border-[var(--line)] bg-white p-4 transition hover:border-[var(--accent)]"
+                className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4 transition hover:border-[var(--line-2)]"
               >
-                <p className="font-semibold text-[var(--accent)]">{bill.number}</p>
+                <p className="font-semibold text-[var(--accent-2)]">{bill.number}</p>
                 <p className="mt-1 text-sm text-[var(--ink)]">{bill.title}</p>
               </Link>
             ))}
@@ -85,7 +85,7 @@ export default async function IssuePage({
           <DataTable
             columns={["Politician", "Role", "State"]}
             rows={topPoliticians.map((politician) => [
-              <Link key={politician.id} href={`/politicians/${politician.slug}`} className="font-semibold text-[var(--accent)]">
+              <Link key={politician.id} href={`/politicians/${politician.slug}`} className="font-semibold text-[var(--accent-2)]">
                 {politician.name}
               </Link>,
               politician.title,
@@ -100,7 +100,7 @@ export default async function IssuePage({
             <Link
               key={committee.slug}
               href={`/committees/${committee.slug}`}
-              className="rounded-3xl border border-[var(--line)] bg-white p-5 transition hover:border-[var(--accent)]"
+              className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-5 transition hover:border-[var(--line-2)]"
             >
               <p className="font-semibold text-[var(--ink)]">{committee.name}</p>
               <p className="mt-2 text-sm text-[var(--muted)]">{committee.jurisdiction}</p>

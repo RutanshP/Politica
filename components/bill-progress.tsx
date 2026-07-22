@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, FileText, Gavel, Landmark, Users, Vote } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { Bill, BillStatus } from "@/types/civic";
@@ -14,12 +14,23 @@ const STATUS_ORDER: Record<BillStatus, number> = {
   Failed: -1,
 };
 
-// The four milestones shown in the stepper, each with the status level that "reaches" it.
-const MILESTONES: Array<{ label: string; reachedAt: number; match: RegExp }> = [
-  { label: "Introduced", reachedAt: 0, match: /introduc/i },
-  { label: "Passed Chamber", reachedAt: 3, match: /passed|agreed to/i },
-  { label: "To President", reachedAt: 4, match: /president/i },
-  { label: "Signed into Law", reachedAt: 5, match: /became law|signed|public law/i },
+/**
+ * One milestone per rung of STATUS_ORDER, so the stepper is a direct rendering of the stored
+ * status rather than a separate model that could drift from it. `match` is only used to pull a
+ * date out of the action list for milestones already reached.
+ */
+const MILESTONES: Array<{
+  label: string;
+  reachedAt: number;
+  match: RegExp;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  { label: "Introduced", reachedAt: 0, match: /introduc/i, icon: FileText },
+  { label: "In Committee", reachedAt: 1, match: /committee/i, icon: Users },
+  { label: "On Floor", reachedAt: 2, match: /floor|debate|cloture/i, icon: Gavel },
+  { label: "Passed Chamber", reachedAt: 3, match: /passed|agreed to/i, icon: Check },
+  { label: "To President", reachedAt: 4, match: /president/i, icon: Landmark },
+  { label: "Signed into Law", reachedAt: 5, match: /became law|signed|public law/i, icon: Vote },
 ];
 
 function findActionDate(bill: Bill, match: RegExp) {
@@ -32,53 +43,60 @@ export function BillProgressStepper({ bill }: { bill: Bill }) {
   const failed = bill.status === "Failed";
 
   return (
-    <div className="rounded-3xl border border-[var(--line)] bg-white p-5">
-      <div className="flex items-center justify-between gap-4">
+    <div>
+      <div className="flex items-start overflow-x-auto pb-1 pt-1.5">
         {MILESTONES.map((milestone, index) => {
           const reached = !failed && current >= milestone.reachedAt;
-          const isCurrent = !failed
-            && current >= milestone.reachedAt
+          const isCurrent =
+            reached
             && (index === MILESTONES.length - 1 || current < MILESTONES[index + 1].reachedAt);
+          const done = reached && !isCurrent;
           const date = reached ? findActionDate(bill, milestone.match) : undefined;
+          const Icon = milestone.icon;
 
           return (
-            <div key={milestone.label} className="flex flex-1 items-center gap-3 last:flex-none">
-              <div className="flex flex-col items-center gap-2 text-center">
-                <span
-                  className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold ring-4",
-                    reached
-                      ? "bg-emerald-500 text-white ring-emerald-100"
-                      : isCurrent
-                        ? "bg-sky-500 text-white ring-sky-100"
-                        : "bg-slate-100 text-[var(--muted)] ring-transparent",
-                  )}
-                >
-                  {reached ? <Check className="h-4 w-4" /> : index + 1}
-                </span>
-                <div>
-                  <p className={cn("text-xs font-semibold", reached || isCurrent ? "text-[var(--ink)]" : "text-[var(--muted)]")}>
-                    {milestone.label}
-                  </p>
-                  <p className="text-[11px] text-[var(--muted)]">
-                    {date || (reached ? "Reached" : isCurrent ? "In progress" : "Not reached")}
-                  </p>
-                </div>
-              </div>
-              {index < MILESTONES.length - 1 ? (
-                <span
-                  className={cn(
-                    "h-0.5 flex-1 rounded-full",
-                    !failed && current > milestone.reachedAt ? "bg-emerald-400" : "bg-slate-200",
-                  )}
-                />
-              ) : null}
+            <div
+              key={milestone.label}
+              className={cn(
+                "relative flex min-w-[94px] flex-1 flex-col items-center gap-2 text-center",
+                // Connector to the previous step, drawn behind the dot.
+                "before:absolute before:top-[15px] before:left-[calc(-50%_+_16px)] before:right-[calc(50%_+_16px)] before:h-0.5 before:bg-[var(--line-2)] before:content-['']",
+                "first:before:hidden",
+                reached && "before:bg-[rgba(99,102,241,0.5)]",
+              )}
+            >
+              <span
+                className={cn(
+                  "z-[1] grid h-8 w-8 place-items-center rounded-full border [&>svg]:h-3.5 [&>svg]:w-3.5",
+                  done && "border-[var(--accent)] bg-[var(--accent)] text-white",
+                  isCurrent && "border-[var(--success)] bg-[var(--success)] text-[#04140d]",
+                  !reached && "border-[var(--line-2)] bg-[var(--panel-3)] text-[var(--faint)]",
+                )}
+              >
+                <Icon />
+              </span>
+              <span
+                className={cn(
+                  "text-xs font-medium leading-tight",
+                  reached ? "text-[var(--ink)]" : "text-[var(--faint)]",
+                )}
+              >
+                {milestone.label}
+              </span>
+              <span
+                className={cn(
+                  "num text-[11px]",
+                  isCurrent ? "font-semibold text-[var(--success)]" : "text-[var(--faint)]",
+                )}
+              >
+                {date || (reached ? "Reached" : "—")}
+              </span>
             </div>
           );
         })}
       </div>
       {failed ? (
-        <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700">
+        <p className="mt-4 rounded-[var(--r-sm)] bg-[var(--danger-soft)] px-3.5 py-2 text-[13px] font-semibold text-[var(--danger)]">
           This measure failed and did not advance.
         </p>
       ) : null}

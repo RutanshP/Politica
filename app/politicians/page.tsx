@@ -1,7 +1,9 @@
 import { PageHeader } from "@/components/page-header";
 import { PoliticiansDirectory } from "@/components/politicians-directory";
-import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
+import { Tag } from "@/components/ui/badge";
+import { Card, CardBody, CardHeader, CardNote } from "@/components/ui/card";
+import { WithRail } from "@/components/ui/layout";
 import {
   getPoliticianSourceLabel,
   getPoliticiansDirectoryData,
@@ -17,16 +19,27 @@ export default async function PoliticiansPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const normalizedSearchParams = Object.fromEntries(
-    Object.entries(resolvedSearchParams).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value]),
+    Object.entries(resolvedSearchParams).map(([key, value]) => [
+      key,
+      Array.isArray(value) ? value[0] : value,
+    ]),
   );
-  const { politicians, source, total, page, pageSize, needsState, filters, options } = await getPoliticiansDirectoryData(normalizedSearchParams);
+  const { politicians, source, total, page, pageSize, needsState, filters, options } =
+    await getPoliticiansDirectoryData(normalizedSearchParams);
+
+  const activeFilters = [
+    `Level: ${filters.level}`,
+    filters.level === "State" && filters.state ? `State: ${filters.state}` : null,
+    filters.office && !filters.office.startsWith("All") ? `Chamber: ${filters.office}` : null,
+    filters.party && !filters.party.startsWith("All") ? `Party: ${filters.party}` : null,
+    filters.query ? `Search: ${filters.query}` : null,
+  ].filter((value): value is string => Boolean(value));
 
   return (
-    <div className="space-y-6">
+    <div>
       <PageHeader
-        eyebrow="Politicians"
-        title="Profiles and legislative behavior"
-        description="Browse member snapshots with connected access to voting behavior, funding, committees, bills, biography, and issue activity."
+        title="Politicians"
+        description="Member profiles with connected voting behavior, funding, committees, and sponsored legislation."
         actions={
           <SourceBadge
             label={getPoliticianSourceLabel(source)}
@@ -34,7 +47,37 @@ export default async function PoliticiansPage({
           />
         }
       />
-      <SectionCard title="Member directory" description="Search, filter, and sort the stored member records.">
+
+      <WithRail
+        rail={
+          <>
+            <Card>
+              <CardHeader title="Current filter" />
+              <CardBody>
+                <p className="num text-2xl font-semibold tracking-[-0.02em] text-[var(--accent-2)]">
+                  {total.toLocaleString()}
+                </p>
+                <p className="text-[11.5px] text-[var(--faint)]">
+                  {total === 1 ? "member matches" : "members match"}
+                </p>
+                <div className="mt-3.5 flex flex-wrap gap-1.5">
+                  {activeFilters.map((label) => (
+                    <Tag key={label}>{label}</Tag>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader title="About the photos" />
+              <CardNote>
+                Headshots load from the public bioguide image set, keyed on each member&apos;s ID.
+                State legislators and members without a photo fall back to an initials tile.
+              </CardNote>
+            </Card>
+          </>
+        }
+      >
         <PoliticiansDirectory
           politicians={politicians}
           needsState={needsState}
@@ -44,7 +87,7 @@ export default async function PoliticiansPage({
           filters={filters}
           options={options}
         />
-      </SectionCard>
+      </WithRail>
     </div>
   );
 }

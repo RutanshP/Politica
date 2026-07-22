@@ -60,7 +60,7 @@ function EdgeSourceRecords({ edgeId }: { edgeId: string }) {
   return (
     <div className="mt-2 space-y-1.5">
       {records.map((record) => (
-        <div key={record.id} className="rounded-xl border border-[var(--line)] bg-slate-50 px-3 py-2 text-xs">
+        <div key={record.id} className="rounded-[var(--r-sm)] border border-[var(--line)] bg-white/3 px-3 py-2 text-xs">
           <div className="flex items-baseline justify-between gap-2">
             <span className="font-semibold text-[var(--ink)]">
               {record.contributor_name || record.record_type.replace(/_/g, " ")}
@@ -80,7 +80,7 @@ function EdgeSourceRecords({ edgeId }: { edgeId: string }) {
             type="button"
             disabled={page <= 1}
             onClick={() => setPage((current) => current - 1)}
-            className="font-semibold text-[var(--accent)] disabled:opacity-40"
+            className="font-semibold text-[var(--accent-2)] disabled:opacity-40"
           >
             Previous
           </button>
@@ -89,7 +89,7 @@ function EdgeSourceRecords({ edgeId }: { edgeId: string }) {
             type="button"
             disabled={page >= pageCount}
             onClick={() => setPage((current) => current + 1)}
-            className="font-semibold text-[var(--accent)] disabled:opacity-40"
+            className="font-semibold text-[var(--accent-2)] disabled:opacity-40"
           >
             Next
           </button>
@@ -134,11 +134,11 @@ export function FundingDetailPanel({
               {source?.data.label} → {target?.data.label}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-full p-1 hover:bg-slate-100">
+          <button type="button" onClick={onClose} className="rounded-full p-1 hover:bg-[var(--panel-3)]">
             <X size={14} />
           </button>
         </div>
-        <div className="rounded-2xl border border-[var(--line)] bg-white px-3 py-2">
+        <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2">
           <DetailRow label="Type" value={selectedEdge.data.label} />
           {selectedEdge.data.amount !== undefined ? (
             <DetailRow label="Amount" value={formatMoneyExact(selectedEdge.data.amount)} />
@@ -159,7 +159,7 @@ export function FundingDetailPanel({
           <DetailRow label="Source records" value={selectedEdge.data.sourceCount.toLocaleString()} />
         </div>
         {selectedEdge.data.isAggregate ? (
-          <p className="flex items-start gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-[10px] leading-relaxed text-amber-800">
+          <p className="flex items-start gap-1.5 rounded-[var(--r-sm)] bg-amber-50 px-3 py-2 text-[10px] leading-relaxed text-amber-800">
             <Info size={12} className="mt-0.5 shrink-0" />
             This is an aggregate of many underlying transactions, not a single direct contribution.
           </p>
@@ -199,13 +199,13 @@ export function FundingDetailPanel({
               </p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-full p-1 hover:bg-slate-100">
+          <button type="button" onClick={onClose} className="rounded-full p-1 hover:bg-[var(--panel-3)]">
             <X size={14} />
           </button>
         </div>
 
         {isPolitician && isCenter ? (
-          <div className="rounded-2xl border border-[var(--line)] bg-white px-3 py-2">
+          <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2">
             <DetailRow label="Total receipts" value={formatMoneyExact(totals.totalReceipts)} />
             <DetailRow label="Individual contributions" value={formatMoneyExact(totals.individualContributions)} />
             <DetailRow label="PAC contributions" value={formatMoneyExact(totals.pacContributions)} />
@@ -218,7 +218,7 @@ export function FundingDetailPanel({
             <DetailRow label="Independent opposition" value={formatMoneyExact(totals.independentOpposition)} />
           </div>
         ) : (
-          <div className="rounded-2xl border border-[var(--line)] bg-white px-3 py-2">
+          <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2">
             <DetailRow label="Entity type" value={theme.label} />
             {selectedNode.data.isAggregate ? <DetailRow label="Basis" value="Aggregate grouping" /> : null}
             {selectedNode.data.metadata?.aggregationType ? (
@@ -244,13 +244,13 @@ export function FundingDetailPanel({
         )}
 
         {selectedNode.data.metadata?.methodology ? (
-          <p className="flex items-start gap-1.5 rounded-xl bg-slate-50 px-3 py-2 text-[10px] leading-relaxed text-[var(--muted)]">
+          <p className="flex items-start gap-1.5 rounded-[var(--r-sm)] bg-white/3 px-3 py-2 text-[10px] leading-relaxed text-[var(--muted)]">
             <Info size={12} className="mt-0.5 shrink-0" />
             {String(selectedNode.data.metadata.methodology)}
           </p>
         ) : null}
         {selectedNode.data.metadata?.note ? (
-          <p className="flex items-start gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-[10px] leading-relaxed text-amber-800">
+          <p className="flex items-start gap-1.5 rounded-[var(--r-sm)] bg-amber-50 px-3 py-2 text-[10px] leading-relaxed text-amber-800">
             <Info size={12} className="mt-0.5 shrink-0" />
             {String(selectedNode.data.metadata.note)}
           </p>
@@ -264,7 +264,7 @@ export function FundingDetailPanel({
                 ? nodesById.get(edge.target)
                 : nodesById.get(edge.source);
               return (
-                <div key={edge.id} className="rounded-xl border border-[var(--line)] bg-white px-3 py-1.5 text-xs">
+                <div key={edge.id} className="rounded-[var(--r-sm)] border border-[var(--line)] bg-[var(--panel-2)] px-3 py-1.5 text-xs">
                   <span className="text-[var(--muted)]">{edge.data.label}</span>{" "}
                   <span className="font-semibold text-[var(--ink)]">{other?.data.label}</span>
                   {edge.data.amount ? (
@@ -292,7 +292,7 @@ export function FundingDetailPanel({
               <button
                 type="button"
                 onClick={() => onMakeCenter(selectedNode.id)}
-                className="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)]"
+                className="rounded-full border border-[var(--line)] bg-[var(--panel-2)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)]"
               >
                 Make center
               </button>
@@ -301,7 +301,7 @@ export function FundingDetailPanel({
           {typeof href === "string" && href ? (
             <Link
               href={href}
-              className="flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--accent)]"
+              className="flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--panel-2)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-2)]"
             >
               <ExternalLink size={12} /> Open page
             </Link>

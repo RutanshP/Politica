@@ -55,9 +55,13 @@ export function isSubstantiveVote(category: VoteCategory) {
   return category === "policy" || category === "amendment";
 }
 
-export const VOTE_CATEGORY_META: Record<VoteCategory, { label: string; tone: string }> = {
-  policy: { label: "Policy", tone: "bg-emerald-100 text-emerald-800" },
-  amendment: { label: "Amendment", tone: "bg-sky-100 text-sky-800" },
-  nomination: { label: "Nomination", tone: "bg-indigo-100 text-indigo-800" },
-  procedural: { label: "Procedural", tone: "bg-slate-100 text-slate-600" },
+/** `tone` names a shared tone from components/ui/tones, not a Tailwind class. */
+export const VOTE_CATEGORY_META: Record<
+  VoteCategory,
+  { label: string; tone: "emerald" | "sky" | "indigo" | "slate" }
+> = {
+  policy: { label: "Policy", tone: "emerald" },
+  amendment: { label: "Amendment", tone: "sky" },
+  nomination: { label: "Nomination", tone: "indigo" },
+  procedural: { label: "Procedural", tone: "slate" },
 };

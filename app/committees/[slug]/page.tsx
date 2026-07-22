@@ -72,7 +72,7 @@ export default async function CommitteePage({
               <p>Chair: {normalizeCommitteeField(committee.chair, "Leadership has not been synced yet")}</p>
               <p>Ranking member: {normalizeCommitteeField(committee.rankingMember, "Ranking member has not been synced yet")}</p>
               <p>Upcoming hearing: {normalizeCommitteeField(committee.hearing, "No hearing scheduled")}</p>
-              <p>Contact URL: {committee.contactUrl ? <a href={committee.contactUrl} className="font-semibold text-[var(--accent)]">{committee.contactUrl}</a> : "Not available yet"}</p>
+              <p>Contact URL: {committee.contactUrl ? <a href={committee.contactUrl} className="font-semibold text-[var(--accent-2)]">{committee.contactUrl}</a> : "Not available yet"}</p>
               <p>Phone: {committee.contactPhone || "Not available yet"}</p>
               <p>Address: {committee.contactAddress || "Not available yet"}</p>
               <p>Subcommittees: {committee.subcommittees?.length ? committee.subcommittees.map((item) => item.name).join(", ") : "None stored yet"}</p>
@@ -84,7 +84,7 @@ export default async function CommitteePage({
                 <Link
                   key={member.id}
                   href={`/politicians/${member.slug}`}
-                  className="rounded-3xl border border-[var(--line)] bg-white p-5 transition hover:border-[var(--accent)]"
+                  className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-5 transition hover:border-[var(--line-2)]"
                 >
                   <p className="text-sm font-semibold text-[var(--ink)]">
                     {member.name}
@@ -107,9 +107,9 @@ export default async function CommitteePage({
               <Link
                 key={bill.id}
                 href={`/bills/${bill.id}`}
-                className="block rounded-2xl border border-[var(--line)] bg-white p-4 transition hover:border-[var(--accent)]"
+                className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4 transition hover:border-[var(--line-2)]"
               >
-                <p className="text-sm font-semibold text-[var(--accent)]">
+                <p className="text-sm font-semibold text-[var(--accent-2)]">
                   {bill.number}
                 </p>
                 <p className="mt-1 text-sm text-[var(--ink)]">{bill.title}</p>

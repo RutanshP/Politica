@@ -12,20 +12,23 @@ import { useMemo, useState } from "react";
 
 import type { FundingEdge, FundingNode } from "@/types/civic";
 
+// Lifted toward the dark ground: the previous 600-700 weight hues went nearly black on --canvas.
 const nodeColor: Record<FundingNode["type"], string> = {
-  bill: "#1d4ed8",
-  politician: "#16a34a",
-  committee: "#7c3aed",
-  donor: "#0f766e",
-  pac: "#ea580c",
-  company: "#0f766e",
-  industry: "#2563eb",
-  "lobbying-firm": "#be123c",
-  issue: "#475569",
-  vote: "#1f2937",
-  agency: "#a16207",
-  state: "#0f172a",
+  bill: "#6366f1",
+  politician: "#34d399",
+  committee: "#a78bfa",
+  donor: "#2dd4bf",
+  pac: "#fb923c",
+  company: "#22d3ee",
+  industry: "#60a5fa",
+  "lobbying-firm": "#fb7185",
+  issue: "#94a3b8",
+  vote: "#818cf8",
+  agency: "#fbbf24",
+  state: "#7dd3fc",
 };
+
+const EDGE_STROKE = "#5c6780";
 
 export function NetworkGraph({
   nodes,
@@ -120,16 +123,16 @@ export function NetworkGraph({
     data: {
       href: node.href,
       label: (
-        <div className="min-w-[140px] rounded-2xl border border-white/60 bg-white px-4 py-3 shadow-[0_20px_50px_rgba(15,23,42,0.12)]">
-          <p className="text-sm font-semibold text-[var(--ink)]">{node.label}</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">{node.detail}</p>
+        <div className="min-w-[140px] rounded-[var(--r-md)] border border-[var(--line-2)] bg-[var(--panel-2)] px-3.5 py-2.5">
+          <p className="text-[13px] font-semibold text-[var(--ink)]">{node.label}</p>
+          <p className="mt-0.5 text-xs text-[var(--muted)]">{node.detail}</p>
         </div>
       ),
     },
     style: {
-      borderRadius: 16,
-      border: `1px solid ${nodeColor[node.type]}33`,
-      background: `${nodeColor[node.type]}12`,
+      borderRadius: 12,
+      border: `1px solid ${nodeColor[node.type]}55`,
+      background: `${nodeColor[node.type]}1f`,
     },
   }));
 
@@ -138,18 +141,19 @@ export function NetworkGraph({
     source: edge.source,
     target: edge.target,
     label: edge.label,
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_STROKE },
     style: {
       strokeWidth: Math.max(2, Math.min(edge.amount / 250000, 8)),
-      stroke: "#94a3b8",
+      stroke: EDGE_STROKE,
     },
-    labelStyle: { fill: "#475569", fontSize: 11, fontWeight: 600 },
+    labelStyle: { fill: "#8b95ad", fontSize: 11, fontWeight: 600 },
+    labelBgStyle: { fill: "#111726" },
   }));
 
   const selectedEdge = normalizedEdges.find((edge) => edge.id === selectedEdgeId);
 
   return (
-    <div className="relative h-[520px] overflow-hidden rounded-[28px] border border-[var(--line)] bg-[linear-gradient(180deg,_rgba(248,250,252,0.8)_0%,_rgba(241,245,249,0.9)_100%)]">
+    <div className="relative h-[520px] overflow-hidden rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--canvas)]">
       <ReactFlow
         fitView
         nodes={flowNodes}
@@ -160,12 +164,18 @@ export function NetworkGraph({
         }}
         onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
       >
-        <MiniMap />
+        <MiniMap
+          maskColor="rgba(10,14,23,0.7)"
+          nodeColor={(node) => {
+            const style = node.style as { border?: string } | undefined;
+            return style?.border?.split(" ").at(-1) ?? "#6366f1";
+          }}
+        />
         <Controls />
-        <Background gap={24} size={1} color="#d9e1ef" />
+        <Background gap={24} size={1} color="#1b2336" />
       </ReactFlow>
       {selectedEdge ? (
-        <div className="pointer-events-none absolute bottom-4 right-4 max-w-xs rounded-2xl border border-white/70 bg-white/95 px-4 py-3 text-xs text-[var(--muted)] shadow-[0_20px_50px_rgba(15,23,42,0.18)]">
+        <div className="pointer-events-none absolute bottom-4 right-4 max-w-xs rounded-[var(--r-md)] border border-[var(--line-2)] bg-[var(--panel-2)] px-3.5 py-2.5 text-xs text-[var(--muted)]">
           <p className="font-semibold text-[var(--ink)]">Relationship detail</p>
           <p className="mt-1">
             {selectedEdge.source} - {selectedEdge.label} - {selectedEdge.target}

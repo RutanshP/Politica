@@ -7,6 +7,7 @@ import {
   Users,
 } from "lucide-react";
 
+import { StatTile } from "@/components/ui/stat-tile";
 import type { FundingGraphTotals } from "@/types/funding-graph";
 
 function formatDollars(amount: number) {
@@ -25,48 +26,42 @@ export function FundingStatTiles({ totals, cycleLabel }: { totals: FundingGraphT
       value: formatDollars(totals.totalReceipts),
       detail: cycleLabel,
       icon: CircleDollarSign,
-      color: "#16a34a",
-      soft: "#dcfce7",
+      tone: "emerald" as const,
     },
     {
       label: "Individuals",
       value: formatDollars(totals.individualContributions),
       detail: percentageOf(totals.individualContributions, totals.totalReceipts) || "—",
       icon: User,
-      color: "#2563eb",
-      soft: "#dbeafe",
+      tone: "sky" as const,
     },
     {
       label: "PACs",
       value: formatDollars(totals.pacContributions),
       detail: percentageOf(totals.pacContributions, totals.totalReceipts) || "—",
       icon: HandCoins,
-      color: "#7c3aed",
-      soft: "#ede9fe",
+      tone: "indigo" as const,
     },
     {
       label: "Small-Dollar %",
       value: `${totals.smallDollarPercentage}%`,
       detail: "<$200 contributions",
       icon: Users,
-      color: "#0d9488",
-      soft: "#ccfbf1",
+      tone: "emerald" as const,
     },
     {
       label: "Outside Support",
       value: formatDollars(totals.independentSupport),
       detail: "Independent expenditures",
       icon: TrendingUp,
-      color: "#ea580c",
-      soft: "#ffedd5",
+      tone: "amber" as const,
     },
     {
       label: "Outside Oppose",
       value: formatDollars(totals.independentOpposition),
       detail: "Independent expenditures",
       icon: TrendingDown,
-      color: "#dc2626",
-      soft: "#fee2e2",
+      tone: "rose" as const,
     },
   ];
 
@@ -75,24 +70,14 @@ export function FundingStatTiles({ totals, cycleLabel }: { totals: FundingGraphT
       {tiles.map((tile) => {
         const Icon = tile.icon;
         return (
-          <div
+          <StatTile
             key={tile.label}
-            className="rounded-[24px] border border-white/60 bg-[var(--panel)] p-4 shadow-[0_16px_44px_rgba(15,23,42,0.07)]"
-          >
-            <div className="flex items-center gap-2.5">
-              <div
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-                style={{ background: tile.soft }}
-              >
-                <Icon size={16} style={{ color: tile.color }} />
-              </div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
-                {tile.label}
-              </p>
-            </div>
-            <p className="mt-2.5 font-display text-2xl font-semibold text-[var(--ink)]">{tile.value}</p>
-            <p className="mt-0.5 text-[11px] text-[var(--muted)]">{tile.detail}</p>
-          </div>
+            label={tile.label}
+            value={tile.value}
+            footnote={tile.detail}
+            tone={tile.tone}
+            icon={<Icon />}
+          />
         );
       })}
     </div>

@@ -211,21 +211,21 @@ export function FundingNetworkExplorer({
   return (
     <div className="space-y-4">
       {graph.containsDemoData ? (
-        <div className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800">
+        <div className="flex items-center gap-2 rounded-[var(--r-md)] border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800">
           <AlertTriangle size={14} className="shrink-0" />
           Demo graph: some entities, relationships, and monetary values are illustrative placeholders.
         </div>
       ) : null}
 
       {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700">
+        <div className="rounded-[var(--r-md)] border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700">
           {error}
         </div>
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
         {/* Filters: drawer on mobile, panel on desktop */}
-        <details className="rounded-[28px] border border-white/60 bg-[var(--panel)] shadow-[0_20px_60px_rgba(15,23,42,0.08)] xl:hidden">
+        <details className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] xl:hidden">
           <summary className="flex cursor-pointer items-center gap-2 px-5 py-3 text-sm font-semibold text-[var(--ink)]">
             <Filter size={14} /> Filters
           </summary>
@@ -244,7 +244,7 @@ export function FundingNetworkExplorer({
             />
           </div>
         </details>
-        <aside className="hidden rounded-[28px] border border-white/60 bg-[var(--panel)] p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] xl:block">
+        <aside className="hidden rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] p-5 xl:block">
           <FundingFiltersPanel
             filters={filters}
             availableCycles={graph.availableFilters.cycles}
@@ -264,27 +264,27 @@ export function FundingNetworkExplorer({
           className={
             fullscreen
               ? "fixed inset-0 z-50 bg-[var(--canvas)] p-4"
-              : "relative h-[560px] overflow-hidden rounded-[28px] border border-white/60 bg-[linear-gradient(180deg,_rgba(248,250,252,0.9)_0%,_rgba(241,245,249,0.95)_100%)] shadow-[0_20px_60px_rgba(15,23,42,0.08)]"
+              : "relative h-[560px] overflow-hidden rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--canvas)]"
           }
         >
-          <div className={fullscreen ? "relative h-full overflow-hidden rounded-[28px] border border-[var(--line)] bg-white" : "h-full"}>
+          <div className={fullscreen ? "relative h-full overflow-hidden rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--canvas)]" : "h-full"}>
             <div className="absolute left-3 top-3 z-10 flex items-center gap-2">
               {localCenter ? (
                 <button
                   type="button"
                   onClick={() => setLocalCenter(undefined)}
-                  className="flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--accent)] shadow-sm"
+                  className="flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--panel-2)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-2)]"
                 >
                   <ChevronLeft size={13} /> Back to {graph.politician.name}
                 </button>
               ) : null}
               {loading ? (
-                <span className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-[var(--muted)] shadow-sm">
+                <span className="rounded-full bg-[var(--panel-2)] px-3 py-1.5 text-xs font-semibold text-[var(--muted)]">
                   Updating…
                 </span>
               ) : null}
               {graph.truncated && !localCenter ? (
-                <span className="rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-semibold text-[var(--muted)] shadow-sm">
+                <span className="rounded-full bg-[var(--panel-2)] px-3 py-1.5 text-[10px] font-semibold text-[var(--muted)]">
                   Showing top {display.nodes.length} relationships — refine filters for more
                 </span>
               ) : null}
@@ -292,7 +292,7 @@ export function FundingNetworkExplorer({
             <button
               type="button"
               onClick={() => setFullscreen((current) => !current)}
-              className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] shadow-sm"
+              className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--panel-2)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)]"
             >
               {fullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
               {fullscreen ? "Exit full screen" : "Full screen"}
@@ -302,7 +302,7 @@ export function FundingNetworkExplorer({
         </div>
 
         {/* Detail panel */}
-        <aside className="rounded-[28px] border border-white/60 bg-[var(--panel)] p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+        <aside className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] p-5">
           <FundingDetailPanel
             selectedNode={selectedNode}
             selectedEdge={selectedEdge}
@@ -318,7 +318,7 @@ export function FundingNetworkExplorer({
         </aside>
       </div>
 
-      <div className="rounded-[28px] border border-white/60 bg-[var(--panel)] shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+      <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)]">
         <FundingTabs
           nodes={display.nodes}
           edges={display.edges}

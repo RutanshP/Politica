@@ -44,7 +44,7 @@ export default async function ProfilePage() {
               <Link
                 key={href}
                 href={href}
-                className="block rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--accent)]"
+                className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] px-4 py-3 font-semibold text-[var(--accent-2)]"
               >
                 {label}
               </Link>

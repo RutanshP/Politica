@@ -65,11 +65,11 @@ export default async function BillTextPage({
             />
             <div className="grid gap-3 md:grid-cols-2">
               {versions.map((version) => (
-                <div key={version.id} className="rounded-2xl border border-[var(--line)] bg-white p-4">
+                <div key={version.id} className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
                   <p className="text-sm font-semibold text-[var(--ink)]">{version.label}</p>
                   <p className="mt-1 text-sm text-[var(--muted)]">{version.date}</p>
                   {version.sourceUrl ? (
-                    <a href={version.sourceUrl} className="mt-2 inline-block text-sm font-semibold text-[var(--accent)]">
+                    <a href={version.sourceUrl} className="mt-2 inline-block text-sm font-semibold text-[var(--accent-2)]">
                       Open official source
                     </a>
                   ) : null}
