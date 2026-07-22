@@ -1,10 +1,6 @@
-import Link from "next/link";
-
-import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
-import { FilterBar } from "@/components/filter-bar";
+import { IssuesDirectory } from "@/components/issues-directory";
 import { PageHeader } from "@/components/page-header";
-import { Pagination } from "@/components/pagination";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import {
@@ -31,30 +27,12 @@ export default async function IssuesPage() {
           />
         }
       />
-      <SectionCard title="Filters" description="Issue pages stay interconnected so every bill, politician, and committee remains clickable.">
-        <FilterBar
-          filters={[
-            { label: "Search", value: "All issues", options: ["All issues"] },
-            { label: "Activity", value: "All activity", options: ["All activity", "High activity", "New activity"] },
-            { label: "Support", value: "All support levels", options: ["All support levels", "High bipartisan support", "Mixed support"] },
-            { label: "Votes", value: "All vote counts", options: ["All vote counts"] },
-          ]}
-        />
-      </SectionCard>
-      <SectionCard title="Issue directory">
+      <SectionCard
+        title="Issue directory"
+        description="Search by name or description, and sort by active bills, recent votes, or bipartisan support. Every issue links out to its connected bills, committees, and politicians."
+      >
         {issues.length > 0 ? (
-          <DataTable
-            columns={["Issue", "Description", "Active bills", "Recent votes", "Bipartisan support"]}
-            rows={issues.map((issue) => [
-              <Link key={issue.id} href={`/issues/${issue.slug}`} className="font-semibold text-[var(--accent-2)]">
-                {issue.name}
-              </Link>,
-              issue.description,
-              issue.stats.activeBills,
-              issue.stats.recentVotes,
-              `${issue.stats.bipartisanSupport}%`,
-            ])}
-          />
+          <IssuesDirectory issues={issues} />
         ) : (
           <EmptyState
             title="No issue clusters available"
@@ -64,7 +42,6 @@ export default async function IssuesPage() {
           />
         )}
       </SectionCard>
-      <Pagination page={1} pageSize={issues.length || 1} total={issues.length} />
     </div>
   );
 }

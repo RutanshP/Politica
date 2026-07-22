@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { EmptyState } from "@/components/empty-state";
-import { FilterBar } from "@/components/filter-bar";
 import { PageHeader } from "@/components/page-header";
 import { PoliticianTabs } from "@/components/politician-tabs";
 import { SectionCard } from "@/components/section-card";
@@ -18,10 +17,25 @@ import {
   isLiveVoteSource,
 } from "@/lib/data/votes";
 import { hasVotePerformanceStats } from "@/lib/utils";
-import { VoteTypeBadge } from "@/components/vote-type-badge";
 import { isSubstantiveVote } from "@/lib/vote-classification";
 
 export const revalidate = 21600;
+
+/** The member's own position on the roll call, colored green Yea / red Nay. */
+function positionStyle(vote: string | undefined) {
+  if (vote === "Yea") return { label: "Voted Yea", ink: "var(--success)", soft: "var(--success-soft)" };
+  if (vote === "Nay") return { label: "Voted Nay", ink: "var(--danger)", soft: "var(--danger-soft)" };
+  if (vote === "Present") return { label: "Present", ink: "var(--warning)", soft: "var(--warning-soft)" };
+  if (vote === "Not Voting") return { label: "Did not vote", ink: "var(--muted)", soft: "var(--line)" };
+  return { label: "Vote unavailable", ink: "var(--muted)", soft: "var(--line)" };
+}
+
+/** Whether the measure itself passed, so the outcome reads at a glance. */
+function resultStyle(result: string) {
+  if (/passed|agreed|confirm/i.test(result)) return { label: result, ink: "var(--success)", soft: "var(--success-soft)" };
+  if (/fail|reject|defeat/i.test(result)) return { label: result, ink: "var(--danger)", soft: "var(--danger-soft)" };
+  return { label: result, ink: "var(--muted)", soft: "var(--line)" };
+}
 
 export default async function PoliticianVotesPage({
   params,
@@ -34,7 +48,6 @@ export default async function PoliticianVotesPage({
   const { votes, source: voteSource } = await getVotesDataForPolitician(politician.id);
   const substantiveVotes = votes.filter((vote) => isSubstantiveVote(vote.category ?? "policy"));
   const proceduralCount = votes.length - substantiveVotes.length;
-  const issueOptions = [...new Set(substantiveVotes.map((vote) => vote.title).slice(0, 6))];
   const hasVoteStats = hasVotePerformanceStats(politician.stats);
 
   return (
@@ -51,16 +64,6 @@ export default async function PoliticianVotesPage({
         }
       />
       <PoliticianTabs slug={politician.slug} active="votes" />
-      <SectionCard title="Vote filters">
-        <FilterBar
-          filters={[
-            { label: "Party", value: politician.party, options: [politician.party] },
-            { label: "State", value: politician.state, options: [politician.state] },
-            { label: "Chamber", value: politician.title.includes("Senator") ? "Senate" : "House", options: [politician.title.includes("Senator") ? "Senate" : "House"] },
-            { label: "Issue", value: "All issues", options: ["All issues", ...issueOptions] },
-          ]}
-        />
-      </SectionCard>
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard title="Voting profile">
           <div className="grid gap-4 md:grid-cols-3">
@@ -86,22 +89,39 @@ export default async function PoliticianVotesPage({
         >
           {substantiveVotes.length > 0 ? (
             <div className="space-y-3">
-              {substantiveVotes.slice(0, 8).map((vote) => (
-                <Link
-                  key={vote.id}
-                  href={vote.billId ? `/bills/${vote.billId}/votes` : `/politicians/${politician.slug}/votes`}
-                  className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4 transition hover:border-[var(--line-2)]"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold text-[var(--accent-2)]">{vote.billNumber}</p>
-                    <VoteTypeBadge category={vote.category} />
-                  </div>
-                  <p className="mt-1 text-sm text-[var(--ink)]">{vote.title}</p>
-                  <p className="mt-1 text-sm text-[var(--muted)]">
-                    {vote.positions[0]?.vote || "Vote unavailable"} | {vote.result} | {vote.dateLabel}
-                  </p>
-                </Link>
-              ))}
+              {substantiveVotes.slice(0, 8).map((vote) => {
+                const memberVote = vote.positions[0]?.vote;
+                const position = positionStyle(memberVote);
+                const outcome = resultStyle(vote.result);
+                return (
+                  <Link
+                    key={vote.id}
+                    href={vote.billId ? `/bills/${vote.billId}/votes` : `/politicians/${politician.slug}/votes`}
+                    className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4 transition hover:border-[var(--line-2)]"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-[var(--accent-2)]">{vote.billNumber}</p>
+                      <span
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
+                        style={{ background: position.soft, color: position.ink }}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: position.ink }} />
+                        {position.label}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-[var(--ink)]">{vote.title}</p>
+                    <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
+                      <span
+                        className="inline-flex items-center rounded-full px-2 py-0.5 font-semibold"
+                        style={{ background: outcome.soft, color: outcome.ink }}
+                      >
+                        {outcome.label}
+                      </span>
+                      <span>{vote.dateLabel}</span>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           ) : (
             <EmptyState

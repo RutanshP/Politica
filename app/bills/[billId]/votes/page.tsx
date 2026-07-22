@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ChartCard } from "@/components/chart-card";
-import { DataTable } from "@/components/data-table";
-import { FilterBar } from "@/components/filter-bar";
+import { MemberVoteTable } from "@/components/member-vote-table";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
@@ -138,38 +137,9 @@ export default async function BillVotesPage({
           </section>
           <SectionCard
             title="Member vote table"
-            description="Stored member-by-member vote positions for the selected bill."
+            description={`Stored member-by-member vote positions for the selected ${vote.chamber} vote. Filter by party, state, or position; click a column to sort.`}
           >
-            <div className="mb-5">
-              <FilterBar
-                filters={[
-                  { label: "Party", value: "All parties", options: ["All parties", "Democratic", "Republican", "Independent"] },
-                  { label: "State", value: "All states", options: ["All states"] },
-                  { label: "Vote", value: "All vote positions", options: ["All vote positions", "Yea", "Nay", "Present", "Not Voting"] },
-                  { label: "Chamber", value: vote.chamber, options: [vote.chamber] },
-                ]}
-              />
-            </div>
-            <DataTable
-              columns={["Member", "Party", "State", "Vote"]}
-              rows={vote.positions.map((position) => [
-                position.name,
-                position.party,
-                position.state,
-                <span
-                  key={`${position.name}-${position.vote}`}
-                  className={`font-semibold ${
-                    position.vote === "Yea"
-                      ? "text-emerald-700"
-                      : position.vote === "Nay"
-                        ? "text-rose-700"
-                        : "text-amber-700"
-                  }`}
-                >
-                  {position.vote}
-                </span>,
-              ])}
-            />
+            <MemberVoteTable positions={vote.positions} />
           </SectionCard>
         </>
       ) : (
