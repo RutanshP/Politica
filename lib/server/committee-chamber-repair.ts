@@ -1,7 +1,7 @@
 import "server-only";
 
 import { fetchOpenStatesChamberOrgIds, isOpenStatesConfigured } from "@/lib/adapters/openstates";
-import { fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
+import { fetchSupabaseRows, updateSupabaseRows } from "@/lib/supabase/rest";
 import { normalizeChamber } from "@/lib/utils";
 import type { CommitteeRow } from "@/types/supabase";
 
@@ -62,8 +62,13 @@ export async function repairStateCommitteeChambers(options?: {
     map.forEach((chamber, parentId) => chamberByParentId.set(parentId, chamber));
   }
 
-  const updates: Array<Pick<CommitteeRow, "id" | "chamber">> = [];
-  const byChamber: Record<string, number> = {};
+  /*
+   * Grouped by chamber and applied with PATCH, not upsert. An upsert of {id, chamber} is a row
+   * insert as far as PostgREST is concerned: any id that does not already match writes a new row
+   * with every other column null, which fails on `slug NOT NULL` and would otherwise have created
+   * junk committees.
+   */
+  const idsByChamber = new Map<string, string[]>();
 
   for (const row of candidates) {
     const parentId = (row.raw_committee as { parent_id?: string } | null)?.parent_id;
@@ -73,19 +78,28 @@ export async function repairStateCommitteeChambers(options?: {
     const chamber = normalizeChamber(resolved);
     if (!chamber) continue;
 
-    updates.push({ id: row.id, chamber });
-    byChamber[chamber] = (byChamber[chamber] || 0) + 1;
+    idsByChamber.set(chamber, [...(idsByChamber.get(chamber) || []), row.id]);
   }
 
-  if (updates.length > 0) {
-    await upsertSupabaseRowsInChunks("committees", updates, "id", 200);
+  const byChamber: Record<string, number> = {};
+  let updated = 0;
+
+  for (const [chamber, ids] of idsByChamber) {
+    byChamber[chamber] = ids.length;
+    updated += ids.length;
+
+    for (let index = 0; index < ids.length; index += 100) {
+      const chunk = ids.slice(index, index + 100);
+      const filter = chunk.map((id) => `"${id.replace(/"/g, '\\"')}"`).join(",");
+      await updateSupabaseRows("committees", `id=in.(${filter})`, { chamber });
+    }
   }
 
   return {
     states,
     examined: candidates.length,
-    resolved: updates.length,
-    unresolved: candidates.length - updates.length,
+    resolved: updated,
+    unresolved: candidates.length - updated,
     byChamber,
     at: new Date().toISOString(),
   };
