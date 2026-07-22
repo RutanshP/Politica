@@ -189,7 +189,8 @@ function buildStateVoteRows(
       source_system: "openstates",
       source_id: vote.id || voteId,
       synced_at: new Date().toISOString(),
-      raw_payload: vote,
+      // Not stored; see legislation-sync. The roll call is extracted into vote_positions.
+      raw_payload: null,
     },
     positionRows: (vote.votes ?? []).map((position) => ({
       vote_id: voteId,

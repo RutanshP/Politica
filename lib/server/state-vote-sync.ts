@@ -240,7 +240,8 @@ export async function syncStateVotesFromOpenStates(options: { state: string; dry
         source_system: "openstates",
         source_id: voteId,
         synced_at: now,
-        raw_payload: vote,
+        // Not stored; see legislation-sync. The roll call is extracted into vote_positions.
+        raw_payload: null,
       });
 
       positionRows.push(...matched);

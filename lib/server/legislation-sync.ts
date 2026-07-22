@@ -1241,7 +1241,12 @@ function buildFederalVoteRows(
       source_system: vote.sourceSystem,
       source_id: vote.sourceId,
       synced_at: new Date().toISOString(),
-      raw_payload: vote.rawPayload,
+      /*
+       * Not stored. These source documents were 26MB across the votes table -- 12KB per House
+       * roll call -- and nothing reads them: every field of substance is already extracted into
+       * columns and into vote_positions. source_system/source_id still identify the origin.
+       */
+      raw_payload: null,
       // This builder only ever handles the House Clerk and Senate LIS feeds.
       jurisdiction_type: "federal",
       state_code: null,
