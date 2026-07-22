@@ -47,15 +47,15 @@ import { replaceStoredCommitteeMemberships, upsertStoredCommittees } from "@/lib
 import { deleteSupabaseRows, fetchSupabaseRows } from "@/lib/supabase/rest";
 import {
   appendStoredVotes,
+  fetchPoliticianVoteStatCounters,
   listStoredFederalVoteHeadersPage,
   listStoredVoteHeaders,
   listStoredVoteHeadersByBillIds,
   listStoredVotePositionsByVoteIds,
-  listStoredVotePositionContextByPoliticianIds,
   replaceStoredVotes,
 } from "@/lib/supabase/votes";
 import { applyBillSponsorStatDeltas, buildBillSponsorStatDeltas } from "@/lib/server/politician-stat-deltas";
-import { applyVotePositionDeltaToPoliticians, buildUpdatedPoliticianRowsFromVotePositions, hasStoredVoteStatCounters } from "@/lib/server/vote-stats";
+import { applyVoteStatCountersToPoliticians, toVoteStatCounterMap } from "@/lib/server/vote-stats";
 import { buildSourceFingerprint, classifyFreshness, normalizeSourceUpdatedAt } from "@/lib/server/sync-freshness";
 import { normalizePersonLookup, slugifySegment } from "@/lib/utils";
 import type { Bill, Committee } from "@/types/civic";
@@ -1141,30 +1141,19 @@ async function refreshStoredFederalVotes(options?: {
       voteBaseRowById.set(row.id, row);
     });
 
-    const voteAffectedRows = voteAffectedPoliticianIds
-      .map((politicianId) => voteBaseRowById.get(politicianId))
-      .filter((row): row is PoliticianRow => Boolean(row));
-    const rowsMissingVoteCounters = voteAffectedRows.filter((row) => !hasStoredVoteStatCounters(row.stats));
-
-    if (rowsMissingVoteCounters.length > 0) {
-      const existingVoteContextRows = await listStoredVotePositionContextByPoliticianIds(
-        rowsMissingVoteCounters.map((row) => row.id),
-      ).catch(() => []);
-      const backfilledRows = buildUpdatedPoliticianRowsFromVotePositions(
-        rowsMissingVoteCounters,
-        existingVoteContextRows,
-      );
-
-      backfilledRows.forEach((row) => {
-        voteBaseRowById.set(row.id, row);
-      });
-    }
-
-    const updatedPoliticianRows = applyVotePositionDeltaToPoliticians(
+    /*
+     * Counters are recomputed from stored positions rather than incremented by this batch. The
+     * positions were just written above, so the RPC sees them; a member whose roll calls were
+     * re-ingested lands on the same numbers instead of double counting. This also subsumes the
+     * old "backfill members missing counters" step -- everyone affected is recomputed.
+     */
+    const updatedPoliticianRows = applyVoteStatCountersToPoliticians(
       voteAffectedPoliticianIds
         .map((politicianId) => voteBaseRowById.get(politicianId))
         .filter((row): row is PoliticianRow => Boolean(row)),
-      voteBundle.positionRows,
+      toVoteStatCounterMap(
+        await fetchPoliticianVoteStatCounters(voteAffectedPoliticianIds).catch(() => []),
+      ),
     );
 
     if (updatedPoliticianRows.length > 0) {
@@ -1241,6 +1230,9 @@ function buildFederalVoteRows(
       source_id: vote.sourceId,
       synced_at: new Date().toISOString(),
       raw_payload: vote.rawPayload,
+      // This builder only ever handles the House Clerk and Senate LIS feeds.
+      jurisdiction_type: "federal",
+      state_code: null,
     });
 
     vote.positions.forEach((position) => {
@@ -1916,30 +1908,14 @@ export async function syncLegislationFromCongress(options?: {
             voteBaseRowById.set(row.id, row);
           });
 
-          const voteAffectedRows = voteAffectedPoliticianIds
-            .map((politicianId) => voteBaseRowById.get(politicianId))
-            .filter((row): row is PoliticianRow => Boolean(row));
-          const rowsMissingVoteCounters = voteAffectedRows.filter((row) => !hasStoredVoteStatCounters(row.stats));
-
-          if (rowsMissingVoteCounters.length > 0) {
-            const existingVoteContextRows = await listStoredVotePositionContextByPoliticianIds(
-              rowsMissingVoteCounters.map((row) => row.id),
-            ).catch(() => []);
-            const backfilledRows = buildUpdatedPoliticianRowsFromVotePositions(
-              rowsMissingVoteCounters,
-              existingVoteContextRows,
-            );
-
-            backfilledRows.forEach((row) => {
-              voteBaseRowById.set(row.id, row);
-            });
-          }
-
-          updatedPoliticianRows = applyVotePositionDeltaToPoliticians(
+          // See the full-sync path above: assigned from stored positions, never accumulated.
+          updatedPoliticianRows = applyVoteStatCountersToPoliticians(
             voteAffectedPoliticianIds
               .map((politicianId) => voteBaseRowById.get(politicianId))
               .filter((row): row is PoliticianRow => Boolean(row)),
-            positionRows,
+            toVoteStatCounterMap(
+              await fetchPoliticianVoteStatCounters(voteAffectedPoliticianIds).catch(() => []),
+            ),
           );
         }
       } catch (error) {

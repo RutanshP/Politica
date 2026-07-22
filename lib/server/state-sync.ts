@@ -17,11 +17,11 @@ import {
 } from "@/lib/supabase/bills";
 import { replaceStoredCommitteeMemberships } from "@/lib/supabase/committees";
 import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
-import { appendStoredVotes, listStoredVoteHeaders, listStoredVotePositionContextByPoliticianIds } from "@/lib/supabase/votes";
+import { appendStoredVotes, fetchPoliticianVoteStatCounters, listStoredVoteHeaders } from "@/lib/supabase/votes";
 import { applyBillSponsorStatDeltas, buildBillSponsorStatDeltas } from "@/lib/server/politician-stat-deltas";
-import { applyVotePositionDeltaToPoliticians, buildUpdatedPoliticianRowsFromVotePositions, hasStoredVoteStatCounters } from "@/lib/server/vote-stats";
+import { applyVoteStatCountersToPoliticians, toVoteStatCounterMap } from "@/lib/server/vote-stats";
 import { buildSourceFingerprint, classifyFreshness, normalizeSourceUpdatedAt } from "@/lib/server/sync-freshness";
-import { normalizeOfficeTitle, normalizePersonLookup, normalizeStateLabel, slugifySegment } from "@/lib/utils";
+import { normalizeChamber, normalizeOfficeTitle, normalizePersonLookup, normalizeStateLabel, slugifySegment } from "@/lib/utils";
 import type {
   BillActionRow,
   BillRow,
@@ -173,7 +173,11 @@ function buildStateVoteRows(
       canonical_id: vote.id || null,
       bill_number: vote.bill?.identifier || "State Bill",
       title: vote.motion_text || "State vote",
-      chamber: vote.organization?.classification || "State Legislature",
+      // Kept in step with state-vote-sync: this writer stored the raw upper/lower classification
+      // while the other mapped it, so the same table held two chamber vocabularies.
+      chamber: normalizeChamber(vote.organization?.classification) || "State Legislature",
+      jurisdiction_type: "state",
+      state_code: state.toUpperCase(),
       date_label: displayDate(vote.start_date || vote.updated_at),
       result: vote.result || "Unknown",
       yea,
@@ -697,27 +701,16 @@ export async function syncStateLegislationFromOpenStates(
   [...politicianMap.values()].forEach((row) => {
     politicianRowsById.set(row.id, row);
   });
-  const basePoliticianRows = [...politicianRowsById.values()];
-  const rowsMissingVoteCounters = basePoliticianRows
-    .filter((row) => affectedPoliticianIdsFromVotes.includes(row.id))
-    .filter((row) => !hasStoredVoteStatCounters(row.stats));
-  if (rowsMissingVoteCounters.length > 0) {
-    const existingVoteContextRows = await listStoredVotePositionContextByPoliticianIds(
-      rowsMissingVoteCounters.map((row) => row.id),
-    ).catch(() => []);
-    const backfilledRows = buildUpdatedPoliticianRowsFromVotePositions(
-      rowsMissingVoteCounters,
-      existingVoteContextRows,
-    );
-    backfilledRows.forEach((row) => {
-      politicianRowsById.set(row.id, row);
-    });
-  }
-  const voteUpdatedRows = applyVotePositionDeltaToPoliticians(
+  // The recompute below covers every affected member, so a separate "missing counters" backfill
+  // pass -- which pulled each member's full position history into the app -- is no longer needed.
+  // Assigned from stored positions rather than incremented; see applyVoteStatCountersToPoliticians.
+  const voteUpdatedRows = applyVoteStatCountersToPoliticians(
     affectedPoliticianIdsFromVotes
       .map((politicianId) => politicianRowsById.get(politicianId))
       .filter((row): row is PoliticianRow => Boolean(row)),
-    uniqueVotePositionRows,
+    toVoteStatCounterMap(
+      await fetchPoliticianVoteStatCounters(affectedPoliticianIdsFromVotes).catch(() => []),
+    ),
   );
   voteUpdatedRows.forEach((row) => {
     politicianRowsById.set(row.id, row);

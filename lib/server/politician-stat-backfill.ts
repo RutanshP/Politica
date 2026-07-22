@@ -161,3 +161,34 @@ export async function backfillMissingPoliticianVoteStatCounters(options?: {
     at: new Date().toISOString(),
   };
 }
+
+export interface VoteStatReconcileResult {
+  examined: number;
+  corrected: number;
+  at: string;
+}
+
+/**
+ * Recomputes every stored vote-stat counter from `vote_positions` and rewrites the ones that
+ * disagree.
+ *
+ * Distinct from backfillMissingPoliticianVoteStatCounters, which only ever looked at members with
+ * *no* counters. Counters that existed but had drifted were invisible to it -- which is how 498
+ * of 550 federal members ended up with a wrong attendance denominator and stayed that way.
+ *
+ * Runs entirely in Postgres and is idempotent, so it is safe on a schedule.
+ */
+export async function reconcilePoliticianVoteStats(): Promise<VoteStatReconcileResult> {
+  const rows = await invokeSupabaseRpc<Array<{ examined: number; corrected: number }>>(
+    "reconcile_politician_vote_stats",
+    {},
+    { cache: "no-store" },
+  );
+
+  const first = rows?.[0];
+  return {
+    examined: Number(first?.examined) || 0,
+    corrected: Number(first?.corrected) || 0,
+    at: new Date().toISOString(),
+  };
+}

@@ -4,8 +4,9 @@ const assert = require("node:assert/strict");
 const jiti = require("../support/jiti.cjs");
 
 const {
-  applyVotePositionDeltaToPoliticians,
+  applyVoteStatCountersToPoliticians,
   buildUpdatedPoliticianRowsFromVotePositions,
+  toVoteStatCounterMap,
 } = jiti("@/lib/server/vote-stats");
 const {
   applyBillSponsorStatDeltas,
@@ -67,59 +68,83 @@ test("buildUpdatedPoliticianRowsFromVotePositions recomputes attendance and part
   assert.equal(rows[0].stats.againstPartyCount, 0);
 });
 
-test("applyVotePositionDeltaToPoliticians appends new vote counters without replaying history", () => {
-  const rows = applyVotePositionDeltaToPoliticians(
-    [{
-      id: "member-1",
-      slug: "member-1",
-      name: "Ada Lovelace",
-      title: "US Representative",
-      party: "Democratic",
-      state: "CA",
-      district: "CA-12",
-      biography: "",
-      born: "",
-      education: "",
-      occupation: "",
-      website: "",
-      office_phone: "",
-      office_address: "",
-      next_election: "",
-      stats: {
-        votesWithParty: 80,
-        votesAgainstParty: 20,
-        attendance: 90,
-        billsIntroduced: 0,
-        billsPassed: 0,
-        amendmentsOffered: 0,
-        totalVotes: 10,
-        castVotes: 9,
-        withPartyCount: 4,
-        againstPartyCount: 1,
-      },
-      ideology: {},
-      source: "congress_sync",
-      source_system: "congress",
-      source_id: "member-1",
-      jurisdiction_type: "federal",
-      state_code: "CA",
-      session_id: null,
-      synced_at: "2026-07-10T00:00:00.000Z",
-      raw_member: {},
-    }],
-    [
-      { vote_id: "vote-3", politician_id: "member-1", name: "Ada Lovelace", party: "D", state: "CA", vote: "Nay", source_system: "congress", source_id: "5", synced_at: "2026-07-10T00:00:00.000Z", raw_payload: {} },
-      { vote_id: "vote-3", politician_id: "member-2", name: "Bob", party: "D", state: "CA", vote: "Yea", source_system: "congress", source_id: "6", synced_at: "2026-07-10T00:00:00.000Z", raw_payload: {} },
-    ],
-  );
+test("applyVoteStatCountersToPoliticians assigns counters instead of accumulating them", () => {
+  const storedRow = {
+    id: "member-1",
+    slug: "member-1",
+    name: "Ada Lovelace",
+    title: "US Representative",
+    party: "Democratic",
+    state: "CA",
+    district: "CA-12",
+    biography: "",
+    born: "",
+    education: "",
+    occupation: "",
+    website: "",
+    office_phone: "",
+    office_address: "",
+    next_election: "",
+    stats: {
+      votesWithParty: 80,
+      votesAgainstParty: 20,
+      attendance: 90,
+      billsIntroduced: 0,
+      billsPassed: 0,
+      amendmentsOffered: 0,
+      // Deliberately wrong -- the shape counters drifted into while they were incremented.
+      totalVotes: 10,
+      castVotes: 9,
+      withPartyCount: 4,
+      againstPartyCount: 1,
+    },
+    ideology: {},
+    source: "congress_sync",
+    source_system: "congress",
+    source_id: "member-1",
+    jurisdiction_type: "federal",
+    state_code: "CA",
+    session_id: null,
+    synced_at: "2026-07-10T00:00:00.000Z",
+    raw_member: {},
+  };
+
+  const counters = toVoteStatCounterMap([
+    {
+      politician_id: "member-1",
+      total_votes: 11,
+      cast_votes: 10,
+      with_party_count: 8,
+      against_party_count: 2,
+    },
+  ]);
+
+  const rows = applyVoteStatCountersToPoliticians([storedRow], counters);
 
   assert.equal(rows[0].stats.totalVotes, 11);
   assert.equal(rows[0].stats.castVotes, 10);
-  assert.equal(rows[0].stats.withPartyCount, 4);
-  assert.equal(rows[0].stats.againstPartyCount, 1);
+  assert.equal(rows[0].stats.withPartyCount, 8);
+  assert.equal(rows[0].stats.againstPartyCount, 2);
   assert.equal(rows[0].stats.attendance, 91);
   assert.equal(rows[0].stats.votesWithParty, 80);
   assert.equal(rows[0].stats.votesAgainstParty, 20);
+
+  // Applying the same counters again must be a no-op. The previous delta-based path added them
+  // each time, so a re-ingested roll call was counted twice and the denominator drifted upward.
+  const reapplied = applyVoteStatCountersToPoliticians(rows, counters);
+  assert.equal(reapplied[0].stats.totalVotes, 11);
+  assert.equal(reapplied[0].stats.castVotes, 10);
+  assert.equal(reapplied[0].stats.attendance, 91);
+});
+
+test("applyVoteStatCountersToPoliticians leaves members absent from the counters untouched", () => {
+  const rows = applyVoteStatCountersToPoliticians(
+    [{ id: "member-9", stats: { attendance: 77, totalVotes: 3 } }],
+    toVoteStatCounterMap([]),
+  );
+
+  assert.equal(rows[0].stats.attendance, 77);
+  assert.equal(rows[0].stats.totalVotes, 3);
 });
 
 test("buildBillSponsorStatDeltas updates sponsor counts only for changed bills", () => {

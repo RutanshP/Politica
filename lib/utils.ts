@@ -315,16 +315,29 @@ export const COMMITTEE_CHAMBER_UNSPECIFIED = "Unspecified";
  * house (called the Assembly or House of Delegates in some states), so they fold together with
  * no loss of meaning.
  *
- * The one value that does not fold is the literal "committee": OpenStates emits it when a
- * committee hangs off a parent chamber organization we do not store, so its chamber genuinely is
- * not known. That becomes "Unspecified" rather than being guessed into a chamber.
+ * Returns null when the value carries no chamber information, so callers can pick their own
+ * fallback: a committee's chamber can legitimately be unknown, a roll call's cannot.
+ *
+ * This never distinguishes federal from state -- that is what `jurisdiction_type` is for. Before
+ * that column existed, state roll calls were relabelled into the federal words and became
+ * indistinguishable from them.
  */
-export function normalizeCommitteeChamber(value?: string | null) {
+export function normalizeChamber(value?: string | null): "Senate" | "House" | "Joint" | null {
   const normalized = (value || "").trim().toLowerCase();
 
   if (normalized === "upper" || normalized === "senate") return "Senate";
   if (normalized === "lower" || normalized === "house" || normalized === "assembly") return "House";
   if (normalized === "joint") return "Joint";
+  return null;
+}
+
+export function normalizeCommitteeChamber(value?: string | null) {
+  const normalized = (value || "").trim().toLowerCase();
+  const chamber = normalizeChamber(value);
+  if (chamber) return chamber;
+
+  // "committee" is what OpenStates emits when a committee hangs off a parent chamber org we do
+  // not store, so its chamber genuinely is unknown rather than guessable.
   if (!normalized || normalized === "committee" || normalized === "legislature") {
     return COMMITTEE_CHAMBER_UNSPECIFIED;
   }

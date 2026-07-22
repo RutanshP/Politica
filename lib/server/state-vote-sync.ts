@@ -3,7 +3,7 @@ import { appendStoredVotes } from "@/lib/supabase/votes";
 import { fetchSupabaseRows } from "@/lib/supabase/rest";
 import { upsertStoredPoliticians } from "@/lib/supabase/politicians";
 import { buildUpdatedPoliticianRowsFromVotePositions } from "@/lib/server/vote-stats";
-import { normalizePersonLookup } from "@/lib/utils";
+import { normalizeChamber, normalizePersonLookup } from "@/lib/utils";
 import type { OpenStatesBill, OpenStatesVote } from "@/types/openstates";
 import type { PoliticianRow, VotePositionRow, VoteRow } from "@/types/supabase";
 
@@ -223,7 +223,15 @@ export async function syncStateVotesFromOpenStates(options: { state: string; dry
         canonical_id: voteId,
         bill_number: bill.identifier || "State Bill",
         title: vote.motion_text || "State vote",
-        chamber: chamber === "upper" ? "Senate" : chamber === "lower" ? "House" : "State Legislature",
+        /*
+         * Normalized to the same Senate/House vocabulary as everything else. That is only safe
+         * because jurisdiction_type and state_code travel with it -- this line used to produce a
+         * bare "Senate" that no read path could tell apart from a US Senate roll call, and the
+         * California State Senate alone outnumbered the real one two to one.
+         */
+        chamber: normalizeChamber(chamber) || "State Legislature",
+        jurisdiction_type: "state",
+        state_code: state.toUpperCase(),
         date_label: displayDate(vote.start_date),
         result: vote.result || "Unknown",
         yea: count("yes"),

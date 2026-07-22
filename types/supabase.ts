@@ -184,6 +184,10 @@ export interface VoteRow {
   source_id: string;
   synced_at: string;
   raw_payload: unknown;
+  /** "federal" | "state". Without it, a state roll call is indistinguishable from a federal one. */
+  jurisdiction_type?: string | null;
+  /** Two-letter code for state roll calls; null for federal. */
+  state_code?: string | null;
 }
 
 export interface VotePositionRow {

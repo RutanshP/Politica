@@ -1,5 +1,11 @@
 import { classifyVote } from "@/lib/vote-classification";
-import { deleteSupabaseRows, fetchSupabasePage, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
+import {
+  deleteSupabaseRows,
+  fetchSupabasePage,
+  fetchSupabaseRows,
+  invokeSupabaseRpc,
+  upsertSupabaseRowsInChunks,
+} from "@/lib/supabase/rest";
 import { VOTES_CACHE_TAG } from "@/lib/supabase/cache-tags";
 import type { VotePosition, Vote } from "@/types/civic";
 import type { VotePositionRow, VoteRow } from "@/types/supabase";
@@ -338,4 +344,31 @@ export async function appendStoredVotes(voteRows: VoteRow[], positionRows: VoteP
   }
 
   return storedVotes;
+}
+
+export interface PoliticianVoteStatCounterRow {
+  politician_id: string;
+  total_votes: number;
+  cast_votes: number;
+  with_party_count: number;
+  against_party_count: number;
+}
+
+/**
+ * Recomputes vote-stat counters from `vote_positions`, aggregating in Postgres so only the
+ * per-member totals cross the wire rather than 358k position rows.
+ *
+ * Pass the affected ids after a sync; omit them to recompute everything (the reconcile job).
+ * Always `no-store` -- this runs right after a write and must not read a cached pre-write result.
+ */
+export async function fetchPoliticianVoteStatCounters(politicianIds?: string[]) {
+  if (politicianIds && politicianIds.length === 0) {
+    return [] as PoliticianVoteStatCounterRow[];
+  }
+
+  return invokeSupabaseRpc<PoliticianVoteStatCounterRow[]>(
+    "politician_vote_stat_counters",
+    { p_politician_ids: politicianIds ?? null },
+    { cache: "no-store" },
+  );
 }

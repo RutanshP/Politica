@@ -161,15 +161,26 @@ export function buildUpdatedPoliticianRowsFromVotePositions(
     });
 }
 
-export function applyVotePositionDeltaToPoliticians(
+/**
+ * Sets vote-stat counters from authoritative per-member totals.
+ *
+ * This replaces an earlier `applyVotePositionDeltaToPoliticians`, which added each sync's batch
+ * to the stored values. Because `vote_positions` upserts idempotently but the counters did not,
+ * re-ingesting a roll call counted it twice, and the counters drifted permanently away from the
+ * table they were meant to summarize -- only 52 of 550 federal members still agreed with it.
+ *
+ * Counters are now computed in Postgres (politician_vote_stat_counters) and assigned, never
+ * accumulated, so a repeated sync is a no-op instead of a double count.
+ */
+export function applyVoteStatCountersToPoliticians(
   politicianRows: PoliticianRow[],
-  newPositionRows: VoteStatPositionRow[],
+  countersByPoliticianId: Map<string, VoteStatCounters>,
 ) {
-  const deltaByPoliticianId = buildVoteStatAccumulator(newPositionRows);
+  const timestamp = new Date().toISOString();
 
   return politicianRows.map((row) => {
-    const delta = deltaByPoliticianId.get(row.id);
-    if (!delta) {
+    const counters = countersByPoliticianId.get(row.id);
+    if (!counters) {
       return row;
     }
 
@@ -181,19 +192,35 @@ export function applyVotePositionDeltaToPoliticians(
       billsPassed: 0,
       amendmentsOffered: 0,
     };
-    const currentCounters = readVoteStatCounters(currentStats);
-    const nextCounters = {
-      totalVotes: currentCounters.totalVotes + delta.totalVotes,
-      castVotes: currentCounters.castVotes + delta.castVotes,
-      withPartyCount: currentCounters.withPartyCount + delta.withPartyCount,
-      againstPartyCount: currentCounters.againstPartyCount + delta.againstPartyCount,
-    };
 
     return {
       ...row,
-      stats: mergeVoteStatCounters(currentStats, nextCounters),
-      last_stats_recomputed_at: new Date().toISOString(),
-      synced_at: new Date().toISOString(),
+      stats: mergeVoteStatCounters(currentStats, counters),
+      last_stats_recomputed_at: timestamp,
+      synced_at: timestamp,
     };
   });
+}
+
+/** Adapts the RPC's snake_case rows into the counter shape used throughout the sync code. */
+export function toVoteStatCounterMap(
+  rows: Array<{
+    politician_id: string;
+    total_votes: number;
+    cast_votes: number;
+    with_party_count: number;
+    against_party_count: number;
+  }>,
+) {
+  return new Map<string, VoteStatCounters>(
+    rows.map((row) => [
+      row.politician_id,
+      {
+        totalVotes: Number(row.total_votes) || 0,
+        castVotes: Number(row.cast_votes) || 0,
+        withPartyCount: Number(row.with_party_count) || 0,
+        againstPartyCount: Number(row.against_party_count) || 0,
+      },
+    ]),
+  );
 }
