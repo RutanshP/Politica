@@ -3,6 +3,7 @@ import type { BillActionRow, BillRow, BillVersionRow, CommitteeRow } from "@/typ
 import {
   formatInlineText,
   formatSummaryText,
+  normalizeCommitteeChamber,
   normalizeStateLabel,
   slugifySegment,
 } from "@/lib/utils";
@@ -193,11 +194,18 @@ export function mapCommitteeToRow(committee: Committee, rawCommittee: unknown): 
 }
 
 export function mapRowToCommittee(row: CommitteeRow): Committee {
+  const rawChamber = (row.chamber || "").trim().toLowerCase();
+
   return {
     id: row.id,
     slug: row.slug,
     name: row.name,
-    chamber: row.chamber,
+    chamber: normalizeCommitteeChamber(row.chamber),
+    state: row.state_code || undefined,
+    // OpenStates files a state's own chamber orgs in this table; "upper"/"lower" only ever
+    // appears on those, never on an actual committee.
+    isChamberRecord: row.jurisdiction_type === "state"
+      && (rawChamber === "upper" || rawChamber === "lower"),
     jurisdiction: row.jurisdiction,
     chair: row.chair,
     rankingMember: row.ranking_member,

@@ -165,7 +165,17 @@ export interface Committee {
   id: string;
   slug: string;
   name: string;
+  /** Normalized to Senate / House / Joint / Unspecified. See normalizeCommitteeChamber. */
   chamber: string;
+  /** Two-letter code for state committees; absent for federal. */
+  state?: string;
+  /**
+   * True for OpenStates records that are a legislature chamber rather than a committee (a state's
+   * "Assembly" or "Senate" itself). They arrive in the committees table and 75 state bills point
+   * at them as their committee, so they are kept and reachable -- just excluded from directory
+   * listings, where "Assembly" is not a committee anyone is browsing for.
+   */
+  isChamberRecord?: boolean;
   jurisdiction: string;
   chair: string;
   rankingMember: string;

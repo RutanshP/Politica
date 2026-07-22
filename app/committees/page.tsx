@@ -1,7 +1,6 @@
 import { CommitteesDirectory } from "@/components/committees-directory";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import {
   getCommitteeSourceLabel,
@@ -15,11 +14,10 @@ export default async function CommitteesPage() {
   const { committees, source } = await getCommitteesData();
 
   return (
-    <div className="space-y-6">
+    <div>
       <PageHeader
-        eyebrow="Committees"
-        title="Committee explorer"
-        description="Browse committees by chamber, sector, jurisdiction, active bills, and hearing context."
+        title="Committees"
+        description="Browse committees by level, chamber, sector, membership, and hearing activity."
         actions={
           <SourceBadge
             label={getCommitteeSourceLabel(source)}
@@ -27,18 +25,16 @@ export default async function CommitteesPage() {
           />
         }
       />
-      <SectionCard title="Committee directory">
-        {committees.length > 0 ? (
-          <CommitteesDirectory committees={committees} />
-        ) : (
-          <EmptyState
-            title="No committee data available"
-            description="Connect the Congress.gov API or wait for the next successful sync to populate committee metadata."
-            actionLabel="Open bills"
-            actionHref="/bills"
-          />
-        )}
-      </SectionCard>
+      {committees.length > 0 ? (
+        <CommitteesDirectory committees={committees} />
+      ) : (
+        <EmptyState
+          title="No committee data available"
+          description="Connect the Congress.gov API or wait for the next successful sync to populate committee metadata."
+          actionLabel="Open bills"
+          actionHref="/bills"
+        />
+      )}
     </div>
   );
 }

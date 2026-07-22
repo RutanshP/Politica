@@ -307,6 +307,31 @@ const COMMITTEE_SECTOR_KEYWORDS: Array<{ sector: string; keywords: string[] }> =
   { sector: "Technology", keywords: ["science", "technology", "commerce", "communications", "innovation"] },
 ];
 
+export const COMMITTEE_CHAMBER_UNSPECIFIED = "Unspecified";
+
+/**
+ * Congress.gov already says House / Senate / Joint. OpenStates says upper / lower, which is the
+ * same distinction in different vocabulary -- upper is the state senate, lower is the state
+ * house (called the Assembly or House of Delegates in some states), so they fold together with
+ * no loss of meaning.
+ *
+ * The one value that does not fold is the literal "committee": OpenStates emits it when a
+ * committee hangs off a parent chamber organization we do not store, so its chamber genuinely is
+ * not known. That becomes "Unspecified" rather than being guessed into a chamber.
+ */
+export function normalizeCommitteeChamber(value?: string | null) {
+  const normalized = (value || "").trim().toLowerCase();
+
+  if (normalized === "upper" || normalized === "senate") return "Senate";
+  if (normalized === "lower" || normalized === "house" || normalized === "assembly") return "House";
+  if (normalized === "joint") return "Joint";
+  if (!normalized || normalized === "committee" || normalized === "legislature") {
+    return COMMITTEE_CHAMBER_UNSPECIFIED;
+  }
+
+  return value as string;
+}
+
 export function deriveCommitteeSector(input: {
   name: string;
   jurisdiction?: string;
