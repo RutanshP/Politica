@@ -369,6 +369,13 @@ export function normalizeCommitteeField(value: string, fallback: string) {
   return knownPlaceholders.has(normalized) ? fallback : normalized;
 }
 
+/** Single-letter party label (D / R / I) for compact member rows. */
+export function partyAbbrev(party?: string | null) {
+  if (!party) return "";
+  const first = party.trim()[0]?.toUpperCase();
+  return first === "D" || first === "R" || first === "I" ? first : (first ?? "");
+}
+
 export function normalizePersonLookup(value?: string | null) {
   const normalized = (value || "")
     .toLowerCase()

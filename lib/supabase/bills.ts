@@ -394,6 +394,34 @@ export async function listStoredBillsByCommitteeId(committeeId: string, limit = 
   return rows.map((row) => mapRowToBill(row, [], []));
 }
 
+/**
+ * Topic distribution of a committee's referred bills, for the Issue Domains panel. Sampled over
+ * the most recent bills rather than the whole backlog so it stays cheap on the big committees,
+ * which have well over a thousand bills; the mix of what a committee is currently handling is what
+ * the panel is showing anyway.
+ */
+export async function topicBreakdownByCommitteeId(committeeId: string, sample = 300) {
+  if (!committeeId) {
+    return [] as Array<{ topic: string; count: number }>;
+  }
+
+  const rows = await fetchSupabaseRows<{ topic: string | null }>(
+    "bills",
+    `committee_id=eq.${encodeURIComponent(committeeId)}&order=last_action_on.desc.nullslast&limit=${sample}`,
+    { tags: [BILLS_CACHE_TAG], select: "topic" },
+  );
+
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const topic = (row.topic || "").trim() || "General";
+    counts.set(topic, (counts.get(topic) || 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([topic, count]) => ({ topic, count }))
+    .sort((left, right) => right.count - left.count);
+}
+
 /** Total bills referred to a committee, for the tab badge. */
 export async function countStoredBillsByCommitteeId(committeeId: string) {
   if (!committeeId) {
