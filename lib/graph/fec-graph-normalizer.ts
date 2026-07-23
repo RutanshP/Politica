@@ -350,8 +350,11 @@ export function buildFecGraphRows(
       id: entityId,
       slug: entityId,
       entity_type: "employer",
-      label: `Employees of ${aggregate.label}`,
-      subtitle: "Aggregated employee contributions",
+      // Named for the organization itself. FEC groups these itemized contributions by the
+      // employer each donor reported; the subtitle keeps that provenance honest while the label
+      // reads as the company, which is how the money is understood in practice.
+      label: aggregate.label,
+      subtitle: "Employee-reported contributions",
       image_url: null,
       metadata: {
         aggregationType: "contributions grouped by contributor-reported employer",

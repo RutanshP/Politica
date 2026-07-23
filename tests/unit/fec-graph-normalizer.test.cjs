@@ -113,7 +113,7 @@ test("buildFecGraphRows labels employer aggregates and skips non-employers", () 
   const employerEntities = entities.filter((entity) => entity.entity_type === "employer");
   const labels = employerEntities.map((entity) => entity.label);
 
-  assert.deepEqual(labels.sort(), ["Employees of Alphabet", "Employees of City University of New York"]);
+  assert.deepEqual(labels.sort(), ["Alphabet", "City University of New York"]);
   assert.ok(employerEntities.every((entity) =>
     String(entity.metadata.methodology).includes("not a contribution by the organization")));
 
