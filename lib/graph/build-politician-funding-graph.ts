@@ -6,6 +6,7 @@ import {
   listCommitteesForPolitician,
   listGraphEdgesTouching,
   listGraphEntitiesByIds,
+  listRetainedEdgesBySourceIds,
 } from "@/lib/graph/funding-graph-queries";
 import {
   dedupeEntities,
@@ -138,6 +139,25 @@ export async function buildPoliticianFundingGraph(
       }
       if (nextFrontier.length === 0) break;
       frontier = nextFrontier;
+    }
+
+    /*
+     * Lobbying layer. A retained edge hangs off an employer node, which sits at the outer rim of
+     * the contribution walk (politician -> committee -> donor aggregate -> employer), one hop past
+     * where the depth cap reaches. Rather than widen the whole BFS -- which multiplies every tier
+     * and the egress with it -- attach the firms directly to the employers already collected, so
+     * lobbying surfaces whenever an employer connects to this member. Skipped entirely when the
+     * lobbying layer is toggled off.
+     */
+    if (filters.showLobbying) {
+      const employerIds = [...seenEntityIds].filter((id) => id.startsWith("fec-emp-"));
+      const retainedRows = await listRetainedEdgesBySourceIds(employerIds).catch(
+        () => [] as GraphEdgeRow[],
+      );
+      for (const edge of retainedRows) {
+        if (!collectedEdges.has(edge.id)) collectedEdges.set(edge.id, edge);
+        seenEntityIds.add(edge.target_entity_id);
+      }
     }
 
     moneyEdgeRows = [...collectedEdges.values()];

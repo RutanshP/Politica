@@ -67,6 +67,30 @@ export async function listGraphEdgesTouching(entityIds: string[]) {
   return [...new Map(rows.map((row) => [row.id, row])).values()];
 }
 
+/**
+ * Retained (lobbying) edges whose source is one of the given employer nodes. Lobbying firms hang
+ * off employer nodes, which sit at the outer rim of the money BFS -- one hop past where the depth
+ * cap looks -- so they are attached in a targeted pass over employers already reached rather than
+ * by widening the whole walk.
+ */
+export async function listRetainedEdgesBySourceIds(employerIds: string[]) {
+  if (employerIds.length === 0) return [] as GraphEdgeRow[];
+
+  const chunkSize = 50;
+  const rows: GraphEdgeRow[] = [];
+  for (let index = 0; index < employerIds.length; index += chunkSize) {
+    const chunk = buildQuotedInFilter(employerIds.slice(index, index + chunkSize));
+    const result = await fetchSupabaseRows<GraphEdgeRow>(
+      "graph_edges",
+      `relationship_type=eq.retained&source_entity_id=in.(${chunk})&order=amount.desc.nullslast`,
+      { select: GRAPH_EDGE_SELECT, tags: [FUNDING_GRAPH_CACHE_TAG], paginateAll: true },
+    );
+    rows.push(...result);
+  }
+
+  return [...new Map(rows.map((row) => [row.id, row])).values()];
+}
+
 export async function getGraphEdgeById(edgeId: string) {
   const rows = await fetchSupabaseRows<GraphEdgeRow>(
     "graph_edges",
