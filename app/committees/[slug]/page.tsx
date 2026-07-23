@@ -4,6 +4,7 @@ import { CommitteeTabsView } from "@/components/committee-tabs-view";
 import { PageHeader } from "@/components/page-header";
 import { SourceBadge } from "@/components/source-badge";
 import {
+  deriveCommitteeLeadership,
   getCommitteeData,
   getCommitteeRouteParams,
   getCommitteeSourceLabel,
@@ -26,7 +27,7 @@ export default async function CommitteePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const { committee, source } = await getCommitteeData(slug);
+  const { committee, source, memberships } = await getCommitteeData(slug);
   if (!committee) notFound();
 
   const [members, bills, billsCount] = await Promise.all([
@@ -39,6 +40,18 @@ export default async function CommitteePage({
     countStoredBillsByCommitteeId(committee.id).catch(() => 0),
   ]);
   const sector = deriveCommitteeSector(committee);
+
+  // Chair and ranking member come from the roster roles rather than the committee API, which omits
+  // them. Overlay onto the committee so the overview shows real leadership where it is known.
+  const leadership = deriveCommitteeLeadership(
+    memberships,
+    new Map(members.map((member) => [member.id, member.name])),
+  );
+  const committeeWithLeadership = {
+    ...committee,
+    chair: leadership.chair ?? committee.chair,
+    rankingMember: leadership.rankingMember ?? committee.rankingMember,
+  };
 
   return (
     <div className="space-y-6">
@@ -54,7 +67,7 @@ export default async function CommitteePage({
         }
       />
       <CommitteeTabsView
-        committee={committee}
+        committee={committeeWithLeadership}
         members={members}
         bills={bills}
         billsCount={billsCount}

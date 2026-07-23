@@ -8,7 +8,7 @@ import {
 } from "@/lib/supabase/committees";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
-import type { Committee } from "@/types/civic";
+import type { Committee, CommitteeMembership } from "@/types/civic";
 
 export type CommitteeDataSource = "supabase" | "unconfigured" | "unavailable";
 
@@ -55,6 +55,7 @@ export async function getCommitteeData(slug: string) {
     return {
       ...emptyResult("unconfigured", "federal_legislation_sync", undefined, "unconfigured"),
       committee: undefined,
+      memberships: [] as CommitteeMembership[],
     };
   }
 
@@ -85,13 +86,28 @@ export async function getCommitteeData(slug: string) {
         detail: latestRun?.status ? `Latest sync status: ${latestRun.status}` : "No sync history yet",
       },
     );
-    return { ...result, source: result.source as CommitteeDataSource, committee: mergedCommittee };
+    return { ...result, source: result.source as CommitteeDataSource, committee: mergedCommittee, memberships };
   } catch (error) {
     return {
       ...emptyResult("unavailable", "federal_legislation_sync", undefined, "unavailable", error instanceof Error ? error.message : "Stored committee read failed"),
       committee: undefined,
+      memberships: [] as CommitteeMembership[],
     };
   }
+}
+
+/** Chair and ranking member resolved from the roster roles, since the committee API omits them. */
+export function deriveCommitteeLeadership(
+  memberships: CommitteeMembership[],
+  memberNameById: Map<string, string>,
+) {
+  // "Vice Chair" must not win the chair slot, so it is excluded explicitly.
+  const chair = memberships.find((m) => /chair/i.test(m.role) && !/vice|co-?chair/i.test(m.role));
+  const ranking = memberships.find((m) => /ranking/i.test(m.role));
+  return {
+    chair: chair ? memberNameById.get(chair.politicianId) : undefined,
+    rankingMember: ranking ? memberNameById.get(ranking.politicianId) : undefined,
+  };
 }
 
 export async function getCommitteeRouteParams() {
