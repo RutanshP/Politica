@@ -8,7 +8,7 @@ import {
   isLdaConfigured,
   normalizeLdaFiling,
 } from "@/lib/adapters/lda";
-import { upsertGraphEdges, upsertGraphEntities } from "@/lib/supabase/funding-graph";
+import { purgeLobbyingGraph, upsertGraphEdges, upsertGraphEntities } from "@/lib/supabase/funding-graph";
 import { fetchSupabaseRows, invokeSupabaseRpc, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import { slugifySegment } from "@/lib/utils";
 import type { GraphEdgeRow, GraphEntityRow } from "@/types/funding-graph";
@@ -214,6 +214,10 @@ export async function rebuildLobbyingGraph(years?: number[]): Promise<LobbyingGr
   ).catch(() => []);
   const employerIds = new Set(employerRows.map((row) => row.id));
 
+  // A true replace: drop the firm nodes and edges an earlier rebuild wrote before adding the
+  // current set, so re-running never leaves stale relationships behind.
+  await purgeLobbyingGraph();
+
   let bridged = 0;
 
   for (const row of rollup) {
@@ -222,16 +226,17 @@ export async function rebuildLobbyingGraph(years?: number[]): Promise<LobbyingGr
     const firmEntityId = `lda-firm-${row.registrant_id}`;
 
     /*
-     * Where the lobbying client is an organization the FEC layer already knows as an employer
-     * aggregate, reuse that node rather than adding a parallel one joined by a bridge edge. They
-     * are the same organization, and every extra hop matters: the graph is a breadth-first walk
-     * out from a politician with a hard depth cap, so a redundant node can push the lobbying
-     * layer past the horizon entirely.
+     * Connected-only. The graph is a breadth-first walk out from a politician, so a lobbying
+     * client that is not an organization the FEC layer already knows as an employer aggregate is
+     * an unreachable island -- no traversal can ever surface it. Those are skipped rather than
+     * materialized (see the matching filter in lobbying_graph_rollup). Where it does bridge, the
+     * existing employer node is reused as the client so the lobbying money joins the politician
+     * layer without an extra hop past the depth cap.
      */
     const employerId = `fec-emp-${slugifySegment(row.client_name || "")}`;
-    const matchesEmployer = Boolean(row.client_name) && employerIds.has(employerId);
-    const clientEntityId = matchesEmployer ? employerId : `lda-client-${row.client_id}`;
-    if (matchesEmployer) bridged += 1;
+    if (!row.client_name || !employerIds.has(employerId)) continue;
+    const clientEntityId = employerId;
+    bridged += 1;
 
     if (!entities.has(firmEntityId)) {
       entities.set(firmEntityId, {
@@ -249,32 +254,12 @@ export async function rebuildLobbyingGraph(years?: number[]): Promise<LobbyingGr
       });
     }
 
-    // A matched employer node already exists and is owned by the FEC sync; don't overwrite it.
-    if (!matchesEmployer && !entities.has(clientEntityId)) {
-      entities.set(clientEntityId, {
-        id: clientEntityId,
-        slug: clientEntityId,
-        entity_type: "company",
-        label: row.client_name || "Lobbying client",
-        subtitle: row.is_in_house ? "Lobbies in-house" : "Lobbying client",
-        image_url: null,
-        metadata: { ldaClientId: row.client_id, inHouse: row.is_in_house },
-        source_system: "lda_sync",
-        source_id: String(row.client_id),
-        source_url: `https://lda.gov/api/v1/clients/${row.client_id}/`,
-        synced_at: syncedAt,
-      });
-    }
-
     /*
      * In-house filers are their own registrant, so a client -> firm edge would be a self-loop
-     * that says nothing. The money still matters, so it is carried on the client entity instead.
+     * that says nothing. The bridged client is an FEC-owned employer node this rebuild does not
+     * write, so there is nothing to hang the in-house figure on -- it is simply not edged.
      */
     if (row.is_in_house) {
-      const client = entities.get(clientEntityId);
-      if (client) {
-        client.metadata = { ...(client.metadata as object), inHouseSpend: amount, filingCount };
-      }
       continue;
     }
 

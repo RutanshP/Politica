@@ -46,3 +46,14 @@ export async function purgeDemoFixture() {
   await deleteSupabaseRows("graph_edges", "source_system=eq.demo_fixture");
   await deleteSupabaseRows("graph_entities", "source_system=eq.demo_fixture");
 }
+
+/**
+ * Clears everything the lobbying rebuild owns before it writes a fresh set, so a rebuild is a true
+ * replace rather than an accumulate. Only lda_sync-owned rows are firm nodes and retained edges --
+ * bridged clients reuse FEC employer nodes, which the FEC sync owns and this must not touch. Edges
+ * are deleted first so no edge is left dangling at a removed firm.
+ */
+export async function purgeLobbyingGraph() {
+  await deleteSupabaseRows("graph_edges", "source_system=eq.lda_sync");
+  await deleteSupabaseRows("graph_entities", "source_system=eq.lda_sync");
+}
