@@ -750,6 +750,31 @@ function normalizeCommitteeRecord(
   };
 }
 
+/**
+ * Collapses committees that arrive more than once under different system codes. A joint committee
+ * -- the Joint Economic Committee is the live example -- is cross-listed in the House, Senate, and
+ * joint endpoints, so it lands two or three times with the same name and chamber but ids jhje00 /
+ * jjec00 / jsec00. Keyed on name + chamber (so the House and Senate versions of same-named standing
+ * committees stay distinct), keeping the copy that carries a roster.
+ */
+function dedupeCommitteesByIdentity<T extends { committee: Committee }>(entries: T[]): T[] {
+  const byKey = new Map<string, T>();
+  for (const entry of entries) {
+    const key = `${entry.committee.name.trim().toLowerCase()}|${entry.committee.chamber}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, entry);
+      continue;
+    }
+    const existingMembers = existing.committee.memberIds?.length ?? 0;
+    const candidateMembers = entry.committee.memberIds?.length ?? 0;
+    if (candidateMembers > existingMembers) {
+      byKey.set(key, entry);
+    }
+  }
+  return [...byKey.values()];
+}
+
 function getCongressStartYear(congress: string) {
   const numericCongress = Number.parseInt(congress, 10);
   if (!Number.isFinite(numericCongress)) {
@@ -2023,7 +2048,8 @@ export async function syncLegislationFromCongress(options?: {
       bill.versions.map((version, index) => mapBillVersionToRow(bill.id, version, index)),
     ), (row) => `${row.bill_id}:${row.version_id}`);
     const committeeRows = uniqueByKey(
-      committeesWithMembers.map(({ committee, rawCommittee }) => mapCommitteeToRow(committee, rawCommittee)),
+      dedupeCommitteesByIdentity(committeesWithMembers)
+        .map(({ committee, rawCommittee }) => mapCommitteeToRow(committee, rawCommittee)),
       (row) => row.id,
     );
     let newActionsAppended = 0;

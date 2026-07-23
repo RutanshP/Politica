@@ -374,6 +374,41 @@ export async function listStoredBillsByIds(billIds: string[], includeDetails = f
   );
 }
 
+/**
+ * Bills referred to a committee, read live from the bills.committee_id foreign key rather than the
+ * committees.active_bill_ids array -- that array is only populated for a handful of committees,
+ * while every bill carries the committee it was referred to. Ordered newest-action-first and
+ * capped, since the top committees have well over a thousand bills.
+ */
+export async function listStoredBillsByCommitteeId(committeeId: string, limit = 25) {
+  if (!committeeId) {
+    return [];
+  }
+
+  const rows = await fetchSupabaseRows<BillRow>(
+    "bills",
+    `committee_id=eq.${encodeURIComponent(committeeId)}&order=last_action_on.desc.nullslast&limit=${limit}`,
+    { tags: [BILLS_CACHE_TAG], select: BILL_CARD_SELECT },
+  );
+
+  return rows.map((row) => mapRowToBill(row, [], []));
+}
+
+/** Total bills referred to a committee, for the tab badge. */
+export async function countStoredBillsByCommitteeId(committeeId: string) {
+  if (!committeeId) {
+    return 0;
+  }
+
+  const { total } = await fetchSupabasePage<BillRow>(
+    "bills",
+    `committee_id=eq.${encodeURIComponent(committeeId)}`,
+    { tags: [BILLS_CACHE_TAG], select: "id", limit: 1, offset: 0, count: "exact" },
+  );
+
+  return total ?? 0;
+}
+
 export async function listStoredBillsBySponsor(
   politicianId: string,
   politicianSlug?: string,
