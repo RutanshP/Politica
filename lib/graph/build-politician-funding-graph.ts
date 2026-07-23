@@ -58,6 +58,10 @@ export function computeTotalsFromEdges(
 
     if (edge.relationship_type === "independent_spending_support") { ieSupport += amount; continue; }
     if (edge.relationship_type === "independent_spending_oppose") { ieOppose += amount; continue; }
+    // Named employers contribute directly to the committee rather than via the individual-donor
+    // hub, so their itemized individual money is counted here; the hub carries only the remainder,
+    // so the two together sum to individual giving without overlap.
+    if (edge.relationship_type === "employee_contributions") { individual += amount; continue; }
     if (edge.relationship_type !== "contributed_to" && edge.relationship_type !== "transferred_to") continue;
 
     if (sourceType === "donorAggregate" || sourceType === "individualDonor") {
@@ -133,7 +137,12 @@ export async function buildPoliticianFundingGraph(
         for (const entityId of [edge.source_entity_id, edge.target_entity_id]) {
           if (!seenEntityIds.has(entityId)) {
             seenEntityIds.add(entityId);
-            nextFrontier.push(entityId);
+            // Employer aggregates are the SAME node for every politician their employees gave to,
+            // so traversing out of one drags the entire national donor network into a single
+            // member's graph (a top employer contributes to hundreds of committees). Keep them as
+            // leaves: their tie to this member is already collected, and their lobbying firms are
+            // attached by the retained pass below.
+            if (!entityId.startsWith("fec-emp-")) nextFrontier.push(entityId);
           }
         }
       }

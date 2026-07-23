@@ -209,14 +209,35 @@ export function buildFecGraphRows(
   const moneyTargetId = committeeEntityId || politicianEntityId;
   const filingsUrl = `https://www.fec.gov/data/candidate/${candidateId}/?cycle=${cycle}`;
 
-  // Tier structure: employers and small-dollar are breakdowns of individual
-  // giving, so they feed the Individual-donors hub (tier 1 -> tier 2), which in
-  // turn contributes to the committee (tier 2 -> center). PACs contribute to the
-  // committee directly. This yields a real multi-tier network rather than a star
-  // of every source pointing at the committee. When there is no individual hub
-  // (no itemized/unitemized individual giving), the breakdowns fall back to the
-  // committee so nothing is orphaned.
-  const individualEntityId = individual > 0 ? `fec-ind-${politician.id}` : undefined;
+  // Named employers of itemized individual contributors, merged across the spelling variants FEC
+  // reports ("GOOGLE", "Google", "Google Inc") that normalize to one slug -- otherwise two rows
+  // sharing a slug emit duplicate edge ids and the upsert batch fails (Postgres 21000). Computed
+  // here because the individual-donor hub is sized as the remainder once these are broken out.
+  const employerAggregates = new Map<string, { label: string; total: number; count: number }>();
+  for (const row of payloads.byEmployer) {
+    if (!isRealEmployer(row.employer) || (row.total || 0) <= 0) continue;
+    const label = row.employer!.trim();
+    const slug = slugifySegment(label).slice(0, 60) || "employer";
+    const existing = employerAggregates.get(slug);
+    if (existing) {
+      existing.total += round(row.total);
+      existing.count += row.count ?? 0;
+    } else {
+      employerAggregates.set(slug, { label, total: round(row.total), count: row.count ?? 0 });
+    }
+  }
+  const topEmployers = [...employerAggregates.entries()]
+    .sort((left, right) => right[1].total - left[1].total)
+    .slice(0, 8);
+  const namedEmployerTotal = topEmployers.reduce((sum, [, aggregate]) => sum + aggregate.total, 0);
+
+  // Money reaches the committee in tiers, not a star. The named employers contribute *directly* --
+  // these are itemized individual contributions to the campaign, not routed through any middleman.
+  // What is left of individual giving once those are broken out is the "Other individual donors"
+  // hub, of which small-dollar is a labeled subset; PACs contribute to the committee directly. When
+  // there is no remainder, the breakdowns fall back to the committee so nothing is orphaned.
+  const hubAmount = Math.max(0, round(individual - namedEmployerTotal));
+  const individualEntityId = hubAmount > 0 ? `fec-ind-${politician.id}` : undefined;
   const donorRollupTarget = individualEntityId || moneyTargetId;
 
   const aggregateEdge = (
@@ -248,26 +269,31 @@ export function buildFecGraphRows(
     synced_at: syncedAt,
   });
 
-  if (individual > 0) {
-    const entityId = `fec-ind-${politician.id}`;
+  if (individualEntityId) {
+    const hasNamedEmployers = namedEmployerTotal > 0;
     entities.push({
-      id: entityId,
-      slug: entityId,
+      id: individualEntityId,
+      slug: individualEntityId,
       entity_type: "donorAggregate",
-      label: "Individual donors",
-      subtitle: "All individual contributions",
+      label: hasNamedEmployers ? "Other individual donors" : "Individual donors",
+      subtitle: hasNamedEmployers
+        ? "Individual contributions outside the named employers"
+        : "All individual contributions",
       image_url: null,
       metadata: {
-        aggregationType: "all individual contributions",
-        methodology:
-          "Sum of itemized and unitemized individual contributions reported by the campaign committee for this cycle.",
+        aggregationType: hasNamedEmployers
+          ? "individual contributions not attributed to a named top employer"
+          : "all individual contributions",
+        methodology: hasNamedEmployers
+          ? "Individual contributions remaining after the named top employers are broken out and connected to the committee directly."
+          : "Sum of itemized and unitemized individual contributions reported by the campaign committee for this cycle.",
       },
       source_system: "fec_sync",
-      source_id: entityId,
+      source_id: individualEntityId,
       source_url: filingsUrl,
       synced_at: syncedAt,
     });
-    edges.push(aggregateEdge(`ind-${politician.id}-${cycle}`, entityId, "contributed_to", individual, null));
+    edges.push(aggregateEdge(`ind-${politician.id}-${cycle}`, individualEntityId, "contributed_to", hubAmount, null));
   }
 
   if (smallDollar > 0) {
@@ -322,28 +348,8 @@ export function buildFecGraphRows(
     edges.push(aggregateEdge(`pacagg-${politician.id}-${cycle}`, entityId, "contributed_to", pac, null));
   }
 
-  // Top employers of itemized individual contributors, explicitly labeled as
-  // employee aggregates -- never corporate contributions. FEC reports the same
-  // employer under multiple spellings ("GOOGLE", "Google", "Google Inc"); these
-  // normalize to one slug, so merge their totals before emitting a single entity
-  // and edge per slug. Without this, two rows sharing a slug would produce two
-  // edges with the same id and the upsert batch would fail (Postgres 21000).
-  const employerAggregates = new Map<string, { label: string; total: number; count: number }>();
-  for (const row of payloads.byEmployer) {
-    if (!isRealEmployer(row.employer) || (row.total || 0) <= 0) continue;
-    const label = row.employer!.trim();
-    const slug = slugifySegment(label).slice(0, 60) || "employer";
-    const existing = employerAggregates.get(slug);
-    if (existing) {
-      existing.total += round(row.total);
-      existing.count += row.count ?? 0;
-    } else {
-      employerAggregates.set(slug, { label, total: round(row.total), count: row.count ?? 0 });
-    }
-  }
-  const topEmployers = [...employerAggregates.entries()]
-    .sort((left, right) => right[1].total - left[1].total)
-    .slice(0, 8);
+  // Named employers (computed above) contribute directly to the committee, labeled as employee
+  // aggregates -- never corporate treasury gifts.
   for (const [employerSlug, aggregate] of topEmployers) {
     const entityId = `fec-emp-${employerSlug}`;
     entities.push({
@@ -374,7 +380,7 @@ export function buildFecGraphRows(
       aggregate.total,
       aggregate.count || null,
       {},
-      donorRollupTarget,
+      moneyTargetId,
     ));
   }
 
