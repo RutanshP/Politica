@@ -50,6 +50,18 @@ function buildQuotedInFilter(values: string[]) {
     .join(",");
 }
 
+/**
+ * Quotes a single value for a PostgREST eq/neq filter. Congress.gov sponsor names come back
+ * "Rep. Adams, Alma S. [D-NC-12]" -- the embedded comma otherwise splits mid-value inside an
+ * and=(...) combinator, corrupting every condition after it (not just the sponsor one), which
+ * PostgREST then rejects outright. Quoting is safe for every value here (chamber/status/etc.
+ * never contain characters that need it, but always quoting means one code path instead of
+ * guessing which facets are "safe").
+ */
+function quotePgFilterValue(value: string) {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
 function escapeIlikeValue(value: string) {
   return value.replace(/[%*,()]/g, " ").trim();
 }
@@ -84,27 +96,27 @@ function buildStoredBillsPageFilterQuery(filters: Omit<StoredBillsPageQuery, "pa
   ];
 
   if (filters.chamber && filters.chamber !== "Both") {
-    conditions.push(`chamber.eq.${filters.chamber}`);
+    conditions.push(`chamber.eq.${quotePgFilterValue(filters.chamber)}`);
   }
 
   if (filters.status && filters.status !== "All statuses") {
-    conditions.push(`status.eq.${filters.status}`);
+    conditions.push(`status.eq.${quotePgFilterValue(filters.status)}`);
   }
 
   if (filters.session && filters.session !== "All sessions") {
-    conditions.push(`session.eq.${filters.session}`);
+    conditions.push(`session.eq.${quotePgFilterValue(filters.session)}`);
   }
 
   if (filters.topic && filters.topic !== "All topics") {
-    conditions.push(`topic.eq.${filters.topic}`);
+    conditions.push(`topic.eq.${quotePgFilterValue(filters.topic)}`);
   }
 
   if (filters.sponsor && filters.sponsor !== "Any sponsor") {
-    conditions.push(`sponsor_name.eq.${filters.sponsor}`);
+    conditions.push(`sponsor_name.eq.${quotePgFilterValue(filters.sponsor)}`);
   }
 
   if (filters.committee && filters.committee !== "Any committee") {
-    conditions.push(`committee_name.eq.${filters.committee}`);
+    conditions.push(`committee_name.eq.${quotePgFilterValue(filters.committee)}`);
   }
 
   const normalizedQuery = (filters.query || "").trim();
