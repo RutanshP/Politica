@@ -44,7 +44,7 @@ import {
   upsertStoredBills,
 } from "@/lib/supabase/bills";
 import { replaceStoredCommitteeMemberships, upsertStoredCommittees } from "@/lib/supabase/committees";
-import { deleteSupabaseRows, fetchSupabaseRows } from "@/lib/supabase/rest";
+import { deleteSupabaseRows, fetchSupabaseRows, updateSupabaseRows } from "@/lib/supabase/rest";
 import {
   appendStoredVotes,
   fetchPoliticianVoteStatCounters,
@@ -725,6 +725,40 @@ export async function pruneExpiredFailedBills() {
   }
 
   return { deleted: billIds.length, at: new Date().toISOString() };
+}
+
+/**
+ * One-time correction for bills stored before chanceOfPassing started respecting terminal
+ * status: forces Failed bills to 0 and Signed bills to 100. New syncs already compute this
+ * correctly (see deriveChanceOfPassing/chanceOfPassingForStatus in lib/normalizers/bills.ts), so
+ * this only needs to touch rows the fix hasn't reached yet -- safe to call repeatedly.
+ */
+export async function backfillTerminalChanceOfPassing() {
+  const [staleFailedRows, staleSignedRows] = await Promise.all([
+    fetchSupabaseRows<{ id: string }>(
+      "bills",
+      "status=eq.Failed&chance_of_passing=neq.0",
+      { cache: "no-store", select: "id", paginateAll: true },
+    ),
+    fetchSupabaseRows<{ id: string }>(
+      "bills",
+      "status=eq.Signed&chance_of_passing=neq.100",
+      { cache: "no-store", select: "id", paginateAll: true },
+    ),
+  ]);
+
+  if (staleFailedRows.length > 0) {
+    await updateSupabaseRows("bills", "status=eq.Failed&chance_of_passing=neq.0", { chance_of_passing: 0 });
+  }
+  if (staleSignedRows.length > 0) {
+    await updateSupabaseRows("bills", "status=eq.Signed&chance_of_passing=neq.100", { chance_of_passing: 100 });
+  }
+
+  return {
+    failedUpdated: staleFailedRows.length,
+    signedUpdated: staleSignedRows.length,
+    at: new Date().toISOString(),
+  };
 }
 
 function getErrorMessage(error: unknown) {
