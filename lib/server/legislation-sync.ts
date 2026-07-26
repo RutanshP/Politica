@@ -701,6 +701,32 @@ async function deleteBillArtifacts(billIds: string[]) {
   }
 }
 
+const FAILED_BILL_RETENTION_DAYS = 30;
+
+/**
+ * Deletes bills that have sat in a terminal Failed status with no new action for
+ * FAILED_BILL_RETENTION_DAYS. votes/vote_positions/issue links all cascade off bills(id) (see
+ * supabase/sql/003_politica_platform.sql), so deleting the bill row clears the whole record --
+ * no separate vote cleanup needed. Applies to both federal and state bills; jurisdiction-agnostic
+ * on purpose since both normalizers write the same "Failed" status string.
+ */
+export async function pruneExpiredFailedBills() {
+  const cutoff = new Date(Date.now() - FAILED_BILL_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  const expiredRows = await fetchSupabaseRows<{ id: string }>(
+    "bills",
+    `status=eq.Failed&last_action_on=lt.${cutoff}`,
+    { cache: "no-store", select: "id", paginateAll: true },
+  );
+
+  const billIds = expiredRows.map((row) => row.id);
+  if (billIds.length > 0) {
+    await deleteBillArtifacts(billIds);
+  }
+
+  return { deleted: billIds.length, at: new Date().toISOString() };
+}
+
 function getErrorMessage(error: unknown) {
   if (!(error instanceof Error)) {
     return "Unknown legislation sync error";

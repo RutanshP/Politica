@@ -85,6 +85,13 @@ function sponsorNameFromListBill(bill: CongressBillListItem) {
   return sponsor?.fullName || [sponsor?.firstName, sponsor?.lastName].filter(Boolean).join(" ") || "Congress Sponsor";
 }
 
+// A "failed" motion to recommit or table means the bill SURVIVED that procedural attack, not
+// that the bill itself failed -- only count it as terminal when it isn't one of those.
+function isTerminalFailure(text: string) {
+  if (!text.includes("failed")) return false;
+  return !text.includes("recommit") && !text.includes("to table");
+}
+
 function normalizeStatus(actionText?: string) {
   const text = (actionText || "").toLowerCase();
 
@@ -93,9 +100,9 @@ function normalizeStatus(actionText?: string) {
     return "Sent to President";
   }
   if (text.includes("passed house") || text.includes("passed senate")) return "Passed Chamber";
+  if (isTerminalFailure(text)) return "Failed";
   if (text.includes("placed on calendar") || text.includes("considered")) return "On Floor";
   if (text.includes("committee") || text.includes("subcommittee")) return "In Committee";
-  if (text.includes("failed")) return "Failed";
 
   return "Introduced";
 }
@@ -128,6 +135,7 @@ export function normalizeCongressBillListItem(bill: CongressBillListItem): Bill 
   const billType = String(bill.type || "").toLowerCase();
   const billNumber = String(bill.number || "");
   const sponsorName = sponsorNameFromListBill(bill);
+  const status = normalizeStatus(bill.latestAction?.text);
 
   return {
     id: buildBillId(billType, billNumber),
@@ -138,7 +146,7 @@ export function normalizeCongressBillListItem(bill: CongressBillListItem): Bill 
     jurisdiction: "Federal",
     country: "United States",
     chamber: bill.originChamber || "Congress",
-    status: normalizeStatus(bill.latestAction?.text),
+    status,
     topic: topicFromPolicyArea(bill.policyArea),
     sponsorId: bill.sponsors?.[0]?.bioguideId || buildBillId("sponsor", sponsorName),
     sponsorName,
@@ -148,7 +156,7 @@ export function normalizeCongressBillListItem(bill: CongressBillListItem): Bill 
     lastActionAt: formatDisplayDate(bill.latestAction?.actionDate || bill.updateDate),
     introducedAt: formatDisplayDate(undefined),
     session: `${bill.congress || "Unknown"}th Congress`,
-    chanceOfPassing: 50,
+    chanceOfPassing: chanceOfPassingForStatus(status, 50),
     stats: {
       amendments: 0,
       cosponsors: Math.max((bill.sponsors?.length || 1) - 1, 0),
@@ -235,7 +243,7 @@ export function mergeCongressBillDetail(
       || [detail.sponsors?.[0]?.firstName, detail.sponsors?.[0]?.lastName].filter(Boolean).join(" ")
       || seed.sponsorName,
     topic: topicFromPolicyArea(detail.policyArea) || seed.topic,
-    chanceOfPassing: deriveChanceOfPassing(detail, actions.length),
+    chanceOfPassing: chanceOfPassingForStatus(seed.status, deriveChanceOfPassing(detail, actions.length)),
     stats: {
       amendments: 0,
       cosponsors: Math.max((detail.sponsors?.length || 1) - 1, 0),
@@ -251,6 +259,12 @@ export function mergeCongressBillDetail(
       rawAvailable: true,
     },
   };
+}
+
+function chanceOfPassingForStatus(status: Bill["status"], computed: number) {
+  if (status === "Failed") return 0;
+  if (status === "Signed") return 100;
+  return computed;
 }
 
 function deriveChanceOfPassing(detail: NonNullable<CongressBillDetailPayload["bill"]>, actionCount: number) {

@@ -79,10 +79,14 @@ function normalizeOpenStatesActionType(classification?: string[]) {
 
 function normalizeOpenStatesStatus(bill: OpenStatesBill) {
   const latest = `${bill.latest_action_description || ""} ${(bill.classification ?? []).join(" ")}`.toLowerCase();
+  // A failed motion to recommit or table means the bill SURVIVED that procedural attack, not
+  // that the bill itself failed.
+  const isTerminalFailure = latest.includes("fail") && !latest.includes("recommit") && !latest.includes("to table");
+
   if (latest.includes("signed") || latest.includes("chaptered")) return "Signed" as const;
   if (latest.includes("passed")) return "Passed Chamber" as const;
+  if (isTerminalFailure) return "Failed" as const;
   if (latest.includes("committee")) return "In Committee" as const;
-  if (latest.includes("fail")) return "Failed" as const;
   if (latest.includes("floor") || latest.includes("calendar")) return "On Floor" as const;
   return "Introduced" as const;
 }

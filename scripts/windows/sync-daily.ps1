@@ -1,6 +1,7 @@
 # Daily sync: federal bills+votes, federal politicians, federal vote-stat backfill, state
-# legislator queue drain, state roll calls, news, then rebuild derived data (analytics/search/
-# issues/entities) last so it reflects everything synced above.
+# legislator queue drain, state roll calls, news, legislation cleanup (purges bills stuck Failed
+# for 30+ days), then rebuild derived data (analytics/search/issues/entities) last so it reflects
+# everything synced above.
 #
 # Registered as a Scheduled Task -- see scripts/windows/README.md for setup.
 
@@ -37,6 +38,9 @@ try {
 
   Write-Host "=== News ===" -ForegroundColor Magenta
   Invoke-PoliticaSync -Path "/api/internal/sync/news" | Out-Null
+
+  Write-Host "=== Legislation cleanup (bills failed 30+ days with no new action) ===" -ForegroundColor Magenta
+  Invoke-PoliticaSync -Path "/api/internal/sync/legislation-cleanup" | Out-Null
 
   Write-Host "=== Rebuild derived data ===" -ForegroundColor Magenta
   Invoke-PoliticaSync -Path "/api/internal/rebuild" | Out-Null
