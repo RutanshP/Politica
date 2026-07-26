@@ -42,7 +42,7 @@ import {
   getSponsoredBillsForPolitician,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
-import { hasVotePerformanceStats } from "@/lib/utils";
+import { billHref, hasVotePerformanceStats } from "@/lib/utils";
 import type { Bill, Committee, FundingEdge, NewsItem } from "@/types/civic";
 
 export const revalidate = 21600;
@@ -364,7 +364,7 @@ export default async function PoliticianProfilePage({
                 sponsoredBills.slice(0, 5).map((bill: Bill) => (
                   <ListRow
                     key={bill.id}
-                    href={`/bills/${bill.id}`}
+                    href={billHref(bill.id)}
                     leading={
                       <IconTile tone={topicVisual(bill.topic).tone}>
                         <TopicIcon topic={bill.topic} />

@@ -42,7 +42,7 @@ import { listStoredBillsByIds } from "@/lib/supabase/bills";
 import { getStoredCommitteeById } from "@/lib/supabase/committees";
 import { getStoredPoliticianById } from "@/lib/supabase/politicians";
 import { isSubstantiveVote } from "@/lib/vote-classification";
-import { formatSummaryText } from "@/lib/utils";
+import { billHref, formatSummaryText } from "@/lib/utils";
 
 export const revalidate = 21600;
 
@@ -51,7 +51,8 @@ export default async function BillDetailPage({
 }: {
   params: Promise<{ billId: string }>;
 }) {
-  const { billId } = await params;
+  const { billId: rawBillId } = await params;
+  const billId = decodeURIComponent(rawBillId);
   const [{ bill, source }, { news }, { votes }] = await Promise.all([
     getBillData(billId),
     getNewsData(),
@@ -88,7 +89,7 @@ export default async function BillDetailPage({
     type: "bill" as const,
     label: `${bill.number} · ${bill.title}`,
     subtitle: bill.committeeName,
-    href: `/bills/${bill.id}`,
+    href: billHref(bill.id),
   };
 
   return (
@@ -181,7 +182,7 @@ export default async function BillDetailPage({
         <div className="ml-auto flex flex-none items-center gap-2">
           <SourceBadge label={getBillsSourceLabel(source)} live={live} />
           <WatchButton item={watchItem} />
-          <ButtonLink href={`/bills/${bill.id}/text`}>
+          <ButtonLink href={billHref(bill.id, "/text")}>
             <Share2 />
             Text
           </ButtonLink>
@@ -276,7 +277,7 @@ export default async function BillDetailPage({
                   relatedBills.map((related) => (
                     <ListRow
                       key={related.id}
-                      href={`/bills/${related.id}`}
+                      href={billHref(related.id)}
                       leading={
                         <IconTile tone={topicVisual(related.topic).tone}>
                           <TopicIcon topic={related.topic} />
@@ -325,7 +326,7 @@ export default async function BillDetailPage({
             title="Legislative timeline"
             icon={<CalendarDays />}
             actionLabel="Full timeline"
-            actionHref={`/bills/${bill.id}/timeline`}
+            actionHref={billHref(bill.id, "/timeline")}
           />
           <CardBody className="pb-5">
             <BillProgressStepper bill={bill} />
@@ -354,7 +355,7 @@ export default async function BillDetailPage({
               title="Recent actions"
               icon={<Clock />}
               actionLabel="View all"
-              actionHref={`/bills/${bill.id}/timeline`}
+              actionHref={billHref(bill.id, "/timeline")}
             />
             <CardBody tight>
               {bill.actions.length > 0 ? (

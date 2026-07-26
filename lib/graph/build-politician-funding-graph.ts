@@ -19,6 +19,7 @@ import {
   pruneDisconnected,
 } from "@/lib/graph/funding-graph-utils";
 import { getPoliticianData, getSponsoredBillsForPolitician } from "@/lib/data/politicians";
+import { billHref } from "@/lib/utils";
 import {
   type FundingGraphEdge,
   type FundingGraphFilters,
@@ -264,7 +265,7 @@ export async function buildPoliticianFundingGraph(
           label: bill.number,
           subtitle: bill.title,
           entityType: "bill",
-          metadata: { href: `/bills/${bill.id}`, status: bill.status },
+          metadata: { href: billHref(bill.id), status: bill.status },
         },
       });
       edges.push({

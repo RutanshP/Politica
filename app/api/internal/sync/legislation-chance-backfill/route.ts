@@ -9,6 +9,7 @@ import {
 import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
 import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
+import { billHref } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
   // /bills listing -- without this, a corrected bill keeps rendering its old cached score for up
   // to 6 hours.
   for (const id of updatedIds) {
-    revalidatePath(`/bills/${id}`);
+    revalidatePath(billHref(id));
   }
 
   return NextResponse.json(result, { status: result.status === "failed" ? 500 : 200 });

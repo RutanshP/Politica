@@ -9,7 +9,7 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { MeterRow } from "@/components/ui/meter";
 import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
-import { cn, formatDateLabel, normalizeCommitteeField, partyAbbrev } from "@/lib/utils";
+import { billHref, cn, formatDateLabel, normalizeCommitteeField, partyAbbrev } from "@/lib/utils";
 import type { Bill, BillStatus, Committee } from "@/types/civic";
 
 export interface CommitteeMember {
@@ -180,7 +180,7 @@ export function CommitteeTabsView({
                         <div className="min-w-0">
                           <p className="text-[13px] leading-snug text-[var(--ink)]">{bill.latestAction}</p>
                           <p className="mt-0.5 text-xs text-[var(--muted)]">
-                            <Link href={`/bills/${bill.id}`} className="font-semibold text-[var(--accent-2)]">
+                            <Link href={billHref(bill.id)} className="font-semibold text-[var(--accent-2)]">
                               {bill.number}
                             </Link>
                             {bill.lastActionAt ? ` · ${formatDateLabel(bill.lastActionAt)}` : ""}
@@ -286,7 +286,7 @@ function BillsTable({ bills }: { bills: Bill[] }) {
           {bills.map((bill) => (
             <tr key={bill.id} className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-white/2">
               <td className="whitespace-nowrap px-3.5 py-3 align-top">
-                <Link href={`/bills/${bill.id}`} className="font-semibold text-[var(--accent-2)]">
+                <Link href={billHref(bill.id)} className="font-semibold text-[var(--accent-2)]">
                   {bill.number}
                 </Link>
               </td>

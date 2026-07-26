@@ -9,6 +9,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { getNewsData } from "@/lib/data/news";
 import { getWatchlistData } from "@/lib/data/watchlist";
 import { listRecentStoredBills } from "@/lib/supabase/bills";
+import { billHref } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
 export const revalidate = 21600;
@@ -56,7 +57,7 @@ export default async function WatchlistPage({
       kind: "bill-action" as const,
       title: `${bill.number} · ${bill.latestAction}`,
       body: bill.title,
-      href: `/bills/${bill.id}`,
+      href: billHref(bill.id),
       timestamp: bill.lastActionAt,
       tags: [bill.number, bill.chamber, bill.status],
     })),

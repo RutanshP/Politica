@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { getAnalyticsData as getDerivedAnalyticsData } from "@/lib/data/analytics";
-import { slugifySegment } from "@/lib/utils";
+import { billHref, slugifySegment } from "@/lib/utils";
 import { listStoredBills } from "@/lib/supabase/bills";
 import { listStoredCommittees } from "@/lib/supabase/committees";
 import { replaceStoredEntities } from "@/lib/supabase/entities";
@@ -105,7 +105,7 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
       label: bill.number,
       title: bill.title,
       description: bill.summary,
-      href: `/bills/${bill.id}`,
+      href: billHref(bill.id),
       meta: `${bill.status} | ${bill.chamber} | ${bill.topic}`,
       source_system: "rebuild",
       source_id: bill.id,
@@ -188,7 +188,7 @@ export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
       label: bill.number,
       title: bill.title,
       description: bill.summary,
-      href: `/bills/${bill.id}`,
+      href: billHref(bill.id),
       meta: `${bill.status} | ${bill.topic}`,
       source_system: "rebuild",
       source_id: bill.id,

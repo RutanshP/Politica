@@ -12,6 +12,7 @@ import {
   getIssueViewData,
   isLiveIssueSource,
 } from "@/lib/data/issues";
+import { billHref } from "@/lib/utils";
 
 export async function generateStaticParams() {
   return getIssueRouteParams();
@@ -72,7 +73,7 @@ export default async function IssuePage({
             {issueBills.map((bill) => (
               <Link
                 key={bill.id}
-                href={`/bills/${bill.id}`}
+                href={billHref(bill.id)}
                 className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4 transition hover:border-[var(--line-2)]"
               >
                 <p className="font-semibold text-[var(--accent-2)]">{bill.number}</p>

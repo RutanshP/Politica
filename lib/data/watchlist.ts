@@ -3,6 +3,7 @@ import { getCommitteesData } from "@/lib/data/committees";
 import { getIssuesData } from "@/lib/data/issues";
 import { getPoliticiansData } from "@/lib/data/politicians";
 import { withData } from "@/lib/data/result";
+import { billHref } from "@/lib/utils";
 import type { Bill, WatchlistItem } from "@/types/civic";
 
 export type WatchlistDataSource = "supabase-derived" | "unconfigured" | "unavailable";
@@ -24,7 +25,7 @@ export async function getWatchlistData() {
       type: "bill" as const,
       lastUpdated: bill.lastActionAt,
       status: bill.status,
-      href: `/bills/${bill.id}`,
+      href: billHref(bill.id),
     })),
     ...politiciansData.politicians.slice(0, 2).map((politician) => ({
       id: `watch-${politician.id}`,

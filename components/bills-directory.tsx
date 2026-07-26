@@ -16,7 +16,7 @@ import { Toolbar } from "@/components/ui/layout";
 import { CellSub, CellTitle, Table } from "@/components/ui/table";
 import { BILL_STATUS_TONE, TONE_COLOR } from "@/components/ui/tones";
 import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
-import { cn } from "@/lib/utils";
+import { billHref, cn } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
 type ViewMode = "table" | "timeline";
@@ -233,7 +233,7 @@ export function BillsDirectory({
                   </IconTile>
                   <span className="min-w-0">
                     <Link
-                      href={`/bills/${bill.id}`}
+                      href={billHref(bill.id)}
                       className="block text-[var(--accent-2)] hover:underline"
                     >
                       <CellTitle>{bill.number}</CellTitle>
@@ -275,7 +275,7 @@ export function BillsDirectory({
                       type: "bill",
                       label: `${bill.number} · ${bill.title}`,
                       subtitle: bill.committeeName,
-                      href: `/bills/${bill.id}`,
+                      href: billHref(bill.id),
                     }}
                   />
                 </span>,
@@ -297,7 +297,7 @@ export function BillsDirectory({
                     </span>
                     <div className="flex flex-1 flex-col gap-3 border-l border-[var(--line-2)] pl-4">
                       {group.map((bill) => (
-                        <Link key={bill.id} href={`/bills/${bill.id}`} className="relative block">
+                        <Link key={bill.id} href={billHref(bill.id)} className="relative block">
                           <span
                             className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full ring-4 ring-[var(--panel)]"
                             style={{ background: TONE_COLOR[BILL_STATUS_TONE[bill.status]] }}

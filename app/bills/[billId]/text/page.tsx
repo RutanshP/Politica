@@ -20,8 +20,8 @@ export default async function BillTextPage({
 }: {
   params: Promise<{ billId: string }>;
 }) {
-  const { billId } = await params;
-  const { bill, source } = await getBillData(billId);
+  const { billId: rawBillId } = await params;
+  const { bill, source } = await getBillData(decodeURIComponent(rawBillId));
   if (!bill) notFound();
   const live = isLiveBillsSource(source);
 

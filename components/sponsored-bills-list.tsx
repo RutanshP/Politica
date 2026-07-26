@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { IconTile } from "@/components/ui/icon-tile";
 import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
 import { BILL_STATUS_TONE } from "@/components/ui/tones";
+import { billHref } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
 const PAGE_SIZE = 24;
@@ -56,7 +57,7 @@ export function SponsoredBillsList({ bills }: { bills: Bill[] }) {
           {shown.map((bill) => (
             <Link
               key={bill.id}
-              href={`/bills/${bill.id}`}
+              href={billHref(bill.id)}
               className="flex flex-col gap-2 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] p-3.5 transition hover:border-[var(--line-2)] hover:bg-[var(--panel-2)]"
             >
               <div className="flex items-center gap-2.5">

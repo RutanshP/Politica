@@ -25,6 +25,7 @@ import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
 import { BILL_STATUS_TONE } from "@/components/ui/tones";
 import { getDashboardData } from "@/lib/data/dashboard";
 import { getIssuesData } from "@/lib/data/issues";
+import { billHref } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
 export const revalidate = 21600;
@@ -138,7 +139,7 @@ export default async function HomePage() {
               activity.map(({ bill, kind }) => (
                 <ListRow
                   key={`${kind}-${bill.id}`}
-                  href={`/bills/${bill.id}`}
+                  href={billHref(bill.id)}
                   leading={
                     <IconTile tone={topicVisual(bill.topic).tone}>
                       <TopicIcon topic={bill.topic} />
@@ -170,7 +171,7 @@ export default async function HomePage() {
               feed.trendingBills.map((bill: Bill, index: number) => (
                 <ListRow
                   key={bill.id}
-                  href={`/bills/${bill.id}`}
+                  href={billHref(bill.id)}
                   leading={<Rank>{index + 1}</Rank>}
                   title={`${bill.number} · ${bill.title}`}
                   subtitle={bill.sponsorName}
@@ -226,7 +227,7 @@ export default async function HomePage() {
               feed.upcomingVotes.map((vote) => (
                 <ListRow
                   key={vote.id}
-                  href={`/bills/${vote.billId}/votes`}
+                  href={billHref(vote.billId, "/votes")}
                   leading={
                     <IconTile tone="sky">
                       <Vote />

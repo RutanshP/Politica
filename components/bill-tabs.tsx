@@ -1,4 +1,5 @@
 import { Tabs } from "@/components/ui/tabs";
+import { billHref } from "@/lib/utils";
 
 type BillTab = "overview" | "timeline" | "text" | "votes";
 
@@ -23,22 +24,22 @@ export function BillTabs({
     <Tabs
       className="mb-4"
       items={[
-        { label: "Overview", href: `/bills/${billId}`, active: active === "overview" },
+        { label: "Overview", href: billHref(billId), active: active === "overview" },
         {
           label: "Timeline",
-          href: `/bills/${billId}/timeline`,
+          href: billHref(billId, "/timeline"),
           active: active === "timeline",
           count: counts?.timeline,
         },
         {
           label: "Text",
-          href: `/bills/${billId}/text`,
+          href: billHref(billId, "/text"),
           active: active === "text",
           count: counts?.text,
         },
         {
           label: "Votes",
-          href: `/bills/${billId}/votes`,
+          href: billHref(billId, "/votes"),
           active: active === "votes",
           count: counts?.votes,
         },

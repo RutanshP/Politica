@@ -80,6 +80,16 @@ export function initials(name: string) {
     .toUpperCase();
 }
 
+/**
+ * OpenStates bill ids look like "ocd-bill/4210e4e2-...", a literal "/" embedded in what the app
+ * treats as a single [billId] route segment. A plain template-literal href turns that into a
+ * 3-segment path that 404s -- encodeURIComponent keeps it one segment; Next decodes it straight
+ * back to the original id (slash included) when reading the route param.
+ */
+export function billHref(billId: string, suffix = "") {
+  return `/bills/${encodeURIComponent(billId)}${suffix}`;
+}
+
 export function slugifySegment(input: string) {
   return input
     .toLowerCase()
