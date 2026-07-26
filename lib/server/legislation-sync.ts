@@ -727,6 +727,45 @@ export async function pruneExpiredFailedBills() {
   return { deleted: billIds.length, at: new Date().toISOString() };
 }
 
+type BillDebugRow = {
+  id: string;
+  status: string;
+  chance_of_passing: number;
+  last_action_at: string;
+  jurisdiction_type: string;
+};
+
+const BILL_DEBUG_SELECT = "id,status,chance_of_passing,last_action_at,jurisdiction_type";
+
+/** Raw stored fields for specific bill ids, for diagnosing why a bill didn't get corrected. */
+export async function debugBillsByIds(billIds: string[]) {
+  if (billIds.length === 0) return [];
+
+  return fetchSupabaseRows<BillDebugRow>(
+    "bills",
+    `id=in.(${buildQuotedInFilter(billIds)})`,
+    { cache: "no-store", select: BILL_DEBUG_SELECT },
+  );
+}
+
+/** Every bill whose status/chanceOfPassing still disagree with the terminal-status rule. */
+export async function findStaleTerminalChanceOfPassing() {
+  const [staleFailedRows, staleSignedRows] = await Promise.all([
+    fetchSupabaseRows<BillDebugRow>(
+      "bills",
+      "status=eq.Failed&chance_of_passing=neq.0",
+      { cache: "no-store", select: BILL_DEBUG_SELECT, paginateAll: true },
+    ),
+    fetchSupabaseRows<BillDebugRow>(
+      "bills",
+      "status=eq.Signed&chance_of_passing=neq.100",
+      { cache: "no-store", select: BILL_DEBUG_SELECT, paginateAll: true },
+    ),
+  ]);
+
+  return { staleFailedRows, staleSignedRows };
+}
+
 /**
  * One-time correction for bills stored before chanceOfPassing started respecting terminal
  * status: forces Failed bills to 0 and Signed bills to 100. New syncs already compute this
@@ -734,18 +773,7 @@ export async function pruneExpiredFailedBills() {
  * this only needs to touch rows the fix hasn't reached yet -- safe to call repeatedly.
  */
 export async function backfillTerminalChanceOfPassing() {
-  const [staleFailedRows, staleSignedRows] = await Promise.all([
-    fetchSupabaseRows<{ id: string }>(
-      "bills",
-      "status=eq.Failed&chance_of_passing=neq.0",
-      { cache: "no-store", select: "id", paginateAll: true },
-    ),
-    fetchSupabaseRows<{ id: string }>(
-      "bills",
-      "status=eq.Signed&chance_of_passing=neq.100",
-      { cache: "no-store", select: "id", paginateAll: true },
-    ),
-  ]);
+  const { staleFailedRows, staleSignedRows } = await findStaleTerminalChanceOfPassing();
 
   if (staleFailedRows.length > 0) {
     await updateSupabaseRows("bills", "status=eq.Failed&chance_of_passing=neq.0", { chance_of_passing: 0 });
@@ -757,6 +785,7 @@ export async function backfillTerminalChanceOfPassing() {
   return {
     failedUpdated: staleFailedRows.length,
     signedUpdated: staleSignedRows.length,
+    updatedIds: [...staleFailedRows, ...staleSignedRows].map((row) => row.id),
     at: new Date().toISOString(),
   };
 }

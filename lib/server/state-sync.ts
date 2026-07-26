@@ -91,6 +91,12 @@ function normalizeOpenStatesStatus(bill: OpenStatesBill) {
   return "Introduced" as const;
 }
 
+function chanceOfPassingForStatus(status: ReturnType<typeof normalizeOpenStatesStatus>) {
+  if (status === "Failed") return 0;
+  if (status === "Signed") return 100;
+  return 40;
+}
+
 function getOpenStatesStateCodes() {
   const configured = process.env.POLITICA_OPENSTATES_STATE_CODES?.trim();
   if (!configured) {
@@ -589,6 +595,8 @@ export async function syncStateLegislationFromOpenStates(
         });
       }
 
+      const billStatus = normalizeOpenStatesStatus(detail);
+
       billMap.set(id, {
         id,
         slug: slugifySegment(`${state}-${detail.identifier || detail.title || id}`),
@@ -599,7 +607,7 @@ export async function syncStateLegislationFromOpenStates(
         country: "United States",
         state: state.toUpperCase(),
         chamber: detail.from_organization?.classification || "State Legislature",
-        status: normalizeOpenStatesStatus(detail),
+        status: billStatus,
         topic: detail.subjects?.[0] || "State policy",
         sponsor_id: sponsorFields.sponsorId,
         sponsor_name: sponsorFields.sponsorName,
@@ -609,7 +617,7 @@ export async function syncStateLegislationFromOpenStates(
         last_action_at: displayDate(detail.latest_action_date || detail.updated_at),
         introduced_at: displayDate(detail.created_at || detail.first_action_date),
         session: `${state.toUpperCase()} Session`,
-        chance_of_passing: 40,
+        chance_of_passing: chanceOfPassingForStatus(billStatus),
         stats: {
           amendments: 0,
           cosponsors: sponsorFields.cosponsorCount,
