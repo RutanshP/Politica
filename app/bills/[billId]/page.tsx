@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -15,6 +14,7 @@ import {
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { BackLink } from "@/components/back-link";
 import { BillProgressStepper } from "@/components/bill-progress";
 import { BillTabs } from "@/components/bill-tabs";
 import { SourceBadge } from "@/components/source-badge";
@@ -93,13 +93,7 @@ export default async function BillDetailPage({
 
   return (
     <div>
-      <Link
-        href="/bills"
-        className="mb-3.5 inline-flex items-center gap-1.5 text-[13px] text-[var(--muted)] transition hover:text-[var(--ink)]"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Back to bills
-      </Link>
+      <BackLink fallbackHref="/bills" label="Back to bills" />
 
       {/* Hero */}
       <div className="mb-3.5 flex flex-wrap items-start gap-5 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] p-5">
