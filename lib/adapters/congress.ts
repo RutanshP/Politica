@@ -392,6 +392,13 @@ export async function fetchCongressCommitteesByUrl(
   return payload.committees ?? [];
 }
 
+/**
+ * Only used for a committee's bills.url. Congress.gov nests that response under
+ * "committee-bills" ({"committee-bills":{"bills":[...]}}), unlike the flat {"bills":[...]} shape
+ * every other list endpoint uses -- confirmed by fetching it directly. Missing this made
+ * fetchAllCommitteeBills silently treat page.length === 0 as "done" on the very first request, so
+ * every committee's activeBillIds/active_bill_ids ended up [].
+ */
 export async function fetchCongressBillsByUrl(
   url: string,
   options?: {
@@ -399,12 +406,15 @@ export async function fetchCongressBillsByUrl(
     offset?: number;
   },
 ) {
-  const payload = await fetchCongressJsonByUrl<{ bills?: CongressBillListItem[] }>(url, {
+  const payload = await fetchCongressJsonByUrl<{
+    bills?: CongressBillListItem[];
+    "committee-bills"?: { bills?: CongressBillListItem[] };
+  }>(url, {
     limit: options?.limit,
     offset: options?.offset,
   });
 
-  return payload.bills ?? [];
+  return payload.bills ?? payload["committee-bills"]?.bills ?? [];
 }
 
 export async function fetchCongressCommitteeDetail(input: {
