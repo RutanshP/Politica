@@ -52,14 +52,27 @@ function decodeXmlText(value: string) {
     .replace(/&gt;/g, ">");
 }
 
+/**
+ * Matches a tag by its *whole* name: the name must be followed by `>` or by whitespace before
+ * attributes.
+ *
+ * `<${tagName}[^>]*>` looked equivalent but let the name match as a prefix, so asking for
+ * `vote_result` also opened on the Senate feed's `<vote_result_text>`. The closing `</vote_result>`
+ * then did not match `</vote_result_text>`, and the lazy body ran from the wrong opening tag all
+ * the way to the real one -- pulling `<question>`, `<vote_title>` and `<majority_requirement>`
+ * into the value and leaking raw markup into the UI.
+ */
+function buildTagPattern(tagName: string, flags: string) {
+  return new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)</${tagName}\\s*>`, flags);
+}
+
 function getTagValue(xml: string, tagName: string) {
-  const match = xml.match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, "i"));
+  const match = xml.match(buildTagPattern(tagName, "i"));
   return match ? decodeXmlText(match[1]).trim() : "";
 }
 
 function getAllBlocks(xml: string, tagName: string) {
-  return [...xml.matchAll(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, "gi"))]
-    .map((match) => match[1]);
+  return [...xml.matchAll(buildTagPattern(tagName, "gi"))].map((match) => match[1]);
 }
 
 function parseAttributes(source: string) {

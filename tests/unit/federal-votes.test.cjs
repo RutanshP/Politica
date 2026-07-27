@@ -140,3 +140,57 @@ test("parseSenateRollCallVoteXml parses official Senate vote XML into a federal 
   assert.equal(vote.positions[0].externalId, "S427");
   assert.equal(vote.positions[0].vote, "Not Voting");
 });
+
+/*
+ * The real Senate feed carries <vote_result_text> ahead of <vote_result>, and a tag pattern that
+ * let the name match as a prefix opened on the _text tag and ran to the real closing tag -- which
+ * put raw <question>/<vote_title>/<majority_requirement> markup on screen for 797 stored votes.
+ */
+test("parseSenateRollCallVoteXml does not read a longer tag that starts with the requested name", () => {
+  const vote = parseSenateRollCallVoteXml(`
+    <roll_call_vote>
+      <congress>119</congress>
+      <congress_year>2025</congress_year>
+      <session>1</session>
+      <vote_number>5</vote_number>
+      <vote_date>January 9, 2025, 02:54 PM</vote_date>
+      <vote_result_text>Cloture Motion Agreed to (61-35, 3/5 majority required)</vote_result_text>
+      <question>On the Cloture Motion</question>
+      <vote_title>Motion to Invoke Cloture: S. 5</vote_title>
+      <majority_requirement>3/5</majority_requirement>
+      <vote_result>Cloture Motion Agreed to</vote_result>
+      <document>
+        <document_type>S.</document_type>
+        <document_number>5</document_number>
+      </document>
+      <count>
+        <yeas>61</yeas>
+        <nays>35</nays>
+        <present></present>
+        <absent>4</absent>
+      </count>
+      <members>
+        <member>
+          <member_full>Schiff (D-CA)</member_full>
+          <first_name>Adam</first_name>
+          <last_name>Schiff</last_name>
+          <party>D</party>
+          <state>CA</state>
+          <vote_cast>Yea</vote_cast>
+          <lis_member_id>S427</lis_member_id>
+        </member>
+      </members>
+    </roll_call_vote>
+  `);
+
+  assert.equal(vote.result, "Cloture Motion Agreed to");
+  assert.ok(!vote.result.includes("<"), "result must not carry raw markup");
+  // congress must not be read from the <congress_year> that follows it.
+  assert.equal(vote.id, "senate-119-1-00005");
+  assert.equal(vote.title, "Motion to Invoke Cloture: S. 5");
+  assert.equal(vote.yea, 61);
+  // <members> must not be mistaken for a <member> block, nor <member_full> for <member>.
+  assert.equal(vote.positions.length, 1);
+  assert.equal(vote.positions[0].name, "Adam Schiff");
+  assert.equal(vote.positions[0].vote, "Yea");
+});
