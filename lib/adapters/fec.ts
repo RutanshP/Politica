@@ -217,3 +217,51 @@ export async function fetchFecScheduleEByCandidate(candidateId: string, cycle: n
   );
   return payload.results ?? [];
 }
+
+export interface FecCandidateRow {
+  candidate_id?: string;
+  name?: string;
+  office?: string;
+  office_full?: string;
+  party?: string;
+  party_full?: string;
+  state?: string;
+  district?: string;
+  election_years?: number[];
+  cycles?: number[];
+  incumbent_challenge?: string;
+  incumbent_challenge_full?: string;
+  candidate_status?: string;
+  candidate_inactive?: boolean;
+  active_through?: number;
+}
+
+const FEC_CANDIDATES_PAGE_SIZE = 100;
+
+/** Every candidate filed for an office in a cycle -- House, Senate, and President all come from this one endpoint, keyed by `office`. */
+export async function fetchFecCandidatesByOfficeCycle(office: "H" | "S" | "P", cycle: number) {
+  const candidates: FecCandidateRow[] = [];
+  let page = 1;
+
+  while (true) {
+    const payload = await fetchFecJsonFresh<{
+      results?: FecCandidateRow[];
+      pagination?: { page?: number; pages?: number };
+    }>("/candidates/", {
+      office,
+      cycle,
+      per_page: FEC_CANDIDATES_PAGE_SIZE,
+      page,
+    });
+
+    candidates.push(...(payload.results ?? []));
+
+    const totalPages = payload.pagination?.pages ?? page;
+    if (page >= totalPages || !payload.results?.length) {
+      break;
+    }
+    page += 1;
+  }
+
+  return candidates;
+}

@@ -264,6 +264,9 @@ export function normalizeOfficeTitle(
   const stateName = normalizeStateLabel(options?.state);
 
   if (options?.jurisdictionType === "federal") {
+    if (/president/i.test(normalized)) {
+      return "President";
+    }
     if (/(house|representative)/i.test(normalized)) {
       return "US Representative";
     }

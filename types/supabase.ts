@@ -291,6 +291,30 @@ export interface CandidateFinanceSnapshotRow {
   raw_payload: unknown;
 }
 
+export interface ElectionCandidateRow {
+  id: string;
+  fec_candidate_id: string;
+  cycle: number;
+  election_year: number | null;
+  office: string;
+  office_full: string | null;
+  party: string | null;
+  party_full: string | null;
+  state: string | null;
+  district: string | null;
+  incumbent_challenge: string | null;
+  incumbent_challenge_full: string | null;
+  candidate_status: string | null;
+  candidate_inactive: boolean | null;
+  active_through: number | null;
+  name: string;
+  politician_id: string | null;
+  source_system: string;
+  source_id: string;
+  synced_at: string;
+  raw_payload: unknown;
+}
+
 export interface SearchDocumentRow {
   id: string;
   entity_id: string;

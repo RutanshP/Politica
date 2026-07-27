@@ -269,6 +269,34 @@ export interface SearchEntity {
   sourceMetadata?: SourceMetadata;
 }
 
+export type ElectionOffice = "H" | "S" | "P";
+
+export interface ElectionCandidate {
+  id: string;
+  fecCandidateId: string;
+  name: string;
+  party: string;
+  partyFull: string;
+  incumbentChallenge: string;
+  incumbentChallengeFull: string;
+  candidateStatus: string;
+  candidateInactive: boolean;
+  politicianId?: string;
+  politicianSlug?: string;
+}
+
+/** One contest: an office + state + district + cycle, with every filed candidate. */
+export interface ElectionRace {
+  id: string;
+  office: ElectionOffice;
+  officeFull: string;
+  state?: string;
+  district?: string;
+  cycle: number;
+  electionYear: number;
+  candidates: ElectionCandidate[];
+}
+
 export interface SyncPipelineSummary {
   pipeline: string;
   status: "success" | "partial" | "failed" | "running" | "skipped";

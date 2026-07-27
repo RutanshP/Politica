@@ -1,10 +1,12 @@
-# Weekly sync: state bills + committees (scope=detail), and the federal sponsored-bill history
-# backfill. Both are heavy, slow-changing, and not something worth re-running daily:
+# Weekly sync: state bills + committees (scope=detail), the federal sponsored-bill history
+# backfill, and the federal election candidate roster. All slow-changing, not worth re-running
+# daily:
 #
 #   - scope=detail hits OpenStates' 10 req/min limit hard (confirmed: one state's bill list alone
 #     ran 20+ pages during testing) -- doing this for 10 states daily isn't realistic.
 #   - The sponsored-bill history backfill walks every federal member's full career, which barely
 #     changes week to week.
+#   - FEC candidate filings move at filing-deadline pace (weeks), not daily.
 #
 # Registered as a Scheduled Task with a weekly recurrence -- see scripts/windows/README.md.
 # Both calls are given generous timeouts since this is meant to run unattended overnight.
@@ -24,6 +26,9 @@ try {
 
   Write-Host "=== Federal sponsored-bill history backfill ===" -ForegroundColor Magenta
   Invoke-PoliticaSync -Path "/api/internal/sync/politician-sponsored-bills" -TimeoutSec 14400 | Out-Null
+
+  Write-Host "=== Election candidates (House, Senate, President) ===" -ForegroundColor Magenta
+  Invoke-PoliticaSync -Path "/api/internal/sync/election-candidates" -TimeoutSec 3600 | Out-Null
 
   Write-Host "Weekly sync complete." -ForegroundColor Green
 } finally {

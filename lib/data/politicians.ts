@@ -157,6 +157,7 @@ function getDisplayOfficeBucket(politician: Politician) {
 
 function getDisplayOfficeLabel(politician: Politician) {
   if (politician.jurisdictionType === "federal") {
+    if (politician.title === "President") return "US President";
     if (politician.title === "US Senator") return "US Senate";
     if (politician.title === "US Representative") return "US House";
     return "Other federal";
@@ -391,7 +392,7 @@ export async function getPoliticiansData() {
 }
 
 export const POLITICIAN_SORT_OPTIONS = ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"];
-const FEDERAL_CHAMBERS = ["All chambers", "US House", "US Senate"];
+const FEDERAL_CHAMBERS = ["All chambers", "US House", "US Senate", "US President"];
 const STATE_CHAMBERS = ["All chambers", "State House", "State Senate"];
 export const SELECT_A_STATE = "Select a state";
 
@@ -516,6 +517,9 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
       offices: [
         "All chambers",
         ...(isState ? ["State House", "State Senate"] : ["US House", "US Senate"]),
+        // Only offered once a President row actually exists -- there's no sync source for the
+        // office yet (see lib/utils.ts normalizeOfficeTitle), so this stays empty until seeded.
+        ...(presentOffices.has("US President") && !isState ? ["US President"] : []),
         ...(presentOffices.has("Other state") && isState ? ["Other state"] : []),
         ...(presentOffices.has("Other federal") && !isState ? ["Other federal"] : []),
       ],
