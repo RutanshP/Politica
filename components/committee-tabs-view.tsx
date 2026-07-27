@@ -113,9 +113,22 @@ export function CommitteeTabsView({
                 title="Committee members"
                 icon={<Users />}
                 count={members.length}
-                actionLabel={members.length > 6 ? "View all →" : undefined}
-                actionHref={members.length > 6 ? "#members" : undefined}
-              />
+              >
+                {/*
+                 * Switches tabs rather than linking to "#members": that anchor only exists while
+                 * the Members tab is already rendered, so from Overview the link had nothing to
+                 * scroll to and left the other members unreachable.
+                 */}
+                {members.length > 6 ? (
+                  <button
+                    type="button"
+                    onClick={() => setActive("members")}
+                    className="text-xs font-medium text-[var(--accent-2)] transition hover:text-[#a5adff]"
+                  >
+                    View all →
+                  </button>
+                ) : null}
+              </CardHeader>
               <CardBody>
                 {members.length > 0 ? (
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -130,7 +143,17 @@ export function CommitteeTabsView({
             </Card>
 
             <Card>
-              <CardHeader title="Referred bills" icon={<FileText />} count={billsCount} />
+              <CardHeader title="Referred bills" icon={<FileText />} count={billsCount}>
+                {bills.length > 8 ? (
+                  <button
+                    type="button"
+                    onClick={() => setActive("bills")}
+                    className="text-xs font-medium text-[var(--accent-2)] transition hover:text-[#a5adff]"
+                  >
+                    View all →
+                  </button>
+                ) : null}
+              </CardHeader>
               <CardBody flush>
                 {bills.length > 0 ? (
                   <BillsTable bills={bills.slice(0, 8)} />
