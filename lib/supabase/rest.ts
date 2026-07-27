@@ -330,7 +330,11 @@ export async function upsertSupabaseRows<T extends object>(
     method: "POST",
     headers: buildHeaders({
       "Content-Type": "application/json",
-      Prefer: "resolution=merge-duplicates,return=representation",
+      // return=minimal: nothing here reads the echoed rows back (every caller just awaits this
+      // call), but return=representation had Postgres serialize and ship the full written batch
+      // over the wire on every upsert -- including raw_payload blobs -- which is where most of
+      // the account's egress quota was going given how often the sync jobs run.
+      Prefer: "resolution=merge-duplicates,return=minimal",
     }),
     body: JSON.stringify(normalizeRowKeys(rows)),
   });
@@ -340,7 +344,7 @@ export async function upsertSupabaseRows<T extends object>(
     throw new Error(`Supabase upsert failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`);
   }
 
-  return (await response.json()) as T[];
+  return [] as T[];
 }
 
 export async function upsertSupabaseRowsInChunks<T extends object>(
