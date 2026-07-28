@@ -35,14 +35,6 @@ function ordinal(value: number) {
   return `${value}th`;
 }
 
-/** A Senate term spans three Congresses, so the column shows the range it covers. */
-function congressRange(term: TenureTerm) {
-  const first = term.congresses[0];
-  const last = term.congresses[term.congresses.length - 1];
-  if (first === undefined || last === undefined) return "—";
-  return first === last ? ordinal(first) : `${ordinal(first)}–${ordinal(last)}`;
-}
-
 function seatLabel(term: TenureTerm) {
   if (term.chamber === "Senate") return `${term.stateCode ?? ""} Senate`.trim();
   return term.district === null
@@ -90,7 +82,17 @@ export default async function PoliticianTenurePage({
   const filing = describeReelectionFiling(filingStatus, nextCycle);
 
   const totalTerms = tenure.terms.length;
-  const orderedTerms = [...tenure.terms].reverse();
+  /*
+   * Numbered per chamber in the order they were served, then shown newest first -- so the top row
+   * reads "2nd Senate term" rather than leaving the reader to count.
+   */
+  const seenByChamber: Record<string, number> = {};
+  const orderedTerms = tenure.terms
+    .map((term) => {
+      seenByChamber[term.chamber] = (seenByChamber[term.chamber] ?? 0) + 1;
+      return { term, nth: seenByChamber[term.chamber] };
+    })
+    .reverse();
 
   return (
     <div className="space-y-6">
@@ -160,7 +162,7 @@ export default async function PoliticianTenurePage({
                   <table className="w-full border-collapse text-[13px]">
                     <thead>
                       <tr>
-                        {["Congress", "Chamber", "Seat", "Years"].map((column) => (
+                        {["Term", "Seat", "Years"].map((column) => (
                           <th
                             key={column}
                             scope="col"
@@ -172,18 +174,18 @@ export default async function PoliticianTenurePage({
                       </tr>
                     </thead>
                     <tbody>
-                      {orderedTerms.map((term) => (
+                      {orderedTerms.map(({ term, nth }) => (
                         <tr
-                          key={`${term.chamber}-${term.startYear}-${term.congresses[0]}`}
+                          key={`${term.chamber}-${term.startYear}`}
                           className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-white/2"
                         >
-                          <td className="whitespace-nowrap px-3.5 py-2.5 align-top num text-[var(--ink)]">
-                            {congressRange(term)}
-                          </td>
                           <td className="whitespace-nowrap px-3.5 py-2.5 align-top">
-                            <Badge tone={term.chamber === "Senate" ? "indigo" : "sky"}>
-                              {term.chamber}
-                            </Badge>
+                            <span className="flex items-center gap-2">
+                              <Badge tone={term.chamber === "Senate" ? "indigo" : "sky"}>
+                                {term.chamber}
+                              </Badge>
+                              <span className="text-[var(--muted)]">{ordinal(nth)} term</span>
+                            </span>
                           </td>
                           <td className="whitespace-nowrap px-3.5 py-2.5 align-top text-[var(--muted)]">
                             {seatLabel(term)}

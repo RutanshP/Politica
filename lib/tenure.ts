@@ -130,8 +130,19 @@ export function buildTenure(rawTerms: RawCongressTerm[] | undefined, asOfYear: n
   const terms: TenureTerm[] = [];
   for (const stint of stints) {
     const open = terms[terms.length - 1];
+    /*
+     * Terms of office begin on Jan 3 of an odd year, so a row starting in an even year is a
+     * mid-cycle seating -- someone filling the rest of another member's term. When the next row
+     * then starts on an odd year, that remainder is over and a term of their own begins. Schiff
+     * finished Feinstein's term in 2024 before starting his own in 2025: two terms served, inside
+     * what is otherwise one unbroken run of service.
+     */
+    const finishedSomeoneElsesTerm = open
+      && open.startYear % 2 === 0
+      && stint.startYear % 2 === 1;
     const contiguous = open
       && open.chamber === stint.chamber
+      && !finishedSomeoneElsesTerm
       && stint.startYear <= (open.endYear ?? stint.startYear)
       && stint.startYear - open.startYear < TERM_LENGTH_YEARS[stint.chamber];
 
@@ -191,12 +202,17 @@ export function buildTenure(rawTerms: RawCongressTerm[] | undefined, asOfYear: n
   }, 0);
 
   /*
-   * A term beginning in January means an election the previous November. Terms that begin because
-   * of an appointment have no election behind them, but the payload cannot tell them apart, so
-   * these read as "seated" years rather than certified wins.
+   * A term starting on Jan 3 of an odd year follows an election the previous November. A term
+   * starting in an even year is a mid-cycle seating, which follows an election (or appointment)
+   * in that same year. Deduplicated because one November can deliver both -- Schiff's 2024 win
+   * seated him for the rest of Feinstein's term and for his own.
    */
   const previousElectionYears = [
-    ...new Set(terms.filter((term) => !term.isCurrent).map((term) => term.startYear - 1)),
+    ...new Set(
+      terms
+        .filter((term) => !term.isCurrent)
+        .map((term) => (term.startYear % 2 === 0 ? term.startYear : term.startYear - 1)),
+    ),
   ].sort((left, right) => right - left);
 
   const termEndsYear = current ? projectedEndYear(current) : undefined;

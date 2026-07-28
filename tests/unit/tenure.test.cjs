@@ -48,6 +48,7 @@ test("buildTenure gives a Senate term six years, not two", () => {
   const tenure = buildTenure(SCHIFF_TERMS, 2026);
 
   assert.equal(tenure.currentTerm?.chamber, "Senate");
+  assert.equal(tenure.currentTerm?.startYear, 2025);
   assert.equal(tenure.termEndsYear, 2031);
   assert.equal(tenure.nextElectionYear, 2030);
 });
@@ -57,14 +58,18 @@ test("buildTenure gives a Senate term six years, not two", () => {
  * term appears three times. Counting those rows reported Schiff as serving his second Senate
  * term while he was still in his first.
  */
-test("buildTenure groups a senator's per-Congress rows into one six-year term", () => {
+test("buildTenure splits a finished remainder from the term that follows it", () => {
   const schiff = buildTenure(SCHIFF_TERMS, 2026);
 
+  // Schiff finished Feinstein's term in 2024 and began his own in 2025. Both are terms served,
+  // even though Congress.gov reports them as one unbroken run of Senate service.
   const senateTerms = schiff.terms.filter((term) => term.chamber === "Senate");
-  assert.equal(senateTerms.length, 1, "the 118th and 119th Senate rows are one term");
-  assert.deepEqual(senateTerms[0].congresses, [118, 119]);
-  assert.equal(senateTerms[0].startYear, 2024);
-  assert.equal(senateTerms[0].isCurrent, true);
+  assert.equal(senateTerms.length, 2);
+  assert.equal(senateTerms[0].startYear, 2024, "the remainder of the previous term");
+  assert.equal(senateTerms[0].endYear, 2025);
+  assert.equal(senateTerms[0].isCurrent, false);
+  assert.equal(senateTerms[1].startYear, 2025, "his own term");
+  assert.equal(senateTerms[1].isCurrent, true);
 });
 
 test("buildTenure starts a new Senate term once six years have elapsed", () => {
@@ -91,7 +96,7 @@ test("buildTenure keeps each House Congress as its own two-year term", () => {
 
 test("buildTenure counts terms per chamber and notices a chamber switch", () => {
   const schiff = buildTenure(SCHIFF_TERMS, 2026);
-  assert.deepEqual(schiff.termsByChamber, { House: 2, Senate: 1 });
+  assert.deepEqual(schiff.termsByChamber, { House: 2, Senate: 2 });
   assert.equal(schiff.switchedChambers, true);
   assert.equal(schiff.firstSwornYear, 2001);
 
@@ -111,6 +116,14 @@ test("buildTenure reads past elections off the start of each completed term", ()
 
   // Newest first, and the term in progress is excluded -- that election is the current mandate.
   assert.deepEqual(tenure.previousElectionYears, [2022, 1988, 1986]);
+});
+
+test("buildTenure reads a mid-cycle seating as an election that same year", () => {
+  // Odd-year terms follow the previous November's election; an even-year seating follows one in
+  // that same year. Schiff's single 2024 win seated him twice, so it is listed once.
+  const tenure = buildTenure(SCHIFF_TERMS, 2026);
+  assert.equal(tenure.previousElectionYears.filter((year) => year === 2024).length, 1);
+  assert.deepEqual(tenure.previousElectionYears, [2024, 2022, 2000]);
 });
 
 test("buildTenure does not invent an election for each Congress of a Senate term", () => {
