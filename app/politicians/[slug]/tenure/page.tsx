@@ -35,6 +35,14 @@ function ordinal(value: number) {
   return `${value}th`;
 }
 
+/** A Senate term spans three Congresses, so the column shows the range it covers. */
+function congressRange(term: TenureTerm) {
+  const first = term.congresses[0];
+  const last = term.congresses[term.congresses.length - 1];
+  if (first === undefined || last === undefined) return "—";
+  return first === last ? ordinal(first) : `${ordinal(first)}–${ordinal(last)}`;
+}
+
 function seatLabel(term: TenureTerm) {
   if (term.chamber === "Senate") return `${term.stateCode ?? ""} Senate`.trim();
   return term.district === null
@@ -166,11 +174,11 @@ export default async function PoliticianTenurePage({
                     <tbody>
                       {orderedTerms.map((term) => (
                         <tr
-                          key={`${term.congress}-${term.chamber}-${term.startYear}`}
+                          key={`${term.chamber}-${term.startYear}-${term.congresses[0]}`}
                           className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-white/2"
                         >
                           <td className="whitespace-nowrap px-3.5 py-2.5 align-top num text-[var(--ink)]">
-                            {ordinal(term.congress)}
+                            {congressRange(term)}
                           </td>
                           <td className="whitespace-nowrap px-3.5 py-2.5 align-top">
                             <Badge tone={term.chamber === "Senate" ? "indigo" : "sky"}>

@@ -19,9 +19,15 @@ export interface RawCongressTerm {
 
 export type TermChamber = "House" | "Senate";
 
+/**
+ * One term of office -- six years in the Senate, two in the House.
+ *
+ * Congress.gov publishes a row per *Congress*, not per term, so a senator serving a single term
+ * shows up as three rows. Those are grouped here; `congresses` keeps the ones this term spans.
+ */
 export interface TenureTerm {
   chamber: TermChamber;
-  congress: number;
+  congresses: number[];
   startYear: number;
   /** Absent while the term is still being served. */
   endYear?: number;
@@ -29,6 +35,9 @@ export interface TenureTerm {
   stateCode: string | null;
   isCurrent: boolean;
 }
+
+/** Years in a term of office, by chamber. */
+export const TERM_LENGTH_YEARS: Record<TermChamber, number> = { House: 2, Senate: 6 };
 
 export interface Tenure {
   terms: TenureTerm[];
@@ -70,31 +79,88 @@ function toChamber(term: RawCongressTerm): TermChamber | undefined {
  */
 function projectedEndYear(term: TenureTerm) {
   if (term.endYear) return term.endYear;
-  return term.chamber === "Senate" ? term.startYear + 6 : congressStartYear(term.congress) + 2;
+  const latestCongress = term.congresses[term.congresses.length - 1] ?? 0;
+  /*
+   * Projected from the Congress currently being served rather than from the start of the term.
+   * A senator seated mid-cycle to finish someone else's term then begins their own, and both
+   * show up inside one run of service -- measuring from the run's start would report that term
+   * ending a year early.
+   */
+  return term.chamber === "Senate"
+    ? congressStartYear(latestCongress) + 6
+    : congressStartYear(latestCongress) + 2;
 }
 
 export function buildTenure(rawTerms: RawCongressTerm[] | undefined, asOfYear: number): Tenure {
-  const terms: TenureTerm[] = [];
+  interface CongressStint {
+    chamber: TermChamber;
+    congress: number;
+    startYear: number;
+    endYear?: number;
+    district: number | null;
+    stateCode: string | null;
+  }
+
+  const stints: CongressStint[] = [];
   for (const term of rawTerms ?? []) {
     const chamber = toChamber(term);
     if (!chamber || typeof term.startYear !== "number" || typeof term.congress !== "number") {
       continue;
     }
 
-    const built: TenureTerm = {
+    const stint: CongressStint = {
       chamber,
       congress: term.congress,
       startYear: term.startYear,
       district: typeof term.district === "number" ? term.district : null,
       stateCode: term.stateCode ?? null,
-      isCurrent: false,
     };
     if (typeof term.endYear === "number") {
-      built.endYear = term.endYear;
+      stint.endYear = term.endYear;
+    }
+    stints.push(stint);
+  }
+  stints.sort((left, right) => left.startYear - right.startYear || left.congress - right.congress);
+
+  /*
+   * Collapse per-Congress rows into terms of office. A run of service continues the same term
+   * until it breaks -- the chamber changes, service lapses, or the term's full length has
+   * elapsed since it began. Two Senate rows one Congress apart are one term, not two.
+   */
+  const terms: TenureTerm[] = [];
+  for (const stint of stints) {
+    const open = terms[terms.length - 1];
+    const contiguous = open
+      && open.chamber === stint.chamber
+      && stint.startYear <= (open.endYear ?? stint.startYear)
+      && stint.startYear - open.startYear < TERM_LENGTH_YEARS[stint.chamber];
+
+    if (open && contiguous) {
+      open.congresses.push(stint.congress);
+      // A district can change mid-term through redistricting; the newest one is the seat held.
+      open.district = stint.district;
+      open.stateCode = stint.stateCode ?? open.stateCode;
+      if (typeof stint.endYear === "number") {
+        open.endYear = stint.endYear;
+      } else {
+        delete open.endYear;
+      }
+      continue;
+    }
+
+    const built: TenureTerm = {
+      chamber: stint.chamber,
+      congresses: [stint.congress],
+      startYear: stint.startYear,
+      district: stint.district,
+      stateCode: stint.stateCode,
+      isCurrent: false,
+    };
+    if (typeof stint.endYear === "number") {
+      built.endYear = stint.endYear;
     }
     terms.push(built);
   }
-  terms.sort((left, right) => left.startYear - right.startYear || left.congress - right.congress);
 
   if (terms.length === 0) {
     return {

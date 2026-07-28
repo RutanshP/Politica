@@ -30,7 +30,7 @@ test("congressStartYear maps a Congress to the year it convened", () => {
 test("buildTenure treats the term without an end year as the one in progress", () => {
   const tenure = buildTenure(PELOSI_TERMS, 2026);
 
-  assert.equal(tenure.currentTerm?.congress, 119);
+  assert.deepEqual(tenure.currentTerm?.congresses, [119]);
   assert.equal(tenure.currentTerm?.isCurrent, true);
   assert.equal(tenure.terms.filter((term) => term.isCurrent).length, 1);
 });
@@ -52,9 +52,46 @@ test("buildTenure gives a Senate term six years, not two", () => {
   assert.equal(tenure.nextElectionYear, 2030);
 });
 
+/*
+ * Congress.gov publishes a row per Congress, not per term, so a senator serving one six-year
+ * term appears three times. Counting those rows reported Schiff as serving his second Senate
+ * term while he was still in his first.
+ */
+test("buildTenure groups a senator's per-Congress rows into one six-year term", () => {
+  const schiff = buildTenure(SCHIFF_TERMS, 2026);
+
+  const senateTerms = schiff.terms.filter((term) => term.chamber === "Senate");
+  assert.equal(senateTerms.length, 1, "the 118th and 119th Senate rows are one term");
+  assert.deepEqual(senateTerms[0].congresses, [118, 119]);
+  assert.equal(senateTerms[0].startYear, 2024);
+  assert.equal(senateTerms[0].isCurrent, true);
+});
+
+test("buildTenure starts a new Senate term once six years have elapsed", () => {
+  // A full term seated in 2021 runs through the 117th, 118th and 119th; the 120th begins the next.
+  const senator = [
+    { chamber: "Senate", congress: 117, startYear: 2021, endYear: 2023, stateCode: "OH", memberType: "Senator" },
+    { chamber: "Senate", congress: 118, startYear: 2023, endYear: 2025, stateCode: "OH", memberType: "Senator" },
+    { chamber: "Senate", congress: 119, startYear: 2025, endYear: 2027, stateCode: "OH", memberType: "Senator" },
+    { chamber: "Senate", congress: 120, startYear: 2027, stateCode: "OH", memberType: "Senator" },
+  ];
+  const tenure = buildTenure(senator, 2028);
+
+  assert.equal(tenure.terms.length, 2);
+  assert.deepEqual(tenure.terms[0].congresses, [117, 118, 119]);
+  assert.deepEqual(tenure.terms[1].congresses, [120]);
+  assert.equal(tenure.termsByChamber.Senate, 2);
+});
+
+test("buildTenure keeps each House Congress as its own two-year term", () => {
+  const pelosi = buildTenure(PELOSI_TERMS, 2026);
+  assert.equal(pelosi.terms.length, 4, "House rows map one-to-one onto terms");
+  assert.deepEqual(pelosi.terms.map((term) => term.congresses), [[100], [101], [118], [119]]);
+});
+
 test("buildTenure counts terms per chamber and notices a chamber switch", () => {
   const schiff = buildTenure(SCHIFF_TERMS, 2026);
-  assert.deepEqual(schiff.termsByChamber, { House: 2, Senate: 2 });
+  assert.deepEqual(schiff.termsByChamber, { House: 2, Senate: 1 });
   assert.equal(schiff.switchedChambers, true);
   assert.equal(schiff.firstSwornYear, 2001);
 
@@ -74,6 +111,18 @@ test("buildTenure reads past elections off the start of each completed term", ()
 
   // Newest first, and the term in progress is excluded -- that election is the current mandate.
   assert.deepEqual(tenure.previousElectionYears, [2022, 1988, 1986]);
+});
+
+test("buildTenure does not invent an election for each Congress of a Senate term", () => {
+  const senator = [
+    { chamber: "Senate", congress: 117, startYear: 2021, endYear: 2023, stateCode: "OH", memberType: "Senator" },
+    { chamber: "Senate", congress: 118, startYear: 2023, endYear: 2025, stateCode: "OH", memberType: "Senator" },
+    { chamber: "Senate", congress: 119, startYear: 2025, endYear: 2027, stateCode: "OH", memberType: "Senator" },
+    { chamber: "Senate", congress: 120, startYear: 2027, stateCode: "OH", memberType: "Senator" },
+  ];
+
+  // One completed term seated in 2021 means one election, in 2020 -- not three.
+  assert.deepEqual(buildTenure(senator, 2028).previousElectionYears, [2020]);
 });
 
 test("buildTenure survives a member with no usable terms", () => {
@@ -96,6 +145,7 @@ test("buildTenure handles a former member whose terms are all closed", () => {
   assert.equal(tenure.currentTerm, undefined);
   assert.equal(tenure.nextElectionYear, undefined);
   assert.equal(tenure.yearsServed, 2);
+  assert.equal(tenure.terms.length, 1);
 });
 
 test("describeReelectionFiling does not read a missing filing as retirement", () => {
