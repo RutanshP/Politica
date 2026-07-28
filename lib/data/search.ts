@@ -20,14 +20,20 @@ export async function searchPolitica(query: string) {
     getLatestSyncRun("search_rebuild").catch(() => undefined),
   ]);
 
+  // Whether the index exists is a different question from whether this query matched, and unlike
+  // the entity index -- which is read in full -- these results come back filtered, so an empty
+  // array says nothing about the index. Reading it off the last rebuild stops a query with no
+  // matches from reporting the index as missing.
+  const indexed = latestRun?.status === "success" && (latestRun.record_count || 0) > 0;
+
   return {
     ...withData(
-      results.length > 0 ? "supabase" : "unavailable",
+      indexed ? "supabase" : "unavailable",
       "search_rebuild",
       results,
       latestRun?.finished_at || latestRun?.started_at,
       {
-        availability: results.length > 0 ? "live" : "empty",
+        availability: indexed ? "live" : "empty",
         detail: latestRun?.status ? `Latest rebuild status: ${latestRun.status}` : "No search rebuild history yet",
       },
     ),

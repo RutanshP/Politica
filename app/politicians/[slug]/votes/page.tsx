@@ -16,7 +16,7 @@ import {
   getVotesDataForPolitician,
   isLiveVoteSource,
 } from "@/lib/data/votes";
-import { billHref, hasVotePerformanceStats } from "@/lib/utils";
+import { hasVotePerformanceStats, voteHref } from "@/lib/utils";
 import { isSubstantiveVote } from "@/lib/vote-classification";
 
 export const revalidate = 21600;
@@ -96,7 +96,7 @@ export default async function PoliticianVotesPage({
                 return (
                   <Link
                     key={vote.id}
-                    href={vote.billId ? billHref(vote.billId, "/votes") : `/politicians/${politician.slug}/votes`}
+                    href={vote.billId ? voteHref(vote.billId, vote.id) : `/politicians/${politician.slug}/votes`}
                     className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4 transition hover:border-[var(--line-2)]"
                   >
                     <div className="flex items-center justify-between gap-3">

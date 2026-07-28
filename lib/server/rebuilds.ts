@@ -94,8 +94,20 @@ export async function rebuildIssuesFromStoredData(inputs?: RebuildInputs) {
   };
 }
 
+// A search document carried a full copy of its source record in raw_payload -- the entire bill,
+// politician or committee object. Nothing ever read it back: the only consumer is
+// `rawAvailable: Boolean(row.raw_payload)`, and the select these rows are read through does not
+// even fetch the column. Duplicating the whole corpus into the index was what made the write too
+// large to complete, on top of storing a second copy of every bill. Same reasoning as the
+// votes.raw_payload reclaim in 018.
+const NO_RAW_PAYLOAD = null;
+
 export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
   const { bills, politicians, committees, issues, news } = inputs ?? await loadRebuildInputs();
+
+  // One timestamp for the whole run: replaceStoredSearchDocuments prunes the previous index by
+  // synced_at, and a uniform stamp makes that cutoff exact.
+  const syncedAt = new Date().toISOString();
 
   const docs: SearchDocumentRow[] = [
     ...bills.map((bill) => ({
@@ -109,8 +121,8 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
       meta: `${bill.status} | ${bill.chamber} | ${bill.topic}`,
       source_system: "rebuild",
       source_id: bill.id,
-      synced_at: new Date().toISOString(),
-      raw_payload: bill,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
     })),
     ...politicians.map((politician) => ({
       id: `politician-${politician.id}`,
@@ -123,8 +135,8 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
       meta: `${politician.party} | ${politician.state}`,
       source_system: "rebuild",
       source_id: politician.id,
-      synced_at: new Date().toISOString(),
-      raw_payload: politician,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
     })),
     ...committees.map((committee) => ({
       id: `committee-${committee.id}`,
@@ -137,8 +149,8 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
       meta: `${committee.activeBillIds.length} active bills`,
       source_system: "rebuild",
       source_id: committee.id,
-      synced_at: new Date().toISOString(),
-      raw_payload: committee,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
     })),
     ...issues.map((issue) => ({
       id: `issue-${issue.id}`,
@@ -151,8 +163,8 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
       meta: `${issue.stats.activeBills} active bills`,
       source_system: "rebuild",
       source_id: issue.id,
-      synced_at: new Date().toISOString(),
-      raw_payload: issue,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
     })),
     ...news.map((item) => ({
       id: `news-${item.id}`,
@@ -165,8 +177,8 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
       meta: item.publishedAt,
       source_system: "rebuild",
       source_id: item.id,
-      synced_at: new Date().toISOString(),
-      raw_payload: item,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
     })),
   ];
 
@@ -181,6 +193,8 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
 export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
   const { bills, politicians, committees, issues, news } = inputs ?? await loadRebuildInputs();
 
+  const syncedAt = new Date().toISOString();
+
   const entityRows: EntityRow[] = [
     ...bills.map((bill) => ({
       id: bill.id,
@@ -192,8 +206,8 @@ export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
       meta: `${bill.status} | ${bill.topic}`,
       source_system: "rebuild",
       source_id: bill.id,
-      synced_at: new Date().toISOString(),
-      raw_payload: bill,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
     })),
     ...politicians.map((politician) => ({
       id: politician.slug,
@@ -205,8 +219,8 @@ export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
       meta: `${politician.party} | ${politician.state}`,
       source_system: "rebuild",
       source_id: politician.id,
-      synced_at: new Date().toISOString(),
-      raw_payload: politician,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
     })),
     ...committees.map((committee) => ({
       id: committee.slug,
@@ -218,8 +232,8 @@ export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
       meta: `${committee.activeBillIds.length} active bills`,
       source_system: "rebuild",
       source_id: committee.id,
-      synced_at: new Date().toISOString(),
-      raw_payload: committee,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
     })),
     ...issues.map((issue) => ({
       id: issue.slug,
@@ -231,8 +245,8 @@ export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
       meta: `${issue.stats.activeBills} active bills`,
       source_system: "rebuild",
       source_id: issue.id,
-      synced_at: new Date().toISOString(),
-      raw_payload: issue,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
     })),
     ...news.map((item) => ({
       id: item.id,
@@ -244,8 +258,8 @@ export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
       meta: item.publishedAt,
       source_system: "rebuild",
       source_id: item.id,
-      synced_at: new Date().toISOString(),
-      raw_payload: item,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
     })),
   ];
 
@@ -258,7 +272,7 @@ export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
       weight: 1,
       source_system: "rebuild",
       source_id: `${bill.id}-${relatedId}`,
-      synced_at: new Date().toISOString(),
+      synced_at: syncedAt,
       raw_payload: { billId: bill.id, relatedId },
     }))),
     ...news.flatMap((item) => item.relatedIds.map((relatedId) => ({
@@ -269,7 +283,7 @@ export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
       weight: 1,
       source_system: "rebuild",
       source_id: `${item.id}-${relatedId}`,
-      synced_at: new Date().toISOString(),
+      synced_at: syncedAt,
       raw_payload: { newsItemId: item.id, relatedId },
     }))),
   ];

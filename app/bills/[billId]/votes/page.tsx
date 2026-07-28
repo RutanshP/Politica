@@ -9,7 +9,7 @@ import { BillTabs } from "@/components/bill-tabs";
 import { VoteBarChart } from "@/components/trend-charts";
 import { VoteTypeBadge } from "@/components/vote-type-badge";
 import { VOTE_CATEGORY_META, isSubstantiveVote } from "@/lib/vote-classification";
-import { billHref } from "@/lib/utils";
+import { voteHref } from "@/lib/utils";
 import {
   getBillData,
   getBillsSourceLabel,
@@ -94,7 +94,7 @@ export default async function BillVotesPage({
                       {votes.map((item) => (
                         <a
                           key={item.id}
-                          href={`${billHref(bill.id, "/votes")}?voteId=${encodeURIComponent(item.id)}`}
+                          href={voteHref(bill.id, item.id)}
                           className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${
                             item.id === vote.id
                               ? "bg-[var(--accent)] text-white"

@@ -22,7 +22,7 @@ export const getLatestSyncRun = cache(async (pipeline: string) => {
   const rows = await fetchSupabaseRows<SyncRunRow>(
     "sync_runs",
     `pipeline=eq.${encodeURIComponent(pipeline)}&order=started_at.desc&limit=1`,
-    { select: "id,pipeline,status,started_at,finished_at", tags: [SYNC_CACHE_TAG] },
+    { select: "id,pipeline,status,started_at,finished_at,record_count", tags: [SYNC_CACHE_TAG] },
   );
   return rows[0];
 });

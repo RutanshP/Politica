@@ -180,7 +180,10 @@ export interface VoteRow {
   bill_number: string;
   title: string;
   chamber: string;
+  /** Display text only ("September 9, 2025,  12:48 PM" / "Sep 9, 2025"). Never sort by this. */
   date_label: string;
+  /** The parsed vote timestamp. This is what orders a vote list chronologically. */
+  voted_on?: string | null;
   result: string;
   yea: number;
   nay: number;

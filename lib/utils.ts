@@ -90,6 +90,20 @@ export function billHref(billId: string, suffix = "") {
   return `/bills/${encodeURIComponent(billId)}${suffix}`;
 }
 
+/**
+ * Links to one specific roll call on a bill's votes page.
+ *
+ * A bill routinely has several votes, and that page falls back to the first substantive one when
+ * no voteId is given. Callers that already know which vote the user picked -- a member's voting
+ * record, the home feed -- were linking with billHref(billId, "/votes") alone, so clicking the
+ * January 9 vote opened whichever vote the fallback chose (the January 28 one). Anything rendering
+ * a single vote should link through here so the destination is the vote that was clicked.
+ */
+export function voteHref(billId: string, voteId?: string) {
+  const base = billHref(billId, "/votes");
+  return voteId ? `${base}?voteId=${encodeURIComponent(voteId)}` : base;
+}
+
 export function slugifySegment(input: string) {
   return input
     .toLowerCase()

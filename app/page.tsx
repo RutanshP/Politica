@@ -25,7 +25,7 @@ import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
 import { BILL_STATUS_TONE } from "@/components/ui/tones";
 import { getDashboardData } from "@/lib/data/dashboard";
 import { getIssuesData } from "@/lib/data/issues";
-import { billHref } from "@/lib/utils";
+import { billHref, voteHref } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
 export const revalidate = 21600;
@@ -227,7 +227,7 @@ export default async function HomePage() {
               feed.upcomingVotes.map((vote) => (
                 <ListRow
                   key={vote.id}
-                  href={billHref(vote.billId, "/votes")}
+                  href={voteHref(vote.billId, vote.id)}
                   leading={
                     <IconTile tone="sky">
                       <Vote />

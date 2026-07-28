@@ -16,7 +16,18 @@ const votePositionStatSelect = "vote_id,politician_id,party,vote";
 // (345k+ rows). Fetching it by default via select=* on every vote/politician page view was a
 // major, uncached (cache: "no-store") egress driver.
 const votePositionDisplaySelect = "vote_id,politician_id,name,party,state,vote,source_system,source_id,synced_at";
-const voteDisplaySelect = "id,bill_id,canonical_id,bill_number,title,chamber,date_label,result,yea,nay,present,not_voting,source_system,source_id,synced_at";
+const voteDisplaySelect = "id,bill_id,canonical_id,bill_number,title,chamber,date_label,voted_on,result,yea,nay,present,not_voting,source_system,source_id,synced_at";
+
+/**
+ * Vote lists are ordered by the parsed timestamp, never by `date_label`.
+ *
+ * date_label is display text, and the two chambers do not even format it the same way ("September
+ * 9, 2025,  12:48 PM" in the Senate, "Sep 9, 2025" in the House). Ordering by that string sorts
+ * alphabetically: September above October above March, so a member's "recent votes" opened on
+ * September 2025 while their October 2025 and 2026 votes sat further down the list. Same trap as
+ * bills.last_action_at vs last_action_on.
+ */
+const VOTE_ORDER_RECENT_FIRST = "order=voted_on.desc.nullslast";
 
 function buildQuotedInFilter(values: string[]) {
   return values
@@ -54,7 +65,7 @@ function mapRowToVote(row: VoteRow, positions: VotePositionRow[]): Vote {
     nay: row.nay,
     present: row.present,
     notVoting: row.not_voting,
-    category: classifyVote(row.title),
+    category: classifyVote(row.title, { billNumber: row.bill_number, result: row.result }),
     positions: positions.map(mapRowToVotePosition),
     sourceMetadata: {
       sourceSystem: row.source_system,
@@ -94,6 +105,16 @@ async function listCachedVotePositionsByVoteIds(voteIds: string[]) {
 // URL that, with the auth/Range headers, overflows undici's header-size limit
 // (UND_ERR_HEADERS_OVERFLOW) and makes the whole read throw. Chunking keeps each
 // request small. Results are re-sorted to preserve the global date ordering.
+/** Most recent first; a vote with no parsed timestamp sorts last rather than to the top. */
+function compareVotesRecentFirst(left: VoteRow, right: VoteRow) {
+  const leftTime = left.voted_on ? Date.parse(left.voted_on) : Number.NaN;
+  const rightTime = right.voted_on ? Date.parse(right.voted_on) : Number.NaN;
+  if (Number.isNaN(leftTime) && Number.isNaN(rightTime)) return 0;
+  if (Number.isNaN(leftTime)) return 1;
+  if (Number.isNaN(rightTime)) return -1;
+  return rightTime - leftTime;
+}
+
 async function listVotesByIds(voteIds: string[]) {
   if (voteIds.length === 0) return [] as VoteRow[];
   const chunkSize = 100;
@@ -102,17 +123,18 @@ async function listVotesByIds(voteIds: string[]) {
     const chunk = voteIds.slice(index, index + chunkSize);
     const result = await fetchSupabaseRows<VoteRow>(
       "votes",
-      `id=in.(${buildQuotedInFilter(chunk)})&order=date_label.desc`,
+      `id=in.(${buildQuotedInFilter(chunk)})&${VOTE_ORDER_RECENT_FIRST}`,
       { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] },
     );
     rows.push(...result);
   }
-  rows.sort((left, right) => (right.date_label || "").localeCompare(left.date_label || ""));
+  // Each chunk came back sorted on its own; this restores a single order across all of them.
+  rows.sort(compareVotesRecentFirst);
   return rows;
 }
 
 export async function listStoredVotes() {
-  const voteRows = await fetchSupabaseRows<VoteRow>("votes", "order=date_label.desc", { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] });
+  const voteRows = await fetchSupabaseRows<VoteRow>("votes", VOTE_ORDER_RECENT_FIRST, { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] });
   const positionRows = await listCachedVotePositionsByVoteIds(voteRows.map((row) => row.id));
 
   const positionsByVoteId = new Map<string, VotePositionRow[]>();
@@ -126,7 +148,7 @@ export async function listStoredVotes() {
 }
 
 export async function listStoredVotesByBillId(billId: string) {
-  const voteRows = await fetchSupabaseRows<VoteRow>("votes", `bill_id=eq.${encodeURIComponent(billId)}&order=date_label.desc`, { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] });
+  const voteRows = await fetchSupabaseRows<VoteRow>("votes", `bill_id=eq.${encodeURIComponent(billId)}&${VOTE_ORDER_RECENT_FIRST}`, { paginateAll: true, select: voteDisplaySelect, tags: [VOTES_CACHE_TAG] });
   const wantedVoteIds = new Set(voteRows.map((row) => row.id));
   const positionRows = await listCachedVotePositionsByVoteIds([...wantedVoteIds]);
   const positionsByVoteId = new Map<string, VotePositionRow[]>();

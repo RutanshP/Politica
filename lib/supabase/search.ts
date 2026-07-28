@@ -1,5 +1,5 @@
 import { SEARCH_CACHE_TAG } from "@/lib/supabase/cache-tags";
-import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
+import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import type { SearchEntity } from "@/types/civic";
 import type { SearchDocumentRow } from "@/types/supabase";
 
@@ -55,10 +55,31 @@ export async function listStoredSearchDocuments() {
   return rows.map(mapRowToSearchEntity);
 }
 
+// One document is ~1KB without raw_payload, so a chunk stays well under a megabyte on the wire.
+const SEARCH_DOCUMENT_CHUNK_SIZE = 500;
+
+/**
+ * Writes the new index, then prunes whatever this run did not write.
+ *
+ * The previous order -- delete every row, then POST all ~21k documents in a single request --
+ * emptied the index outright. That one body was large enough for the edge to reject it
+ * ("520 unknown_origin_error"), and because the delete had already committed, each failed rebuild
+ * left the table with zero rows instead of stale ones, so global search returned nothing for every
+ * query. Writing first, in chunks, keeps the previous index serving when a rebuild fails.
+ *
+ * The prune is by synced_at rather than by id: every row this run wrote is stamped no earlier than
+ * the oldest row it built, so anything below that cutoff is left over from an earlier rebuild.
+ */
 export async function replaceStoredSearchDocuments(rows: SearchDocumentRow[]) {
-  await deleteSupabaseRows("search_documents", "id=not.is.null");
   if (rows.length === 0) {
+    await deleteSupabaseRows("search_documents", "id=not.is.null");
     return [];
   }
-  return upsertSupabaseRows("search_documents", rows, "id");
+
+  await upsertSupabaseRowsInChunks("search_documents", rows, "id", SEARCH_DOCUMENT_CHUNK_SIZE);
+
+  const cutoff = rows.reduce((oldest, row) => (row.synced_at < oldest ? row.synced_at : oldest), rows[0].synced_at);
+  await deleteSupabaseRows("search_documents", `synced_at=lt.${cutoff}`);
+
+  return [];
 }

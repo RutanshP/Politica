@@ -1,4 +1,4 @@
-import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
+import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import type { SearchEntity } from "@/types/civic";
 import type { EntityRelationshipRow, EntityRow } from "@/types/supabase";
 
@@ -38,14 +38,33 @@ export async function getStoredEntity(entityId: string) {
   return row ? mapRowToEntity(row) : undefined;
 }
 
-export async function replaceStoredEntities(entityRows: EntityRow[], relationshipRows: EntityRelationshipRow[]) {
-  await deleteSupabaseRows("entity_relationships", "id=not.is.null");
-  await deleteSupabaseRows("entities", "id=not.is.null");
+const ENTITY_CHUNK_SIZE = 500;
 
-  if (entityRows.length > 0) {
-    await upsertSupabaseRows("entities", entityRows, "id");
+function oldestSyncedAt(rows: { synced_at: string }[]) {
+  return rows.reduce((oldest, row) => (row.synced_at < oldest ? row.synced_at : oldest), rows[0].synced_at);
+}
+
+/**
+ * Write-then-prune, for the same reason as replaceStoredSearchDocuments: deleting first and then
+ * posting ~21k rows in one request meant any failure -- and a body that size failed reliably --
+ * left the table empty rather than stale.
+ */
+export async function replaceStoredEntities(entityRows: EntityRow[], relationshipRows: EntityRelationshipRow[]) {
+  if (entityRows.length === 0) {
+    await deleteSupabaseRows("entity_relationships", "id=not.is.null");
+    await deleteSupabaseRows("entities", "id=not.is.null");
+    return;
   }
+
+  await upsertSupabaseRowsInChunks("entities", entityRows, "id", ENTITY_CHUNK_SIZE);
+
+  // Edges are pruned before the rows they name, so a stale relationship never outlives its entity.
   if (relationshipRows.length > 0) {
-    await upsertSupabaseRows("entity_relationships", relationshipRows, "id");
+    await upsertSupabaseRowsInChunks("entity_relationships", relationshipRows, "id", ENTITY_CHUNK_SIZE);
+    await deleteSupabaseRows("entity_relationships", `synced_at=lt.${oldestSyncedAt(relationshipRows)}`);
+  } else {
+    await deleteSupabaseRows("entity_relationships", "id=not.is.null");
   }
+
+  await deleteSupabaseRows("entities", `synced_at=lt.${oldestSyncedAt(entityRows)}`);
 }
