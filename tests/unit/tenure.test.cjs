@@ -3,7 +3,12 @@ const assert = require("node:assert/strict");
 
 const jiti = require("../support/jiti.cjs");
 
-const { buildTenure, congressStartYear, describeReelectionFiling } = jiti("@/lib/tenure");
+const {
+  buildTenure,
+  buildTenureFromOfficialTerms,
+  congressStartYear,
+  describeReelectionFiling,
+} = jiti("@/lib/tenure");
 
 // Nancy Pelosi, abbreviated: 20 straight House terms, the 119th still open.
 const PELOSI_TERMS = [
@@ -190,4 +195,83 @@ test("describeReelectionFiling says nothing either way for an unsynced cycle", (
   assert.match(unknown.label, /not known/i);
   assert.match(unknown.detail, /does not cover this cycle/i);
   assert.doesNotMatch(unknown.detail, /retir/i);
+});
+
+/*
+ * congress-legislators records terms as terms, with real end dates -- exactly what Congress.gov
+ * withholds. These are Schiff's actual entries, including the special election that seated him
+ * for the rest of Feinstein's term before his own began.
+ */
+const SCHIFF_OFFICIAL_TERMS = [
+  { chamber: "House", start: "2021-01-03", end: "2023-01-03", state: "CA", district: 28, senateClass: null, how: null },
+  { chamber: "House", start: "2023-01-03", end: "2024-12-08", state: "CA", district: 30, senateClass: null, how: null },
+  { chamber: "Senate", start: "2024-12-09", end: "2025-01-03", state: "CA", district: null, senateClass: 1, how: "special-election" },
+  { chamber: "Senate", start: "2025-01-03", end: "2031-01-03", state: "CA", district: null, senateClass: 1, how: null },
+];
+
+test("buildTenureFromOfficialTerms takes term boundaries from the record, not a guess", () => {
+  const tenure = buildTenureFromOfficialTerms(SCHIFF_OFFICIAL_TERMS, 2026);
+
+  assert.equal(tenure.terms.length, 4);
+  assert.deepEqual(tenure.termsByChamber, { House: 2, Senate: 2 });
+  assert.equal(tenure.switchedChambers, true);
+});
+
+test("buildTenureFromOfficialTerms reads the real end date instead of projecting one", () => {
+  const tenure = buildTenureFromOfficialTerms(SCHIFF_OFFICIAL_TERMS, 2026);
+
+  // The record says 2031-01-03. Projecting six years from when he was seated would say 2030.
+  assert.equal(tenure.termEndsYear, 2031);
+  assert.equal(tenure.nextElectionYear, 2030);
+  assert.equal(tenure.currentTerm?.startYear, 2025);
+  assert.equal(tenure.currentTerm?.chamber, "Senate");
+});
+
+test("buildTenureFromOfficialTerms dates a special election to its own year", () => {
+  const tenure = buildTenureFromOfficialTerms(SCHIFF_OFFICIAL_TERMS, 2026);
+
+  // A regular term beginning in January follows the previous November; a special election is won
+  // in the year the member takes the seat. Schiff's 2024 win seated him twice, so it appears once.
+  assert.deepEqual(tenure.previousElectionYears, [2024, 2022, 2020]);
+});
+
+test("buildTenureFromOfficialTerms credits no election to an appointed seat", () => {
+  const appointed = [
+    // Won at a regular election: the November before it began.
+    { chamber: "House", start: "2021-01-03", end: "2023-01-03", state: "NE", district: 2, senateClass: null, how: null },
+    // Appointed to a vacancy -- nobody voted, so this term has no election behind it.
+    { chamber: "Senate", start: "2023-01-03", end: "2025-01-03", state: "NE", district: null, senateClass: 2, how: "appointment" },
+    // Still being served, so it is the current mandate rather than a previous election.
+    { chamber: "Senate", start: "2025-01-03", end: "2031-01-03", state: "NE", district: null, senateClass: 2, how: null },
+  ];
+  const tenure = buildTenureFromOfficialTerms(appointed, 2026);
+
+  assert.deepEqual(tenure.previousElectionYears, [2020]);
+  assert.equal(tenure.termsByChamber.Senate, 2);
+  assert.equal(tenure.termEndsYear, 2031);
+});
+
+test("buildTenureFromOfficialTerms marks only the unfinished term as current", () => {
+  const tenure = buildTenureFromOfficialTerms(SCHIFF_OFFICIAL_TERMS, 2026);
+
+  assert.equal(tenure.terms.filter((term) => term.isCurrent).length, 1);
+  assert.equal(tenure.terms[tenure.terms.length - 1].isCurrent, true);
+
+  // A member whose last term has already ended is not serving one.
+  const former = buildTenureFromOfficialTerms(SCHIFF_OFFICIAL_TERMS.slice(0, 2), 2026);
+  assert.equal(former.currentTerm, undefined);
+  assert.equal(former.nextElectionYear, undefined);
+});
+
+test("buildTenureFromOfficialTerms counts the term in progress only up to now", () => {
+  // 2021-2023, 2023-2024, 2024-2025, then 2025 -> 2026 of a term that runs to 2031.
+  assert.equal(buildTenureFromOfficialTerms(SCHIFF_OFFICIAL_TERMS, 2026).yearsServed, 5);
+  assert.equal(buildTenureFromOfficialTerms(SCHIFF_OFFICIAL_TERMS, 2028).yearsServed, 7);
+});
+
+test("buildTenureFromOfficialTerms handles an empty record", () => {
+  const tenure = buildTenureFromOfficialTerms([], 2026);
+  assert.equal(tenure.terms.length, 0);
+  assert.equal(tenure.yearsServed, 0);
+  assert.equal(tenure.currentTerm, undefined);
 });

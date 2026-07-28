@@ -57,6 +57,89 @@ interface RawCurrentLegislator {
     bioguide?: string;
     fec?: string[];
   };
+  terms?: RawLegislatorTerm[];
+}
+
+interface RawLegislatorTerm {
+  type?: string;
+  start?: string;
+  end?: string;
+  state?: string;
+  district?: number;
+  class?: number;
+  /** "special-election" or "appointment" when the seat was not filled by a regular election. */
+  how?: string;
+  party?: string;
+}
+
+/**
+ * One actual term of office, as congress-legislators records it.
+ *
+ * Congress.gov publishes a row per Congress, so a six-year Senate term arrives as three rows and
+ * a term's real end date is never stated -- it has to be guessed from chamber and start year,
+ * which goes wrong for anyone seated mid-cycle. This dataset records terms as terms, with exact
+ * dates, the Senate class, and how the seat was filled.
+ */
+export interface CongressLegislatorTerm {
+  chamber: "House" | "Senate";
+  start: string;
+  end: string;
+  state: string | null;
+  district: number | null;
+  senateClass: number | null;
+  /** "special-election", "appointment", or null for a regular election. */
+  how: string | null;
+}
+
+/**
+ * bioguide -> every term the member has served, oldest first.
+ *
+ * Covers sitting members only; the project keeps former members in a separate historical file
+ * that is far larger and that nothing here needs.
+ */
+export async function fetchCongressLegislatorsTerms() {
+  const response = await fetch(LEGISLATORS_CURRENT_URL, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`congress-legislators current fetch failed: ${response.status} ${response.statusText}`);
+  }
+
+  const parsed = (load(await response.text()) as RawCurrentLegislator[]) || [];
+  const termsByBioguide = new Map<string, CongressLegislatorTerm[]>();
+
+  for (const legislator of parsed) {
+    const bioguide = legislator?.id?.bioguide;
+    if (!bioguide || !Array.isArray(legislator.terms)) {
+      continue;
+    }
+
+    const terms: CongressLegislatorTerm[] = [];
+    for (const term of legislator.terms) {
+      const chamber = term.type === "sen" ? "Senate" : term.type === "rep" ? "House" : undefined;
+      if (!chamber || !term.start || !term.end) {
+        continue;
+      }
+      terms.push({
+        chamber,
+        start: term.start,
+        end: term.end,
+        state: term.state ?? null,
+        district: typeof term.district === "number" ? term.district : null,
+        senateClass: typeof term.class === "number" ? term.class : null,
+        how: term.how ?? null,
+      });
+    }
+
+    if (terms.length > 0) {
+      terms.sort((left, right) => left.start.localeCompare(right.start));
+      termsByBioguide.set(bioguide, terms);
+    }
+  }
+
+  return termsByBioguide;
 }
 
 /**

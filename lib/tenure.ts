@@ -231,6 +231,103 @@ export function buildTenure(rawTerms: RawCongressTerm[] | undefined, asOfYear: n
   };
 }
 
+/** A term as congress-legislators records it: real terms, exact dates. See OfficialTerm below. */
+export interface OfficialTerm {
+  chamber: TermChamber;
+  start: string;
+  end: string;
+  state: string | null;
+  district: number | null;
+  senateClass: number | null;
+  how: string | null;
+}
+
+function yearOf(isoDate: string) {
+  return Number.parseInt(isoDate.slice(0, 4), 10);
+}
+
+/**
+ * Tenure built from recorded terms rather than inferred from per-Congress rows.
+ *
+ * Nothing is projected here: each term already carries its real end date, so a member seated
+ * mid-cycle to finish someone else's term gets that term's true expiry instead of six years from
+ * when they arrived. `how` distinguishes a seat won at a special election or filled by
+ * appointment from one won at a regular election, which is what decides when the election behind
+ * a term actually happened.
+ */
+export function buildTenureFromOfficialTerms(officialTerms: OfficialTerm[], asOfYear: number): Tenure {
+  const ordered = [...officialTerms].sort((left, right) => left.start.localeCompare(right.start));
+
+  const terms: TenureTerm[] = ordered.map((term) => {
+    const startYear = yearOf(term.start);
+    const endYear = yearOf(term.end);
+    const built: TenureTerm = {
+      chamber: term.chamber,
+      congresses: [],
+      startYear,
+      district: term.district,
+      stateCode: term.state,
+      isCurrent: endYear > asOfYear,
+    };
+    built.endYear = endYear;
+    return built;
+  });
+
+  if (terms.length === 0) {
+    return {
+      terms: [],
+      termsByChamber: { House: 0, Senate: 0 },
+      yearsServed: 0,
+      previousElectionYears: [],
+      switchedChambers: false,
+    };
+  }
+
+  // Only the last term can still be running; anything earlier has been superseded.
+  for (let index = 0; index < terms.length - 1; index += 1) {
+    terms[index]!.isCurrent = false;
+  }
+  const current = terms[terms.length - 1]!.isCurrent ? terms[terms.length - 1] : undefined;
+
+  const termsByChamber = terms.reduce(
+    (totals, term) => ({ ...totals, [term.chamber]: totals[term.chamber] + 1 }),
+    { House: 0, Senate: 0 } as Record<TermChamber, number>,
+  );
+
+  const yearsServed = terms.reduce((total, term) => {
+    const end = Math.min(term.endYear ?? asOfYear, asOfYear);
+    return total + Math.max(0, end - term.startYear);
+  }, 0);
+
+  /*
+   * A term won at a regular election began the January after that November. A seat filled by
+   * special election was won in the year the member took it, and one filled by appointment was
+   * never won at all, so it contributes no election.
+   */
+  const previousElectionYears = [
+    ...new Set(
+      ordered
+        .map((term, index) => ({ term, isCurrent: terms[index]!.isCurrent }))
+        .filter(({ term, isCurrent }) => !isCurrent && term.how !== "appointment")
+        .map(({ term }) =>
+          term.how === "special-election" ? yearOf(term.start) : yearOf(term.start) - 1),
+    ),
+  ].sort((left, right) => right - left);
+
+  const termEndsYear = current?.endYear;
+
+  return {
+    terms,
+    ...(current ? { currentTerm: current } : {}),
+    termsByChamber,
+    firstSwornYear: terms[0]?.startYear,
+    yearsServed,
+    ...(termEndsYear ? { termEndsYear, nextElectionYear: termEndsYear - 1 } : {}),
+    previousElectionYears,
+    switchedChambers: termsByChamber.House > 0 && termsByChamber.Senate > 0,
+  };
+}
+
 export type ReelectionFilingStatus = "filed" | "inactive" | "not-filed" | "unknown";
 
 /**

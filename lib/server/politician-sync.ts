@@ -1,4 +1,5 @@
 import { fetchCongressMemberDetail, fetchCongressMembers, isCongressBillsConfigured } from "@/lib/adapters/congress";
+import { fetchCongressLegislatorsTerms } from "@/lib/adapters/congress-legislators";
 import {
   mapPoliticianToRow,
   normalizeCongressMemberToPolitician,
@@ -258,6 +259,22 @@ export async function syncPoliticiansFromCongress(options?: {
     collection.push(row);
     return collection;
   }, []);
+
+  /*
+   * Attach recorded terms of office. Congress.gov's own payload is one row per Congress and never
+   * says when a term ends, so tenure had to project it -- wrong for anyone seated mid-cycle to
+   * finish someone else's term. This dataset states terms outright. A failure here must not fail
+   * the roster sync: the terms are an enrichment, and the previous values stay in place.
+   */
+  const officialTermsByBioguide = await fetchCongressLegislatorsTerms().catch(() => undefined);
+  if (officialTermsByBioguide) {
+    for (const row of uniqueRows) {
+      const terms = officialTermsByBioguide.get(row.id);
+      if (terms) {
+        row.official_terms = terms;
+      }
+    }
+  }
 
   if (uniqueRows.length > 0) {
     await upsertStoredPoliticians(uniqueRows);

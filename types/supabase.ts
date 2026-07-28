@@ -59,6 +59,12 @@ export interface PoliticianRow {
   synced_at: string;
   raw_payload?: unknown;
   raw_member: unknown;
+  /**
+   * Terms of office from unitedstates/congress-legislators (migration 021). Authoritative over
+   * the per-Congress rows in raw_member, which never state when a term ends. Sitting members
+   * only -- that dataset covers current legislators.
+   */
+  official_terms?: unknown;
 }
 
 export interface BillRow {

@@ -19,7 +19,9 @@ import {
 import { getStoredPoliticianTerms } from "@/lib/supabase/politicians";
 import {
   buildTenure,
+  buildTenureFromOfficialTerms,
   describeReelectionFiling,
+  type OfficialTerm,
   type ReelectionFilingStatus,
   type TenureTerm,
 } from "@/lib/tenure";
@@ -52,12 +54,20 @@ export default async function PoliticianTenurePage({
   if (!politician) notFound();
 
   const [rawTerms, filings] = await Promise.all([
-    getStoredPoliticianTerms(slug).catch(() => []),
+    getStoredPoliticianTerms(slug).catch(() => ({ official: [], congressRows: [] })),
     listStoredElectionCandidatesByPoliticianId(politician.id).catch(() => []),
   ]);
 
   const asOfYear = new Date().getUTCFullYear();
-  const tenure = buildTenure(rawTerms, asOfYear);
+  /*
+   * Recorded terms win where they exist: they carry real end dates, so nothing has to be guessed
+   * from chamber and start year. Congress.gov's per-Congress rows remain the fallback for former
+   * members, who are outside the congress-legislators current file.
+   */
+  const usingOfficialTerms = rawTerms.official.length > 0;
+  const tenure = usingOfficialTerms
+    ? buildTenureFromOfficialTerms(rawTerms.official as OfficialTerm[], asOfYear)
+    : buildTenure(rawTerms.congressRows, asOfYear);
 
   /*
    * "Has this member filed to run again?" is only answerable for a cycle the FEC sync has

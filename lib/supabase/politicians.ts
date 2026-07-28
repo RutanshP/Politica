@@ -713,12 +713,32 @@ export async function markPoliticiansDeparted(ids: string[]) {
  * of the row and no list view needs it. One member's terms is a single small row.
  */
 export async function getStoredPoliticianTerms(slug: string) {
-  const rows = await fetchSupabaseRows<Pick<PoliticianRow, "id" | "slug" | "raw_member">>(
-    "politicians",
-    `slug=eq.${encodeURIComponent(slug)}&limit=1`,
-    { select: "id,slug,raw_member", tags: [POLITICIANS_CACHE_TAG] },
-  );
+  type TermsRow = Pick<PoliticianRow, "id" | "slug" | "raw_member" | "official_terms">;
+  const filter = `slug=eq.${encodeURIComponent(slug)}&limit=1`;
 
-  const raw = (rows[0]?.raw_member ?? {}) as { terms?: unknown };
-  return Array.isArray(raw.terms) ? raw.terms : [];
+  /*
+   * official_terms arrives with migration 021. Selecting a column that does not exist makes
+   * PostgREST reject the whole request, which would blank the tab for every member until the
+   * migration is applied -- so fall back to the columns that are always there.
+   */
+  const rows = await fetchSupabaseRows<TermsRow>("politicians", filter, {
+    select: "id,slug,raw_member,official_terms",
+    tags: [POLITICIANS_CACHE_TAG],
+  }).catch(() =>
+    fetchSupabaseRows<TermsRow>("politicians", filter, {
+      select: "id,slug,raw_member",
+      tags: [POLITICIANS_CACHE_TAG],
+    }));
+
+  const row = rows[0];
+  const raw = (row?.raw_member ?? {}) as { terms?: unknown };
+
+  return {
+    // Recorded terms with real end dates. Present for sitting members once migration 021 has run
+    // and the roster sync has populated it.
+    official: Array.isArray(row?.official_terms) ? row.official_terms : [],
+    // Congress.gov's per-Congress rows -- the fallback for former members and for anyone the
+    // congress-legislators file does not cover.
+    congressRows: Array.isArray(raw.terms) ? raw.terms : [],
+  };
 }
