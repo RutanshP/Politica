@@ -83,6 +83,16 @@ jobs:
           echo "== News =="
           post "/api/internal/sync/news"
 
+          # Candidate filings move at FEC filing-deadline pace, not daily -- the elections page
+          # allows 8 days of staleness before it flags (ELECTIONS_STALE_AFTER_HOURS). Mondays
+          # keeps it comfortably fresh without paying the full roster scan every night.
+          if [ "$(date -u +%u)" = "1" ]; then
+            echo "== Election candidates (weekly) =="
+            post "/api/internal/sync/election-candidates"
+          else
+            echo "== Skipping election candidates (only runs Mondays) =="
+          fi
+
           # Derived data (issues/entities/search/analytics) changes slowly and each rebuild scans
           # the whole corpus, so rebuilding daily was the main Supabase egress drain. Run it weekly
           # (Sundays). One call now loads the corpus once and rebuilds all parts in sequence.

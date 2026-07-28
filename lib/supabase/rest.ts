@@ -317,6 +317,35 @@ function normalizeRowKeys<T extends object>(rows: T[]): T[] {
   });
 }
 
+/**
+ * Collapses rows that share a conflict target, keeping the last occurrence.
+ *
+ * PostgREST sends one `INSERT ... ON CONFLICT DO UPDATE` per batch, and Postgres refuses a batch
+ * that touches the same target row twice ("ON CONFLICT DO UPDATE command cannot affect row a
+ * second time") -- it rejects the whole command, not just the duplicate. Upstream sources hand us
+ * repeats routinely: FEC's /candidates/ endpoint pages by offset, so a candidate can come back on
+ * two pages. Deduping here rather than in each sync means a new caller cannot reintroduce it.
+ *
+ * Only within-batch duplicates matter; a repeat that lands in a later chunk is a separate command
+ * and simply writes again.
+ */
+function dedupeByConflictTarget<T extends object>(rows: T[], onConflict: string) {
+  const keyColumns = onConflict.split(",").map((column) => column.trim()).filter(Boolean);
+  if (keyColumns.length === 0 || rows.length <= 1) {
+    return rows;
+  }
+
+  const byKey = new Map<string, T>();
+  for (const row of rows) {
+    const key = keyColumns
+      .map((column) => String((row as Record<string, unknown>)[column]))
+      .join(" ");
+    byKey.set(key, row);
+  }
+
+  return byKey.size === rows.length ? rows : [...byKey.values()];
+}
+
 export async function upsertSupabaseRows<T extends object>(
   pathname: string,
   rows: T[],
@@ -336,7 +365,7 @@ export async function upsertSupabaseRows<T extends object>(
       // the account's egress quota was going given how often the sync jobs run.
       Prefer: "resolution=merge-duplicates,return=minimal",
     }),
-    body: JSON.stringify(normalizeRowKeys(rows)),
+    body: JSON.stringify(normalizeRowKeys(dedupeByConflictTarget(rows, onConflict))),
   });
 
   if (!response.ok) {
