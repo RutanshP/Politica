@@ -5,6 +5,7 @@ const jiti = require("../support/jiti.cjs");
 
 const {
   chooseCongressBillTitle,
+  deriveBillStatus,
   parseBillId,
   normalizeCongressBillListItem,
   mergeCongressBillDetail,
@@ -140,4 +141,101 @@ test("chooseCongressBillTitle avoids generic bill-number-only titles", () => {
   );
 
   assert.equal(chosen, "Federal Adjustment of Income Rates Act or the FAIR Act");
+});
+
+/*
+ * H.R. 23 (119th): passed the House 243-140, then died on a cloture vote in the Senate. Reading
+ * only the newest action reported "Introduced", because the cloture line matches no milestone.
+ * Progress is cumulative, so the status is a maximum over the history.
+ */
+test("deriveBillStatus remembers a chamber passage after a later unrecognized action", () => {
+  const actions = [
+    "Introduced in House",
+    "Referred to the Committee on Foreign Affairs, and in addition to the Committees on the Judiciary",
+    "DEBATE - The House proceeded with one hour of debate on H.R. 23.",
+    "Passed/agreed to in House: On passage Passed by the Yeas and Nays: 243 - 140, 1 Present (Roll no. 7).",
+    "Received in the Senate. Read the first time. Placed on Senate Legislative Calendar under Read the First Time.",
+    "Motion to proceed to consideration of measure made in Senate. (CR S307)",
+  ];
+  const latest =
+    "Cloture on the motion to proceed to the measure not invoked in Senate by Yea-Nay Vote. 54 - 45. Record Vote Number: 22. (CR S410)";
+
+  assert.equal(deriveBillStatus(actions, latest), "Passed Chamber");
+});
+
+test("deriveBillStatus matches the wording Congress.gov actually publishes", () => {
+  // "Passed House" is not what the feed says; "Passed/agreed to in House" is.
+  assert.equal(
+    deriveBillStatus(["Passed/agreed to in House: On passage Passed by the Yeas and Nays: 243 - 140."]),
+    "Passed Chamber",
+  );
+  assert.equal(
+    deriveBillStatus(["Passed/agreed to in Senate: Passed Senate without amendment by Voice Vote."]),
+    "Passed Chamber",
+  );
+});
+
+test("deriveBillStatus keeps later milestones ahead of earlier ones", () => {
+  const throughSigning = [
+    "Introduced in House",
+    "Referred to the Committee on Ways and Means.",
+    "Passed/agreed to in House: On passage Passed by the Yeas and Nays.",
+    "Presented to President.",
+    "Became Public Law No: 119-1.",
+  ];
+  assert.equal(deriveBillStatus(throughSigning), "Signed");
+
+  // Reaching the President is its own rung, not something a later action erases.
+  assert.equal(
+    deriveBillStatus(["Introduced in House", "Passed/agreed to in House: On passage.", "Presented to President."]),
+    "Sent to President",
+  );
+});
+
+test("deriveBillStatus treats a terminal failure as the present fate", () => {
+  const failed = deriveBillStatus(
+    ["Introduced in House", "Considered under suspension of the rules."],
+    "Failed of passage/not agreed to in House: On motion to suspend the rules and pass the bill Failed by the Yeas and Nays: 200 - 220.",
+  );
+  assert.equal(failed, "Failed");
+
+  // A failed motion to recommit or to table means the bill survived the attack, not that it died.
+  assert.equal(
+    deriveBillStatus(
+      ["Introduced in House", "Passed/agreed to in House: On passage Passed by the Yeas and Nays."],
+      "On motion to recommit Failed by the Yeas and Nays: 190 - 230.",
+    ),
+    "Passed Chamber",
+  );
+});
+
+test("deriveBillStatus falls back to Introduced only when nothing was reached", () => {
+  assert.equal(deriveBillStatus([]), "Introduced");
+  assert.equal(deriveBillStatus(["Introduced in House"]), "Introduced");
+  assert.equal(deriveBillStatus(["Referred to the Subcommittee on Health."]), "In Committee");
+});
+
+test("deriveBillStatus recognizes defeats that never use the word passage", () => {
+  // A suspension vote needs 2/3; losing it defeats the measure.
+  assert.equal(
+    deriveBillStatus(
+      ["Introduced in House"],
+      "On motion to suspend the rules and pass the bill Failed by the Yeas and Nays: (2/3 required): 198 - 218 (Roll no. 221).",
+    ),
+    "Failed",
+  );
+  // A rule that fails passage blocks the bill it would have brought up.
+  assert.equal(
+    deriveBillStatus(["Introduced in House"], "Rule H. Res. 1175 failed passage of House."),
+    "Failed",
+  );
+  // Tabling the motion to reconsider makes an earlier defeat final -- the "to table" wording
+  // here describes the motion, not something the bill survived.
+  assert.equal(
+    deriveBillStatus(
+      ["Introduced in Senate", "Referred to the Committee on Finance."],
+      "Motion to table the motion to reconsider the vote by which S.J. Res. 49 failed of passage (Record Vote No. 225) agreed to in Senate.",
+    ),
+    "Failed",
+  );
 });

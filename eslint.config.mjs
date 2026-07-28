@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "tests/**",
+    // Maintenance scripts run in plain Node (CommonJS), not through the Next bundler.
+    "scripts/**/*.cjs",
     "playwright.config.ts",
   ]),
 ]);

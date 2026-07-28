@@ -1,4 +1,4 @@
-import type { Bill, BillAction, BillVersion } from "@/types/civic";
+import type { Bill, BillAction, BillStatus, BillVersion } from "@/types/civic";
 import type {
   CongressBillActionPayload,
   CongressBillDetailPayload,
@@ -85,26 +85,101 @@ function sponsorNameFromListBill(bill: CongressBillListItem) {
   return sponsor?.fullName || [sponsor?.firstName, sponsor?.lastName].filter(Boolean).join(" ") || "Congress Sponsor";
 }
 
-// A "failed" motion to recommit or table means the bill SURVIVED that procedural attack, not
-// that the bill itself failed -- only count it as terminal when it isn't one of those.
+/**
+ * Whether the text records the bill itself being defeated.
+ *
+ * A "failed" motion to recommit or to table means the bill SURVIVED that procedural attack, so a
+ * bare "failed" cannot be the signal. Matching it and then excluding the motions it appears
+ * inside was too blunt in both directions: "Motion to table the motion to reconsider the vote by
+ * which S.J. Res. 49 failed of passage ... agreed to" contains "to table" and was dismissed,
+ * even though it records a defeat being made final. Match the defeat phrasings outright instead.
+ */
 function isTerminalFailure(text: string) {
-  if (!text.includes("failed")) return false;
-  return !text.includes("recommit") && !text.includes("to table");
+  if (/veto sustained/.test(text)) return true;
+  // "Failed of passage", "failed passage of House", "failed to pass".
+  if (/failed (?:of )?passage|failed to pass/.test(text)) return true;
+  // "On motion to suspend the rules and pass the bill Failed by the Yeas and Nays (2/3 required)"
+  // -- a defeat on passage that never uses the word "passage". Anchoring on what failed keeps a
+  // failed motion to recommit or to table, where the bill survived, from matching.
+  return /pass the (?:bill|resolution|joint resolution|measure)[^.]*failed/.test(text);
 }
 
-function normalizeStatus(actionText?: string) {
-  const text = (actionText || "").toLowerCase();
+/** How far along each status sits. Mirrors STATUS_ORDER in components/bill-progress.tsx. */
+const STATUS_RANK: Record<BillStatus, number> = {
+  Failed: -1,
+  Introduced: 0,
+  "In Committee": 1,
+  "On Floor": 2,
+  "Passed Chamber": 3,
+  "Sent to President": 4,
+  Signed: 5,
+};
 
-  if (text.includes("became public law") || text.includes("signed")) return "Signed";
+/**
+ * The milestone a single action attests to, or undefined when it attests to none.
+ *
+ * The chamber-passage phrasing matters: Congress.gov writes "Passed/agreed to in House", not
+ * "Passed House". Matching the latter caught 57 of the 945 stored House-passage actions, which
+ * is why almost no bill ever reached "Passed Chamber".
+ */
+function milestoneFromActionText(actionText: string): BillStatus | undefined {
+  const text = actionText.toLowerCase();
+
+  if (text.includes("became public law") || text.includes("signed by president")) return "Signed";
   if (text.includes("presented to president") || text.includes("sent to president")) {
     return "Sent to President";
   }
-  if (text.includes("passed house") || text.includes("passed senate")) return "Passed Chamber";
-  if (isTerminalFailure(text)) return "Failed";
-  if (text.includes("placed on calendar") || text.includes("considered")) return "On Floor";
+  if (
+    /passed\/agreed to in (?:the )?(?:house|senate)/.test(text)
+    || text.includes("passed house")
+    || text.includes("passed senate")
+  ) {
+    return "Passed Chamber";
+  }
+  if (
+    text.includes("calendar")
+    || text.includes("considered")
+    || text.includes("cloture")
+    || text.includes("motion to proceed")
+    || text.includes("debate")
+  ) {
+    return "On Floor";
+  }
   if (text.includes("committee") || text.includes("subcommittee")) return "In Committee";
 
-  return "Introduced";
+  return undefined;
+}
+
+/**
+ * The furthest milestone the bill has actually reached, across its whole history.
+ *
+ * Reading only the newest action made status non-monotonic: a bill that passed the House and was
+ * then filibustered in the Senate reported "Introduced", because the cloture action matches no
+ * milestone and fell through to the default. Progress is cumulative, so the status has to be a
+ * maximum over the history rather than a snapshot of its last line.
+ *
+ * A terminal failure is the exception -- it describes the bill's present fate, not a rung it
+ * climbed -- so it wins when it is the most recent thing that happened.
+ */
+export function deriveBillStatus(actionTexts: string[], latestActionText?: string): BillStatus {
+  if (latestActionText && isTerminalFailure(latestActionText.toLowerCase())) {
+    return "Failed";
+  }
+
+  let furthest: BillStatus = "Introduced";
+  for (const text of [...actionTexts, ...(latestActionText ? [latestActionText] : [])]) {
+    const milestone = milestoneFromActionText(text);
+    if (milestone && STATUS_RANK[milestone] > STATUS_RANK[furthest]) {
+      furthest = milestone;
+    }
+  }
+
+  return furthest;
+}
+
+/** Single-action derivation, for list rows that carry only a latest action. */
+function normalizeStatus(actionText?: string) {
+  return deriveBillStatus([], actionText);
 }
 
 function topicFromPolicyArea(policyArea?: { name?: string }) {
@@ -228,14 +303,23 @@ export function mergeCongressBillDetail(
     isFullTextAvailable: false,
   }));
 
+  // The seed's status came from the list row's single latest action. Now that the full history is
+  // in hand, recompute it -- this is the only place that can see the whole climb.
+  const latestActionText = detail.latestAction?.text || seed.latestAction;
+  const status = deriveBillStatus(
+    actions.map((action) => action.detail),
+    latestActionText,
+  );
+
   return {
     ...seed,
     title: officialTitle,
+    status,
     summary:
       detail.constitutionalAuthorityStatementText?.trim()
       || seed.summary,
     introducedAt: formatDisplayDate(detail.introducedDate),
-    latestAction: detail.latestAction?.text || seed.latestAction,
+    latestAction: latestActionText,
     lastActionAt: formatDisplayDate(detail.latestAction?.actionDate || detail.updateDate),
     sponsorId: detail.sponsors?.[0]?.bioguideId || seed.sponsorId,
     sponsorName:
@@ -243,7 +327,7 @@ export function mergeCongressBillDetail(
       || [detail.sponsors?.[0]?.firstName, detail.sponsors?.[0]?.lastName].filter(Boolean).join(" ")
       || seed.sponsorName,
     topic: topicFromPolicyArea(detail.policyArea) || seed.topic,
-    chanceOfPassing: chanceOfPassingForStatus(seed.status, deriveChanceOfPassing(detail, actions.length)),
+    chanceOfPassing: chanceOfPassingForStatus(status, deriveChanceOfPassing(detail, actions.length)),
     stats: {
       amendments: 0,
       cosponsors: Math.max((detail.sponsors?.length || 1) - 1, 0),
