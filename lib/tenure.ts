@@ -77,18 +77,16 @@ function toChamber(term: RawCongressTerm): TermChamber | undefined {
  * overstates a senator appointed to fill a vacancy -- they serve only the remainder of the class's
  * term. Distinguishing the two needs the Senate class, which this payload does not carry.
  */
+/**
+ * A term runs its full length from the year it began -- six years in the Senate, two in the House.
+ *
+ * Measured from the term's own start, not from the Congress currently being served: a senator
+ * three Congresses into one term has not started a new one, and counting from the latest Congress
+ * pushed McConnell's term, which began in 2021, out to 2031 instead of 2027.
+ */
 function projectedEndYear(term: TenureTerm) {
   if (term.endYear) return term.endYear;
-  const latestCongress = term.congresses[term.congresses.length - 1] ?? 0;
-  /*
-   * Projected from the Congress currently being served rather than from the start of the term.
-   * A senator seated mid-cycle to finish someone else's term then begins their own, and both
-   * show up inside one run of service -- measuring from the run's start would report that term
-   * ending a year early.
-   */
-  return term.chamber === "Senate"
-    ? congressStartYear(latestCongress) + 6
-    : congressStartYear(latestCongress) + 2;
+  return term.startYear + TERM_LENGTH_YEARS[term.chamber];
 }
 
 export function buildTenure(rawTerms: RawCongressTerm[] | undefined, asOfYear: number): Tenure {

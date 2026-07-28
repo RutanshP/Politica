@@ -275,3 +275,35 @@ test("buildTenureFromOfficialTerms handles an empty record", () => {
   assert.equal(tenure.yearsServed, 0);
   assert.equal(tenure.currentTerm, undefined);
 });
+
+/*
+ * Mitch McConnell, whose current term began in 2021 and runs to 2027. Congress.gov reports it as
+ * three rows (117th, 118th, 119th); projecting the end from the newest of those rather than from
+ * the term's own start reported it ending in 2031.
+ */
+test("buildTenure ends a Senate term six years after it began, not after the latest Congress", () => {
+  // Whole terms, so the run is anchored where a term really begins: 2015-2021, then 2021-2027.
+  const mcconnell = [
+    { chamber: "Senate", congress: 114, startYear: 2015, endYear: 2017, stateCode: "KY", memberType: "Senator" },
+    { chamber: "Senate", congress: 115, startYear: 2017, endYear: 2019, stateCode: "KY", memberType: "Senator" },
+    { chamber: "Senate", congress: 116, startYear: 2019, endYear: 2021, stateCode: "KY", memberType: "Senator" },
+    { chamber: "Senate", congress: 117, startYear: 2021, endYear: 2023, stateCode: "KY", memberType: "Senator" },
+    { chamber: "Senate", congress: 118, startYear: 2023, endYear: 2025, stateCode: "KY", memberType: "Senator" },
+    { chamber: "Senate", congress: 119, startYear: 2025, stateCode: "KY", memberType: "Senator" },
+  ];
+  const tenure = buildTenure(mcconnell, 2026);
+
+  assert.equal(tenure.currentTerm?.startYear, 2021, "the term that began in 2021 is still running");
+  assert.equal(tenure.termEndsYear, 2027);
+  assert.equal(tenure.nextElectionYear, 2026);
+  // 2015-2021 and 2021-present: two terms across five Congresses.
+  assert.equal(tenure.termsByChamber.Senate, 2);
+});
+
+test("buildTenure still ends Schiff's term in 2031 after the remainder is split off", () => {
+  // The split means his current term starts in 2025, so six years from its own start is correct.
+  const tenure = buildTenure(SCHIFF_TERMS, 2026);
+  assert.equal(tenure.currentTerm?.startYear, 2025);
+  assert.equal(tenure.termEndsYear, 2031);
+  assert.equal(tenure.nextElectionYear, 2030);
+});
