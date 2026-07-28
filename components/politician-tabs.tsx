@@ -7,7 +7,7 @@ export function PoliticianTabs({
   counts,
 }: {
   slug: string;
-  active: "overview" | "bills" | "votes" | "funding" | "analytics";
+  active: "overview" | "bills" | "votes" | "tenure" | "funding" | "analytics";
   counts?: { bills?: number; votes?: number };
 }) {
   return (
@@ -27,6 +27,7 @@ export function PoliticianTabs({
           active: active === "votes",
           count: counts?.votes,
         },
+        { label: "Tenure", href: `/politicians/${slug}/tenure`, active: active === "tenure" },
         { label: "Funding", href: `/politicians/${slug}/funding`, active: active === "funding" },
         {
           label: "Analytics",

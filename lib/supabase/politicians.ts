@@ -705,3 +705,20 @@ export async function markPoliticiansDeparted(ids: string[]) {
   const inList = ids.map((id) => `"${id.replace(/"/g, '""')}"`).join(",");
   await updateSupabaseRows("politicians", `id=in.(${inList})`, { is_current: false });
 }
+
+/**
+ * The Congress.gov `terms` array for one member.
+ *
+ * Read on its own because POLITICIAN_DISPLAY_SELECT deliberately drops `raw_member` -- it is 59%
+ * of the row and no list view needs it. One member's terms is a single small row.
+ */
+export async function getStoredPoliticianTerms(slug: string) {
+  const rows = await fetchSupabaseRows<Pick<PoliticianRow, "id" | "slug" | "raw_member">>(
+    "politicians",
+    `slug=eq.${encodeURIComponent(slug)}&limit=1`,
+    { select: "id,slug,raw_member", tags: [POLITICIANS_CACHE_TAG] },
+  );
+
+  const raw = (rows[0]?.raw_member ?? {}) as { terms?: unknown };
+  return Array.isArray(raw.terms) ? raw.terms : [];
+}
