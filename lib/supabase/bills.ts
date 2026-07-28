@@ -1,5 +1,6 @@
 import { getDefaultCongress } from "@/lib/adapters/congress";
 import { mapRowToBill, sortBillsByActivity } from "@/lib/normalizers/legislation";
+import { resolveSortDirection, type SortDirection } from "@/lib/sort-direction";
 import { BILLS_CACHE_TAG, COMMITTEES_CACHE_TAG } from "@/lib/supabase/cache-tags";
 import {
   deleteSupabaseRows,
@@ -77,6 +78,7 @@ export interface StoredBillsPageQuery {
   sponsor?: string;
   committee?: string;
   sortBy?: string;
+  direction?: SortDirection;
 }
 
 // Vote-derived placeholder "bills" (a motion to proceed, a cloture vote, etc.) were created only
@@ -131,18 +133,23 @@ function buildStoredBillsPageFilterQuery(filters: Omit<StoredBillsPageQuery, "pa
   return `and=${encodeURIComponent(`(${conditions.join(",")})`)}`;
 }
 
-function buildStoredBillsOrder(sortBy?: string) {
+function buildStoredBillsOrder(sortBy?: string, direction?: SortDirection) {
+  // This page is ordered by Postgres, not in JS, so the flip has to be spelled into the order
+  // clause rather than applied as a comparator factor.
+  const resolved = resolveSortDirection(sortBy || "", direction);
+
   if (sortBy === "Bill number") {
-    return "order=number.asc";
+    return `order=number.${resolved}`;
   }
 
   if (sortBy === "Title") {
-    return "order=title.asc";
+    return `order=title.${resolved}`;
   }
 
   // last_action_at is a display string ("Mar 4, 2025"), so ordering by it sorts alphabetically
   // -- September 2025 above June 2026. last_action_on is the parsed timestamptz.
-  return "order=last_action_on.desc.nullslast";
+  // nullslast either way: undated bills are noise at both ends, never the answer to "oldest".
+  return `order=last_action_on.${resolved}.nullslast`;
 }
 
 export async function listStoredBills(includeDetails = false) {
@@ -196,7 +203,7 @@ export async function getStoredBillsPage(query: StoredBillsPageQuery) {
   const pageSize = Math.max(1, query.pageSize);
   const offset = (page - 1) * pageSize;
   const filters = buildStoredBillsPageFilterQuery(query);
-  const order = buildStoredBillsOrder(query.sortBy);
+  const order = buildStoredBillsOrder(query.sortBy, query.direction);
   const pageResult = await fetchSupabasePage<BillRow>(
     "bills",
     [filters, order].filter(Boolean).join("&"),

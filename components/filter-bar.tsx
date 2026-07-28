@@ -9,9 +9,12 @@ import { FilterRow, FilterSelect } from "@/components/ui/filter-select";
 export function FilterBar({
   filters,
   onChange,
+  /** Extra controls rendered alongside the selects, e.g. the sort-direction toggle. */
+  children,
 }: {
   filters: Array<{ label: string; value: string; options?: string[] }>;
   onChange?: (label: string, value: string) => void;
+  children?: React.ReactNode;
 }) {
   return (
     <FilterRow>
@@ -24,6 +27,7 @@ export function FilterBar({
           onChange={(value) => onChange?.(filter.label, value)}
         />
       ))}
+      {children}
     </FilterRow>
   );
 }

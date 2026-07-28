@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
 import { listStoredVotePositionContextByPoliticianId } from "@/lib/supabase/votes";
 import { buildUpdatedPoliticianRowsFromVotePositions } from "@/lib/server/vote-stats";
+import { resolveSortDirection, sortDirectionFactor } from "@/lib/sort-direction";
 import { normalizeDistrictSeat, normalizePersonLookup, normalizeStateCode, normalizeStateLabel, slugifySegment, sortLabelsAlphabetically } from "@/lib/utils";
 import type { Bill, Politician } from "@/types/civic";
 import type { PoliticianRow } from "@/types/supabase";
@@ -23,6 +24,7 @@ export interface PoliticiansDirectorySearchParams {
   party?: string;
   state?: string;
   sort?: string;
+  dir?: string;
 }
 
 function parsePositiveInt(value?: string, fallback = 1) {
@@ -415,13 +417,15 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
   const level = searchParams.level === "State" ? "State" : "Federal";
   const isState = level === "State";
   const selectedState = (searchParams.state || "").trim().toUpperCase();
+  const sortBy = searchParams.sort || "Name";
   const filters = {
     query: (searchParams.q || "").trim(),
     office: searchParams.office || "All chambers",
     level,
     party: searchParams.party || "All parties",
     state: isState && selectedState ? selectedState : SELECT_A_STATE,
-    sortBy: searchParams.sort || "Name",
+    sortBy,
+    direction: resolveSortDirection(sortBy, searchParams.dir),
   };
 
   if (!isSupabaseConfigured()) {
@@ -498,12 +502,15 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
           && (filters.office === "All chambers" || office === filters.office)
           && (filters.party === "All parties" || politician.party === filters.party);
       })
+      // Comparators stay in each option's natural order (best first for stats, A-Z for names);
+      // the factor reverses them when the reader has flipped the direction.
       .sort((left, right) => {
-        if (filters.sortBy === "Attendance") return right.stats.attendance - left.stats.attendance;
-        if (filters.sortBy === "Bills introduced") return right.stats.billsIntroduced - left.stats.billsIntroduced;
-        if (filters.sortBy === "Party alignment") return right.stats.votesWithParty - left.stats.votesWithParty;
-        if (filters.sortBy === "Recent activity") return right.stats.amendmentsOffered - left.stats.amendmentsOffered;
-        return left.name.localeCompare(right.name, "en-US", { sensitivity: "base" });
+        const factor = sortDirectionFactor(filters.sortBy, filters.direction);
+        if (filters.sortBy === "Attendance") return factor * (right.stats.attendance - left.stats.attendance);
+        if (filters.sortBy === "Bills introduced") return factor * (right.stats.billsIntroduced - left.stats.billsIntroduced);
+        if (filters.sortBy === "Party alignment") return factor * (right.stats.votesWithParty - left.stats.votesWithParty);
+        if (filters.sortBy === "Recent activity") return factor * (right.stats.amendmentsOffered - left.stats.amendmentsOffered);
+        return factor * left.name.localeCompare(right.name, "en-US", { sensitivity: "base" });
       });
 
     const total = filtered.length;

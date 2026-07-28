@@ -1,6 +1,7 @@
 import { emptyResult, withData } from "@/lib/data/result";
 import { listStoredElectionCandidates } from "@/lib/supabase/elections";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { resolveSortDirection, sortDirectionFactor } from "@/lib/sort-direction";
 import { listStoredPoliticiansByIds } from "@/lib/supabase/politicians";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
 import { sortLabelsAlphabetically } from "@/lib/utils";
@@ -18,6 +19,7 @@ export interface ElectionsDirectorySearchParams {
   state?: string;
   party?: string;
   sort?: string;
+  dir?: string;
 }
 
 const OFFICE_LABELS: Record<ElectionOffice, string> = {
@@ -82,6 +84,7 @@ export async function getElectionsDirectoryData(searchParams: ElectionsDirectory
     state: (searchParams.state || "All states").trim(),
     party: searchParams.party || "All parties",
     sortBy: searchParams.sort || "State",
+    direction: resolveSortDirection(searchParams.sort || "State", searchParams.dir),
   };
 
   if (!isSupabaseConfigured()) {
@@ -108,11 +111,13 @@ export async function getElectionsDirectoryData(searchParams: ElectionsDirectory
       return matchesState && matchesParty;
     });
 
+    // Natural order per option; the factor reverses it when the reader has flipped direction.
+    const factor = sortDirectionFactor(filters.sortBy, filters.direction);
     const races = buildRaces(filteredRows).sort((left, right) => {
-      if (filters.sortBy === "Candidates") return right.candidates.length - left.candidates.length;
+      if (filters.sortBy === "Candidates") return factor * (right.candidates.length - left.candidates.length);
       const byState = (left.state || "").localeCompare(right.state || "");
-      if (byState !== 0) return byState;
-      return (left.district || "").localeCompare(right.district || "");
+      if (byState !== 0) return factor * byState;
+      return factor * (left.district || "").localeCompare(right.district || "");
     });
 
     // election_candidates.politician_id is the bioguide id (the FK target), not the slug the

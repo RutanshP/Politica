@@ -11,6 +11,13 @@ import { Pagination } from "@/components/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Toolbar } from "@/components/ui/layout";
+import { SortDirectionToggle } from "@/components/ui/sort-direction-toggle";
+import {
+  naturalSortDirection,
+  sortDirectionFactor,
+  sortDirectionLabel,
+  type SortDirection,
+} from "@/lib/sort-direction";
 import {
   COMMITTEE_CHAMBER_UNSPECIFIED,
   deriveCommitteeSector,
@@ -57,6 +64,7 @@ export function CommitteesDirectory({ committees }: { committees: Committee[] })
   const [sector, setSector] = useState(ALL_SECTORS);
   const [hearingStatus, setHearingStatus] = useState(ANY_HEARING);
   const [sortBy, setSortBy] = useState("Name");
+  const [direction, setDirection] = useState<SortDirection>(() => naturalSortDirection("Name"));
   const [page, setPage] = useState(1);
 
   const isStateLevel = level === "State";
@@ -111,14 +119,16 @@ export function CommitteesDirectory({ committees }: { committees: Committee[] })
           && (hearingStatus === ANY_HEARING || committee.hearingStatus === hearingStatus)
         );
       })
+      // Natural order per option; the factor reverses it when the reader has flipped direction.
       .sort((left, right) => {
-        if (sortBy === "Active bills") return right.activeBillIds.length - left.activeBillIds.length;
-        if (sortBy === "Members") return right.memberIds.length - left.memberIds.length;
-        if (sortBy === "Sector") return left.sector.localeCompare(right.sector);
-        if (sortBy === "Chamber") return left.chamber.localeCompare(right.chamber);
-        return left.name.localeCompare(right.name);
+        const factor = sortDirectionFactor(sortBy, direction);
+        if (sortBy === "Active bills") return factor * (right.activeBillIds.length - left.activeBillIds.length);
+        if (sortBy === "Members") return factor * (right.memberIds.length - left.memberIds.length);
+        if (sortBy === "Sector") return factor * left.sector.localeCompare(right.sector);
+        if (sortBy === "Chamber") return factor * left.chamber.localeCompare(right.chamber);
+        return factor * left.name.localeCompare(right.name);
       });
-  }, [chamber, hearingStatus, inScope, needsState, query, sector, sortBy]);
+  }, [chamber, direction, hearingStatus, inScope, needsState, query, sector, sortBy]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -180,10 +190,21 @@ export function CommitteesDirectory({ committees }: { committees: Committee[] })
             if (label === "Chamber") setChamber(value);
             if (label === "Sector") setSector(value);
             if (label === "Hearings") setHearingStatus(value);
-            if (label === "Sort by") setSortBy(value);
+            if (label === "Sort by") {
+              // A new sort option starts from its own natural order rather than inheriting a
+              // flip that was meant for the previous one.
+              setSortBy(value);
+              setDirection(naturalSortDirection(value));
+            }
           })
         }
-      />
+      >
+        <SortDirectionToggle
+          sortBy={sortBy}
+          direction={direction}
+          onChange={(next) => apply(() => setDirection(next))}
+        />
+      </FilterBar>
 
       {needsState ? (
         <EmptyState
@@ -197,7 +218,7 @@ export function CommitteesDirectory({ committees }: { committees: Committee[] })
               <b className="num">{filtered.length.toLocaleString()}</b>{" "}
               <span className="text-[var(--muted)]">
                 {filtered.length === 1 ? "committee" : "committees"} · sorted by{" "}
-                {sortBy.toLowerCase()}
+                {sortBy.toLowerCase()}, {sortDirectionLabel(sortBy, direction).toLowerCase()}
               </span>
             </span>
           </Toolbar>

@@ -5,7 +5,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Badge, Tag } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { FilterRow, FilterSelect } from "@/components/ui/filter-select";
+import { SortDirectionToggle } from "@/components/ui/sort-direction-toggle";
 import { ListRow } from "@/components/ui/list-row";
+import { isNaturalSortDirection, type SortDirection } from "@/lib/sort-direction";
 import { Tabs } from "@/components/ui/tabs";
 import { partyTone } from "@/components/ui/tones";
 import type { ElectionOffice, ElectionRace } from "@/types/civic";
@@ -16,8 +18,13 @@ const OFFICE_TABS: Array<{ office: ElectionOffice; label: string }> = [
   { office: "H", label: "House" },
 ];
 
-function isDefaultValue(key: string, value: string) {
-  return !value || value.startsWith("All ");
+/** `dir` needs the active sort option to judge, since each one has its own natural order. */
+function isDefaultValue(key: string, value: string, sortBy?: string) {
+  return (
+    !value
+    || value.startsWith("All ")
+    || (key === "dir" && isNaturalSortDirection(sortBy || "", value as SortDirection))
+  );
 }
 
 export function ElectionsDirectory({
@@ -31,6 +38,7 @@ export function ElectionsDirectory({
     state: string;
     party: string;
     sortBy: string;
+    direction: SortDirection;
   };
   options: {
     states: string[];
@@ -44,7 +52,7 @@ export function ElectionsDirectory({
   function updateParams(updates: Record<string, string>) {
     const params = new URLSearchParams(searchParams.toString());
     Object.entries(updates).forEach(([key, value]) => {
-      if (isDefaultValue(key, value)) {
+      if (isDefaultValue(key, value, updates.sort ?? filters.sortBy)) {
         params.delete(key);
       } else {
         params.set(key, value);
@@ -80,9 +88,18 @@ export function ElectionsDirectory({
             value={chip.value}
             options={chip.options}
             active={!isDefaultValue(chip.key, chip.value)}
-            onChange={(value) => updateParams({ [chip.key]: value })}
+            onChange={(value) =>
+              // A new sort option starts from its own natural order rather than inheriting a
+              // flip that was meant for the previous one.
+              updateParams(chip.key === "sort" ? { sort: value, dir: "" } : { [chip.key]: value })
+            }
           />
         ))}
+        <SortDirectionToggle
+          sortBy={filters.sortBy}
+          direction={filters.direction}
+          onChange={(direction) => updateParams({ dir: direction })}
+        />
       </FilterRow>
 
       {races.length === 0 ? (

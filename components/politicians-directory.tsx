@@ -13,7 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FilterRow, FilterSelect } from "@/components/ui/filter-select";
+import { SortDirectionToggle } from "@/components/ui/sort-direction-toggle";
 import { Toolbar } from "@/components/ui/layout";
+import { isNaturalSortDirection, sortDirectionLabel, type SortDirection } from "@/lib/sort-direction";
 import { Meter } from "@/components/ui/meter";
 import { CellSub, CellTitle, Table } from "@/components/ui/table";
 import { partyTone } from "@/components/ui/tones";
@@ -42,6 +44,7 @@ export function PoliticiansDirectory({
     party: string;
     state: string;
     sortBy: string;
+    direction: SortDirection;
   };
   options: {
     offices: string[];
@@ -78,6 +81,8 @@ export function PoliticiansDirectory({
       || value === "Select a state" // the state placeholder is not a filter
       || (key === "level" && value === "Federal")
       || (key === "sort" && value === "Name")
+      // Only a flipped order is worth carrying in the URL.
+      || (key === "dir" && isNaturalSortDirection(filters.sortBy, value as SortDirection))
     );
   }
 
@@ -145,10 +150,21 @@ export function PoliticiansDirectory({
                 updateParams({ level: value, state: "", office: "", party: "" });
                 return;
               }
+              // A new sort option starts from its own natural order rather than inheriting a
+              // flip that was meant for the previous one.
+              if (chip.key === "sort") {
+                updateParams({ sort: value, dir: "" });
+                return;
+              }
               updateParams({ [chip.key]: value });
             }}
           />
         ))}
+        <SortDirectionToggle
+          sortBy={filters.sortBy}
+          direction={filters.direction}
+          onChange={(direction) => updateParams({ dir: direction })}
+        />
       </FilterRow>
 
       {needsState ? (
@@ -163,6 +179,8 @@ export function PoliticiansDirectory({
               <b className="num">{total.toLocaleString()}</b>{" "}
               <span className="text-[var(--muted)]">
                 {total === 1 ? "member" : "members"} · sorted by {filters.sortBy.toLowerCase()}
+                {", "}
+                {sortDirectionLabel(filters.sortBy, filters.direction).toLowerCase()}
               </span>
             </span>
           </Toolbar>

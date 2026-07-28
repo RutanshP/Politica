@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { FilterRow, FilterSelect } from "@/components/ui/filter-select";
+import { SortDirectionToggle } from "@/components/ui/sort-direction-toggle";
+import { isNaturalSortDirection, sortDirectionLabel, type SortDirection } from "@/lib/sort-direction";
 import { IconTile } from "@/components/ui/icon-tile";
 import { Toolbar } from "@/components/ui/layout";
 import { CellSub, CellTitle, Table } from "@/components/ui/table";
@@ -21,8 +23,11 @@ import type { Bill } from "@/types/civic";
 
 type ViewMode = "table" | "timeline";
 
-/** Values that mean "no filter applied" and so should be stripped from the querystring. */
-function isDefaultValue(key: string, value: string) {
+/**
+ * Values that mean "no filter applied" and so should be stripped from the querystring.
+ * `dir` needs the active sort option to judge, since each one has its own natural order.
+ */
+function isDefaultValue(key: string, value: string, sortBy?: string) {
   return (
     !value
     || value.startsWith("All ")
@@ -30,6 +35,7 @@ function isDefaultValue(key: string, value: string) {
     || value === "Any sponsor"
     || value === "Any committee"
     || (key === "sort" && value === "Recent activity")
+    || (key === "dir" && isNaturalSortDirection(sortBy || "", value as SortDirection))
   );
 }
 
@@ -57,6 +63,7 @@ export function BillsDirectory({
     sponsor: string;
     committee: string;
     sortBy: string;
+    direction: SortDirection;
   };
   options: {
     chambers: string[];
@@ -91,7 +98,7 @@ export function BillsDirectory({
   function updateParams(updates: Record<string, string>) {
     const params = new URLSearchParams(searchParams.toString());
     Object.entries(updates).forEach(([key, value]) => {
-      if (isDefaultValue(key, value)) {
+      if (isDefaultValue(key, value, updates.sort ?? filters.sortBy)) {
         params.delete(key);
       } else {
         params.set(key, value);
@@ -156,9 +163,18 @@ export function BillsDirectory({
             value={chip.value}
             options={chip.options}
             active={!isDefaultValue(chip.key, chip.value)}
-            onChange={(value) => updateParams({ [chip.key]: value })}
+            onChange={(value) =>
+              // A new sort option starts from its own natural order rather than inheriting a
+              // flip that was meant for the previous one.
+              updateParams(chip.key === "sort" ? { sort: value, dir: "" } : { [chip.key]: value })
+            }
           />
         ))}
+        <SortDirectionToggle
+          sortBy={filters.sortBy}
+          direction={filters.direction}
+          onChange={(direction) => updateParams({ dir: direction })}
+        />
         <span className="ml-auto flex items-center gap-2.5">
           {activeCount > 0 ? (
             <>
@@ -182,6 +198,8 @@ export function BillsDirectory({
             <b className="num">{total.toLocaleString()}</b>{" "}
             <span className="text-[var(--muted)]">
               {total === 1 ? "result" : "results"} · sorted by {filters.sortBy.toLowerCase()}
+              {", "}
+              {sortDirectionLabel(filters.sortBy, filters.direction).toLowerCase()}
             </span>
           </span>
           <span className="ml-auto flex items-center gap-0.5 rounded-[var(--r-sm)] border border-[var(--line)] bg-[var(--panel-2)] p-0.5">

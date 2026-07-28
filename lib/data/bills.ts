@@ -10,6 +10,7 @@ import {
   type BillDirectoryFacetRow,
 } from "@/lib/supabase/bills";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { resolveSortDirection } from "@/lib/sort-direction";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
 import { sortLabelsAlphabetically } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
@@ -27,6 +28,7 @@ export interface BillsDirectorySearchParams {
   sponsor?: string;
   committee?: string;
   sort?: string;
+  dir?: string;
 }
 
 function parsePositiveInt(value?: string, fallback = 1) {
@@ -100,6 +102,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
         sponsor: "Any sponsor",
         committee: "Any committee",
         sortBy: "Recent activity",
+        direction: resolveSortDirection("Recent activity"),
       },
       options: {
         chambers: ["Both"],
@@ -124,6 +127,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
     sponsor: searchParams.sponsor || "Any sponsor",
     committee: searchParams.committee || "Any committee",
     sortBy: searchParams.sort || "Recent activity",
+    direction: resolveSortDirection(searchParams.sort || "Recent activity", searchParams.dir),
   };
 
   try {
@@ -139,6 +143,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
         sponsor: filters.sponsor,
         committee: filters.committee,
         sortBy: filters.sortBy,
+        direction: filters.direction,
       }),
       listStoredBillDirectoryFacets().catch(() => [] as BillDirectoryFacetRow[]),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
