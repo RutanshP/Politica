@@ -30,7 +30,10 @@ const MILESTONES: Array<{
   { label: "On Floor", reachedAt: 2, match: /floor|debate|cloture/i, icon: Gavel },
   { label: "Passed Chamber", reachedAt: 3, match: /passed|agreed to/i, icon: Check },
   { label: "To President", reachedAt: 4, match: /president/i, icon: Landmark },
-  { label: "Signed into Law", reachedAt: 5, match: /became law|signed|public law/i, icon: Vote },
+  // "Passed into Law", not "Signed into Law": a bill the President neither signs nor vetoes within
+  // ten days becomes law without a signature and goes to the Archivist unsigned. Roughly 200 stored
+  // bills reached this rung that way, and the stepper was calling every one of them signed.
+  { label: "Passed into Law", reachedAt: 5, match: /became law|signed|public law/i, icon: Vote },
 ];
 
 function findActionDate(bill: Bill, match: RegExp) {
