@@ -3,8 +3,8 @@ const assert = require("node:assert/strict");
 
 const jiti = require("../support/jiti.cjs");
 
-const { syncLegislationFromCongress } = jiti("@/lib/server/legislation-sync");
-const { buildSourceFingerprint, normalizeSourceUpdatedAt } = jiti("@/lib/server/sync-freshness");
+const { syncLegislationFromCongress, buildCongressBillFreshness } = jiti("@/lib/server/legislation-sync");
+const { normalizeSourceUpdatedAt } = jiti("@/lib/server/sync-freshness");
 
 function createBillRow(id, title, summary, overrides = {}) {
   return {
@@ -326,18 +326,11 @@ test("syncLegislationFromCongress skips unchanged bills before detail fetch in i
     latestAction: { text: "Introduced in House", actionDate: "2026-01-08" },
     sponsors: [{ bioguideId: "A0001", fullName: "Rep. Ada Lovelace" }],
   };
-  const sourceFingerprint = buildSourceFingerprint({
-    congress: listBill.congress,
-    type: listBill.type,
-    number: listBill.number,
-    updateDate: listBill.updateDate,
-    title: listBill.title,
-    originChamber: listBill.originChamber,
-    latestAction: listBill.latestAction,
-    sponsors: listBill.sponsors,
-    policyArea: null,
-    committees: null,
-  });
+  // Derived by the same function the sync uses, rather than hand-rolled. Restating the shape here
+  // is what let this test pass while production was broken: the stored fingerprint was built from
+  // the bill *detail* payload and the comparison from the *list* item, so the two never matched and
+  // nothing was ever skipped -- while this test quietly mirrored the list-side shape on both sides.
+  const { sourceFingerprint } = buildCongressBillFreshness(listBill);
 
   const originalFetch = global.fetch;
   let detailFetches = 0;
@@ -463,18 +456,11 @@ test("syncLegislationFromCongress retries transient Congress list failures befor
     latestAction: { text: "Introduced in House", actionDate: "2026-01-09" },
     sponsors: [{ bioguideId: "A0001", fullName: "Rep. Ada Lovelace" }],
   };
-  const sourceFingerprint = buildSourceFingerprint({
-    congress: listBill.congress,
-    type: listBill.type,
-    number: listBill.number,
-    updateDate: listBill.updateDate,
-    title: listBill.title,
-    originChamber: listBill.originChamber,
-    latestAction: listBill.latestAction,
-    sponsors: listBill.sponsors,
-    policyArea: null,
-    committees: null,
-  });
+  // Derived by the same function the sync uses, rather than hand-rolled. Restating the shape here
+  // is what let this test pass while production was broken: the stored fingerprint was built from
+  // the bill *detail* payload and the comparison from the *list* item, so the two never matched and
+  // nothing was ever skipped -- while this test quietly mirrored the list-side shape on both sides.
+  const { sourceFingerprint } = buildCongressBillFreshness(listBill);
 
   const originalFetch = global.fetch;
   let listAttempts = 0;

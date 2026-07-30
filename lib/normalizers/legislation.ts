@@ -100,7 +100,6 @@ export function dedupeBillActions<T extends { date: string; label: string; detai
 
 export function mapBillToRow(
   bill: Bill,
-  rawBill: unknown,
   options?: {
     sourceUpdatedAt?: string | null;
     sourceFingerprint?: string | null;
@@ -147,13 +146,16 @@ export function mapBillToRow(
     last_versions_synced_at: options?.lastVersionsSyncedAt || null,
     last_votes_synced_at: options?.lastVotesSyncedAt || null,
     synced_at: now,
-    // raw_bill holds the source blob (the incremental sync reads it to avoid re-fetching detail).
-    // raw_payload used to hold a byte-identical copy, which doubled this table's TOAST size for no
-    // benefit -- nothing reads it (the "raw available" badge falls back to raw_bill). Keep the key
-    // present but always null: PostgREST rejects a bulk upsert whose objects don't all share keys
-    // (PGRST102), so the column must appear on every row in a chunk.
+    // Both source blobs stay null. raw_bill held the Congress.gov payload for every bill -- 44MB of
+    // TOAST, 11% of the whole database -- and nothing ever read it: it was selected on each sync
+    // only to be written straight back, and its sole consumer was `Boolean(raw_bill)` behind a
+    // `rawAvailable` flag no component renders. Selecting it on every run was also a large share of
+    // the egress. Same call as the votes.raw_payload reclaim in 018.
+    //
+    // The keys stay present but null: PostgREST rejects a bulk upsert whose objects don't all share
+    // keys (PGRST102), so each column must appear on every row in a chunk.
     raw_payload: null,
-    raw_bill: rawBill ?? null,
+    raw_bill: null,
   };
 }
 

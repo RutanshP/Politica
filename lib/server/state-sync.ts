@@ -639,7 +639,8 @@ export async function syncStateLegislationFromOpenStates(
         last_votes_synced_at: null,
         synced_at: new Date().toISOString(),
         raw_payload: detail,
-        raw_bill: detail,
+        // Null for the same reason as the federal path: nothing reads the stored source blob.
+        raw_bill: null,
       });
 
       (detail.actions ?? []).forEach((action, index) => {

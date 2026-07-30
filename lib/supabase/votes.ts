@@ -29,6 +29,14 @@ const voteDisplaySelect = "id,bill_id,canonical_id,bill_number,title,chamber,dat
  */
 const VOTE_ORDER_RECENT_FIRST = "order=voted_on.desc.nullslast";
 
+/**
+ * vote_positions has no `id` column; (vote_id, politician_id) is the primary key. Every read here
+ * orders by vote_id, which is nowhere near unique -- one roll call carries ~430 positions, so a
+ * 100-vote chunk pages through ~43,000 rows. Without this the pages overlapped and dropped
+ * positions, which silently corrupts both the member vote tables and the party-alignment stats.
+ */
+const VOTE_POSITION_TIEBREAKER = "politician_id";
+
 function buildQuotedInFilter(values: string[]) {
   return values
     .map((value) => `"${value.replace(/"/g, '\\"')}"`)
@@ -92,7 +100,7 @@ async function listCachedVotePositionsByVoteIds(voteIds: string[]) {
     const result = await fetchSupabaseRows<VotePositionRow>(
       "vote_positions",
       `vote_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc,name.asc`,
-      { paginateAll: true, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
+      { paginateAll: true, paginateTiebreaker: VOTE_POSITION_TIEBREAKER, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
     );
     rows.push(...result);
   }
@@ -166,7 +174,7 @@ export async function listStoredVotesByPoliticianId(politicianId: string) {
   const positionRows = await fetchSupabaseRows<VotePositionRow>(
     "vote_positions",
     `politician_id=eq.${encodeURIComponent(politicianId)}&order=vote_id.asc`,
-    { paginateAll: true, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
+    { paginateAll: true, paginateTiebreaker: VOTE_POSITION_TIEBREAKER, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
   );
 
   const voteIds = [...new Set(positionRows.map((row) => row.vote_id))];
@@ -190,7 +198,7 @@ export async function listStoredVotePositionContextByPoliticianId(politicianId: 
   const positionRows = await fetchSupabaseRows<VotePositionRow>(
     "vote_positions",
     `politician_id=eq.${encodeURIComponent(politicianId)}&order=vote_id.asc`,
-    { paginateAll: true, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
+    { paginateAll: true, paginateTiebreaker: VOTE_POSITION_TIEBREAKER, select: votePositionDisplaySelect, tags: [VOTES_CACHE_TAG] },
   );
 
   const voteIds = [...new Set(positionRows.map((row) => row.vote_id))];
@@ -216,7 +224,7 @@ export async function listStoredVotePositionContextByPoliticianIds(politicianIds
     const rows = await fetchSupabaseRows<VotePositionRow>(
       "vote_positions",
       `politician_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc`,
-      { cache: "no-store", paginateAll: true, select: votePositionDisplaySelect },
+      { cache: "no-store", paginateAll: true, paginateTiebreaker: VOTE_POSITION_TIEBREAKER, select: votePositionDisplaySelect },
     );
     politicianPositionRows.push(...rows);
   }
@@ -291,7 +299,7 @@ export async function listStoredVotePositionsByVoteIds(voteIds: string[]) {
     const result = await fetchSupabaseRows<VotePositionRow>(
       "vote_positions",
       `vote_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc,name.asc`,
-      { cache: "no-store", paginateAll: true, select: votePositionDisplaySelect },
+      { cache: "no-store", paginateAll: true, paginateTiebreaker: VOTE_POSITION_TIEBREAKER, select: votePositionDisplaySelect },
     );
     rows.push(...result);
   }
@@ -312,7 +320,7 @@ export async function listStoredVoteStatContextByPoliticianIds(politicianIds: st
     const rows = await fetchSupabaseRows<Pick<VotePositionRow, "vote_id" | "politician_id" | "party" | "vote">>(
       "vote_positions",
       `politician_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc`,
-      { cache: "no-store", paginateAll: true, select: votePositionStatSelect },
+      { cache: "no-store", paginateAll: true, paginateTiebreaker: VOTE_POSITION_TIEBREAKER, select: votePositionStatSelect },
     );
     politicianPositionRows.push(...rows);
   }
@@ -329,7 +337,7 @@ export async function listStoredVoteStatContextByPoliticianIds(politicianIds: st
     const result = await fetchSupabaseRows<Pick<VotePositionRow, "vote_id" | "politician_id" | "party" | "vote">>(
       "vote_positions",
       `vote_id=in.(${buildQuotedInFilter(chunk)})&order=vote_id.asc`,
-      { cache: "no-store", paginateAll: true, select: votePositionStatSelect },
+      { cache: "no-store", paginateAll: true, paginateTiebreaker: VOTE_POSITION_TIEBREAKER, select: votePositionStatSelect },
     );
     rows.push(...result);
   }

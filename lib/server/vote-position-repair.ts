@@ -131,6 +131,8 @@ export async function repairUnmatchedVotePositions(options?: { dryRun?: boolean 
     fetchSupabaseRows<VotePositionRow>("vote_positions", "politician_id=like.unmatched-*&order=vote_id.asc", {
       cache: "no-store",
       paginateAll: true,
+      // vote_positions has no `id`; (vote_id, politician_id) is the primary key.
+      paginateTiebreaker: "politician_id",
       pageSize: 1000,
       select: POSITION_SELECT,
     }),
@@ -195,7 +197,7 @@ export async function repairUnmatchedVotePositions(options?: { dryRun?: boolean 
     const positions = await fetchSupabaseRows<VotePositionRow>(
       "vote_positions",
       `politician_id=in.(${quoted})&order=vote_id.asc`,
-      { cache: "no-store", paginateAll: true, pageSize: 1000, select: "vote_id,politician_id,party,vote" },
+      { cache: "no-store", paginateAll: true, pageSize: 1000, paginateTiebreaker: "politician_id", select: "vote_id,politician_id,party,vote" },
     );
 
     const rows = politicianRows.filter((row) => chunk.includes(row.id));

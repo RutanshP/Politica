@@ -502,15 +502,19 @@ export async function getStoredBillById(
       select: BILL_LIST_SELECT,
       tags: [BILLS_CACHE_TAG],
     }),
+    // One bill's rows ordered by sort_order is already a total order (it is half the primary key,
+    // and bill_id is fixed by the filter), so no tiebreaker is needed -- and neither table has `id`.
     fetchSupabaseRows<BillActionRow>("bill_actions", `bill_id=eq.${encodedId}&order=sort_order.asc`, {
       select: BILL_ACTION_SELECT,
       tags: [BILLS_CACHE_TAG],
       paginateAll: true,
+      paginateTiebreaker: null,
     }),
     fetchSupabaseRows<BillVersionRow>("bill_versions", `bill_id=eq.${encodedId}&order=sort_order.asc`, {
       select: versionSelect,
       tags: [BILLS_CACHE_TAG],
       paginateAll: true,
+      paginateTiebreaker: null,
     }),
   ]);
 
@@ -540,7 +544,7 @@ export async function listStoredBillActionRowsByBillIds(billIds: string[]) {
     const result = await fetchSupabaseRows<BillActionRow>(
       "bill_actions",
       `bill_id=in.(${buildQuotedInFilter(chunk)})&order=bill_id.asc,sort_order.asc`,
-      { cache: "no-store", paginateAll: true, select: BILL_ACTION_SELECT },
+      { cache: "no-store", paginateAll: true, paginateTiebreaker: null, select: BILL_ACTION_SELECT },
     );
     rows.push(...result);
   }
@@ -564,7 +568,7 @@ export async function listStoredBillVersionRowsByBillIds(billIds: string[]) {
     const result = await fetchSupabaseRows<BillVersionRow>(
       "bill_versions",
       `bill_id=in.(${buildQuotedInFilter(chunk)})&order=bill_id.asc,sort_order.asc`,
-      { cache: "no-store", paginateAll: true, select: BILL_VERSION_METADATA_SELECT },
+      { cache: "no-store", paginateAll: true, paginateTiebreaker: null, select: BILL_VERSION_METADATA_SELECT },
     );
     rows.push(...result);
   }

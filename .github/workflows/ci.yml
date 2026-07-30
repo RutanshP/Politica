@@ -1,0 +1,47 @@
+name: CI
+
+# Nothing verified commits before this: sync-daily.yml was the only workflow, so typecheck, lint and
+# the test suite only ever ran on someone's laptop.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+# A newer push to the same ref makes an in-flight run redundant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      # `npm ci` needs the lockfile to match package.json exactly, which is what we want in CI.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # The repo currently reports 8 pre-existing no-unused-vars warnings. Warnings do not fail
+      # eslint, so this catches new errors without demanding that backlog be cleared first.
+      - name: Lint
+        run: npm run lint
+
+      # Runs without Supabase or Congress.gov credentials: every test stubs global.fetch.
+      - name: Tests
+        run: npm test
+
+      # Catches a build-only failure (a bad server/client boundary, an invalid route export) that
+      # tsc and the unit tests cannot see. Needs no secrets: pages that read Supabase fall back to
+      # their unconfigured branch.
+      - name: Build
+        run: npm run build

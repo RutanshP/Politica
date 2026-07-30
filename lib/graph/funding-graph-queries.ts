@@ -133,7 +133,8 @@ export async function listCommitteesForPolitician(politicianId: string) {
   const memberships = await fetchSupabaseRows<{ committee_id: string; role: string }>(
     "committee_members",
     `politician_id=eq.${encodeURIComponent(politicianId)}&order=sort_order.asc`,
-    { select: "committee_id,role", tags: [FUNDING_GRAPH_CACHE_TAG], paginateAll: true },
+    // committee_members has no `id`, and sort_order repeats across rows.
+    { select: "committee_id,role", tags: [FUNDING_GRAPH_CACHE_TAG], paginateAll: true, paginateTiebreaker: "committee_id" },
   );
   if (memberships.length === 0) {
     return [] as Array<{ id: string; slug: string; name: string; chamber: string; role: string }>;

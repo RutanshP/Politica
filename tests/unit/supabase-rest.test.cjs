@@ -3,7 +3,49 @@ const assert = require("node:assert/strict");
 
 const jiti = require("../support/jiti.cjs");
 
-const { fetchSupabaseRows } = jiti("@/lib/supabase/rest");
+const { fetchSupabaseRows, withTotalOrder } = jiti("@/lib/supabase/rest");
+
+test("withTotalOrder adds an order clause when the caller supplied none", () => {
+  // listStoredBills paginated with no order at all, so pages overlapped and skipped rows.
+  assert.equal(
+    withTotalOrder("jurisdiction_type=eq.federal&session=eq.119th%20Congress", "id"),
+    "jurisdiction_type=eq.federal&session=eq.119th%20Congress&order=id.asc",
+  );
+  assert.equal(withTotalOrder(undefined, "id"), "order=id.asc");
+  assert.equal(withTotalOrder("", "id"), "order=id.asc");
+});
+
+test("withTotalOrder appends a tiebreaker to a non-unique order", () => {
+  assert.equal(
+    withTotalOrder("vote_id=in.(\"a\",\"b\")&order=vote_id.asc,name.asc", "politician_id"),
+    "vote_id=in.(\"a\",\"b\")&order=vote_id.asc,name.asc,politician_id.asc",
+  );
+  assert.equal(
+    withTotalOrder("order=amount.desc.nullslast", "id"),
+    "order=amount.desc.nullslast,id.asc",
+  );
+});
+
+test("withTotalOrder leaves an order that already contains the tiebreaker alone", () => {
+  assert.equal(withTotalOrder("order=id.asc", "id"), "order=id.asc");
+  assert.equal(withTotalOrder("order=id.desc", "id"), "order=id.desc");
+  assert.equal(
+    withTotalOrder("order=bill_id.asc,sort_order.asc", "sort_order"),
+    "order=bill_id.asc,sort_order.asc",
+  );
+});
+
+test("withTotalOrder trusts a caller that declares its own order total", () => {
+  // bill_actions/bill_versions have no `id` to append; their order is the primary key.
+  assert.equal(
+    withTotalOrder("bill_id=eq.hr-1&order=sort_order.asc", null),
+    "bill_id=eq.hr-1&order=sort_order.asc",
+  );
+});
+
+test("withTotalOrder refuses to paginate with no order and no tiebreaker", () => {
+  assert.throws(() => withTotalOrder("status=eq.Failed", null), /order clause or a tiebreaker/);
+});
 
 test("fetchSupabaseRows paginates through every Supabase page when paginateAll is enabled", async () => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";

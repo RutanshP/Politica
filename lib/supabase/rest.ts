@@ -113,12 +113,54 @@ async function readJson<T>(url: string, init: RequestInit) {
 
 const PAGINATE_ALL_CONCURRENCY = 6;
 
+/**
+ * Appends a tiebreaker so a paginated order is total.
+ *
+ * LIMIT/OFFSET paging is only coherent if the sort fully determines row order. Postgres is free to
+ * return equal rows in any order, so paging a query ordered by nothing -- or by a column with ties
+ * -- silently repeats some rows across pages and skips others. That is what made a full-corpus read
+ * hand back ~4,500 duplicate rows while dropping real ones: the search rebuild reported 20,965
+ * documents but stored 16,402, and bills went missing from the index entirely.
+ *
+ * `tiebreaker` is the column that makes the sort unique. Pass null only when the caller's own order
+ * already is (a primary key) -- several tables here have no `id` column to fall back on.
+ */
+export function withTotalOrder(query: string | undefined, tiebreaker: string | null) {
+  const parts = (query || "").split("&").filter(Boolean);
+  const orderIndex = parts.findIndex((part) => part.startsWith("order="));
+
+  if (orderIndex === -1) {
+    if (!tiebreaker) {
+      throw new Error("Supabase paginated reads need an order clause or a tiebreaker column");
+    }
+    parts.push(`order=${tiebreaker}.asc`);
+    return parts.join("&");
+  }
+
+  if (!tiebreaker) {
+    return parts.join("&");
+  }
+
+  const columns = parts[orderIndex].slice("order=".length).split(",").map((column) => column.trim()).filter(Boolean);
+  if (columns.some((column) => column.split(".")[0] === tiebreaker)) {
+    return parts.join("&");
+  }
+
+  parts[orderIndex] = `order=${[...columns, `${tiebreaker}.asc`].join(",")}`;
+  return parts.join("&");
+}
+
 export async function fetchSupabaseRows<T>(
   pathname: string,
   query?: string,
   options?: SupabaseReadOptions & {
     paginateAll?: boolean;
     pageSize?: number;
+    /**
+     * Column appended to the order clause to make paging deterministic. Defaults to "id"; pass null
+     * for a table whose own order is already unique, since not every table here has an `id`.
+     */
+    paginateTiebreaker?: string | null;
   },
 ) {
   if (!isSupabaseConfigured()) {
@@ -134,6 +176,8 @@ export async function fetchSupabaseRows<T>(
   if (query && /(^|&)limit=|(^|&)offset=/.test(query)) {
     throw new Error("Supabase paginated reads cannot be combined with explicit limit/offset query params");
   }
+
+  query = withTotalOrder(query, options.paginateTiebreaker === undefined ? "id" : options.paginateTiebreaker);
 
   const pageSize = Math.max(1, options.pageSize || 250);
 

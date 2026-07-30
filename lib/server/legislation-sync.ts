@@ -262,24 +262,36 @@ function chooseBestSummary(
     .sort((left, right) => right.length - left.length)[0];
 }
 
-function buildCongressBillFreshness(
+/**
+ * Freshness is derived from the *list* item only, never from the detail payload.
+ *
+ * This decides whether a bill needs re-fetching, and that decision is made when all we have is the
+ * list item. Deriving the stored value from the detail payload instead made the two sides
+ * incomparable: `title` was the detail's `titles` array against the list's title string, and
+ * `committees` was the detail's object against `null`. The fingerprint is a hash, so those never
+ * collided -- `classifyFreshness` could not once return "unchanged", and across 232 recorded runs
+ * `unchangedBillsSkipped` was 0. Every bill was re-fetched from Congress.gov and rewritten on every
+ * run, which is what made both the API usage and the Supabase egress so heavy.
+ *
+ * `updateDate` from the list is Congress.gov's own change signal, so the list carries what is
+ * needed. Keeping one derivation for both the comparison and the stored value is what makes the
+ * comparison mean anything.
+ */
+export function buildCongressBillFreshness(
   listBill: Awaited<ReturnType<typeof fetchCongressBills>>[number],
-  detail?: Awaited<ReturnType<typeof fetchCongressBillDetail>>,
 ) {
-  const detailBill = detail?.bill;
   return {
-    sourceUpdatedAt: normalizeSourceUpdatedAt(detailBill?.updateDate || listBill.updateDate),
+    sourceUpdatedAt: normalizeSourceUpdatedAt(listBill.updateDate),
     sourceFingerprint: buildSourceFingerprint({
-      congress: detailBill?.congress || listBill.congress || null,
-      type: detailBill?.type || listBill.type || null,
-      number: detailBill?.number || listBill.number || null,
-      updateDate: detailBill?.updateDate || listBill.updateDate || null,
-      title: detailBill?.titles || listBill.title || null,
-      originChamber: detailBill?.originChamber || listBill.originChamber || null,
-      latestAction: detailBill?.latestAction || listBill.latestAction || null,
-      sponsors: detailBill?.sponsors || listBill.sponsors || null,
-      policyArea: detailBill?.policyArea || listBill.policyArea || null,
-      committees: detailBill?.committees || null,
+      congress: listBill.congress || null,
+      type: listBill.type || null,
+      number: listBill.number || null,
+      updateDate: listBill.updateDate || null,
+      title: listBill.title || null,
+      originChamber: listBill.originChamber || null,
+      latestAction: listBill.latestAction || null,
+      sponsors: listBill.sponsors || null,
+      policyArea: listBill.policyArea || null,
     }),
   };
 }
@@ -472,6 +484,9 @@ async function fetchRowsByBillIdsInChunks<TRow>(
   pathname: string,
   billIds: string[],
   orderQuery?: string,
+  // bill_actions and bill_versions have no `id`; their callers order by the primary key instead, so
+  // the paginated read needs no tiebreaker added. `votes` does have one.
+  paginateTiebreaker: string | null = null,
 ) {
   if (billIds.length === 0) {
     return [] as TRow[];
@@ -487,7 +502,7 @@ async function fetchRowsByBillIdsInChunks<TRow>(
       `bill_id=in.(${filter})`,
       orderQuery,
     ].filter(Boolean).join("&");
-    const result = await fetchSupabaseRows<TRow>(pathname, query, { cache: "no-store", paginateAll: true });
+    const result = await fetchSupabaseRows<TRow>(pathname, query, { cache: "no-store", paginateAll: true, paginateTiebreaker });
     rows.push(...result);
   }
 
@@ -531,7 +546,6 @@ async function loadExistingStoredBills(congressSession: string) {
     "last_versions_synced_at",
     "last_votes_synced_at",
     "synced_at",
-    "raw_bill",
   ].join(",");
 
   const billRows = await fetchSupabaseRows<BillRow>(
@@ -544,7 +558,8 @@ async function loadExistingStoredBills(congressSession: string) {
   const [actionRows, versionRows, voteRows] = await Promise.all([
     fetchRowsByBillIdsInChunks<BillActionRow>("bill_actions", billIds, "order=bill_id.asc,sort_order.asc"),
     fetchRowsByBillIdsInChunks<BillVersionRow>("bill_versions", billIds, "order=bill_id.asc,sort_order.asc"),
-    fetchRowsByBillIdsInChunks<Pick<VoteRow, "bill_id">>("votes", billIds, "order=bill_id.asc"),
+    // Many votes share a bill_id, so bill_id alone does not order this read.
+    fetchRowsByBillIdsInChunks<Pick<VoteRow, "bill_id">>("votes", billIds, "order=bill_id.asc", "id"),
   ]);
 
   const actionsByBillId = new Map<string, BillActionRow[]>();
@@ -623,7 +638,6 @@ async function loadStoredBillsByIds(billIds: string[]) {
     "last_versions_synced_at",
     "last_votes_synced_at",
     "synced_at",
-    "raw_bill",
   ].join(",");
 
   const chunkSize = 100;
@@ -1636,7 +1650,7 @@ export async function syncFederalMemberSponsoredBillHistory(options?: {
         .filter((item, index) => !existingIds.has(candidateIds[index]))
         .map((item) => {
           const bill = normalizeCongressBillListItem(item);
-          return mapBillToRow(bill, item);
+          return mapBillToRow(bill);
         });
 
       if (newBillRows.length > 0) {
@@ -1733,7 +1747,6 @@ export async function syncLegislationFromCongress(options?: {
           unchangedBillsSkipped += 1;
           return {
             bill: existingStoredBill,
-            rawBill: existingStoredRow?.raw_bill || listBill,
             status: "unchanged" as const,
             sourceUpdatedAt: existingStoredRow?.source_updated_at || seedFreshness.sourceUpdatedAt,
             sourceFingerprint: existingStoredRow?.source_fingerprint || seedFreshness.sourceFingerprint,
@@ -1750,7 +1763,6 @@ export async function syncLegislationFromCongress(options?: {
           }
           return {
             bill: seed,
-            rawBill: listBill,
             status: "seed" as const,
             sourceUpdatedAt: seedFreshness.sourceUpdatedAt,
             sourceFingerprint: seedFreshness.sourceFingerprint,
@@ -1819,7 +1831,9 @@ export async function syncLegislationFromCongress(options?: {
             merged.title,
             bestSummary,
           );
-          const freshness = buildCongressBillFreshness(listBill, detail);
+          // Same list-derived freshness the seed comparison used, so what gets stored is what the
+          // next run will compare against.
+          const freshness = buildCongressBillFreshness(listBill);
           const finalClassification = mode === "full"
             ? (existingStoredRow ? "changed" : "new")
             : classifyFreshness(existingStoredRow, freshness.sourceUpdatedAt, freshness.sourceFingerprint);
@@ -1839,7 +1853,6 @@ export async function syncLegislationFromCongress(options?: {
               versions: hydratedVersions,
               ...committeeData,
             },
-            rawBill: detail.bill || listBill,
             status: "detailed" as const,
             sourceUpdatedAt: freshness.sourceUpdatedAt,
             sourceFingerprint: freshness.sourceFingerprint,
@@ -1855,7 +1868,6 @@ export async function syncLegislationFromCongress(options?: {
             preservedBills += 1;
             return {
               bill: existingDetailed,
-              rawBill: existingStored.billRowsById.get(seed.id)?.raw_bill || listBill,
               status: "preserved" as const,
               sourceUpdatedAt: existingStored.billRowsById.get(seed.id)?.source_updated_at || seedFreshness.sourceUpdatedAt,
               sourceFingerprint: existingStored.billRowsById.get(seed.id)?.source_fingerprint || seedFreshness.sourceFingerprint,
@@ -1870,7 +1882,6 @@ export async function syncLegislationFromCongress(options?: {
 
           return {
             bill: seed,
-            rawBill: listBill,
             status: "seed" as const,
             sourceUpdatedAt: seedFreshness.sourceUpdatedAt,
             sourceFingerprint: seedFreshness.sourceFingerprint,
@@ -1936,7 +1947,7 @@ export async function syncLegislationFromCongress(options?: {
       }
     }
 
-    const finalBills = billResults.map(({ bill, rawBill, status, sourceUpdatedAt, sourceFingerprint }) => {
+    const finalBills = billResults.map(({ bill, status, sourceUpdatedAt, sourceFingerprint }) => {
       const committee = committeeByBillId.get(bill.id);
 
       return {
@@ -1947,7 +1958,6 @@ export async function syncLegislationFromCongress(options?: {
               committeeName: committee.name,
             }
           : bill,
-        rawBill,
         status,
         sourceUpdatedAt,
         sourceFingerprint,
@@ -1961,7 +1971,7 @@ export async function syncLegislationFromCongress(options?: {
       relatedByTopic.set(bill.topic, items);
     }
 
-    const finalizedBills = finalBills.map(({ bill, rawBill, status, sourceUpdatedAt, sourceFingerprint }) => {
+    const finalizedBills = finalBills.map(({ bill, status, sourceUpdatedAt, sourceFingerprint }) => {
       const relatedBillIds = (relatedByTopic.get(bill.topic) || [])
         .filter((candidate) => candidate.id !== bill.id)
         .slice(0, 3)
@@ -1972,7 +1982,6 @@ export async function syncLegislationFromCongress(options?: {
           ...bill,
           relatedBillIds,
         },
-        rawBill,
         status,
         sourceUpdatedAt,
         sourceFingerprint,
@@ -2057,9 +2066,8 @@ export async function syncLegislationFromCongress(options?: {
     const mutableFinalizedBills = finalizedBills.filter((entry) => entry.status !== "unchanged");
     const mutationTimestamp = new Date().toISOString();
     const syncedBillRows = uniqueByKey(
-      mutableFinalizedBills.map(({ bill, rawBill, sourceUpdatedAt, sourceFingerprint }) => mapBillToRow(
+      mutableFinalizedBills.map(({ bill, sourceUpdatedAt, sourceFingerprint }) => mapBillToRow(
         bill,
-        rawBill,
         {
           sourceUpdatedAt,
           sourceFingerprint,

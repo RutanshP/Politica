@@ -75,7 +75,8 @@ export async function listStoredCommitteeMemberships() {
   const rows = await fetchSupabaseRows<CommitteeMemberRow>(
     "committee_members",
     "order=committee_id.asc,sort_order.asc",
-    { select: COMMITTEE_MEMBER_SELECT, tags: [COMMITTEES_CACHE_TAG], paginateAll: true },
+    // committee_members has no `id`; (committee_id, politician_id) is the key and sort_order ties.
+    { select: COMMITTEE_MEMBER_SELECT, tags: [COMMITTEES_CACHE_TAG], paginateAll: true, paginateTiebreaker: "politician_id" },
   );
   return rows.map(mapRowToCommitteeMembership);
 }
@@ -84,7 +85,7 @@ export async function listStoredCommitteeMembershipsByCommitteeId(committeeId: s
   const rows = await fetchSupabaseRows<CommitteeMemberRow>(
     "committee_members",
     `committee_id=eq.${encodeURIComponent(committeeId)}&order=sort_order.asc`,
-    { select: COMMITTEE_MEMBER_SELECT, tags: [COMMITTEES_CACHE_TAG], paginateAll: true },
+    { select: COMMITTEE_MEMBER_SELECT, tags: [COMMITTEES_CACHE_TAG], paginateAll: true, paginateTiebreaker: "politician_id" },
   );
   return rows.map(mapRowToCommitteeMembership);
 }
@@ -93,7 +94,7 @@ export async function listStoredCommitteeMembershipsByPoliticianId(politicianId:
   const rows = await fetchSupabaseRows<CommitteeMemberRow>(
     "committee_members",
     `politician_id=eq.${encodeURIComponent(politicianId)}&order=sort_order.asc`,
-    { select: COMMITTEE_MEMBER_SELECT, tags: [COMMITTEES_CACHE_TAG], paginateAll: true },
+    { select: COMMITTEE_MEMBER_SELECT, tags: [COMMITTEES_CACHE_TAG], paginateAll: true, paginateTiebreaker: "committee_id" },
   );
   return rows.map(mapRowToCommitteeMembership);
 }
