@@ -273,7 +273,9 @@ export function mapCommitteeToRow(committee: Committee, rawCommittee: unknown): 
     state_code: null,
     session_id: committee.sessionId || null,
     synced_at: new Date().toISOString(),
-    raw_payload: rawCommittee ?? null,
+    // Byte-identical copy of raw_committee, which is what mapRowToCommittee falls back through
+    // (`raw_payload || raw_committee`). Same dead duplicate 023 drained from the state path.
+    raw_payload: null,
     raw_committee: rawCommittee ?? null,
   };
 }
