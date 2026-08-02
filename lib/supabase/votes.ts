@@ -14,7 +14,9 @@ import { normalizePartyLabel, normalizeStateLabel } from "@/lib/utils";
 const votePositionStatSelect = "vote_id,politician_id,party,vote";
 // Excludes raw_payload -- an unused-in-UI blob column on the largest table in the database
 // (345k+ rows). Fetching it by default via select=* on every vote/politician page view was a
-// major, uncached (cache: "no-store") egress driver.
+// major, uncached (cache: "no-store") egress driver. As of 023 the column is also permanently
+// null: it was 83MB of per-voter duplicates of the columns beside it, so `rawAvailable` below is
+// now false for the same reason twice over.
 const votePositionDisplaySelect = "vote_id,politician_id,name,party,state,vote,source_system,source_id,synced_at";
 const voteDisplaySelect = "id,bill_id,canonical_id,bill_number,title,chamber,date_label,voted_on,result,yea,nay,present,not_voting,source_system,source_id,synced_at";
 

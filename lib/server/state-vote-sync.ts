@@ -202,7 +202,8 @@ export async function syncStateVotesFromOpenStates(options: { state: string; dry
           source_system: "openstates",
           source_id: `${voteId}-${member.id}`,
           synced_at: now,
-          raw_payload: entry,
+          // Not stored; see legislation-sync. The entry is already extracted into the columns above.
+          raw_payload: null,
         });
       }
 

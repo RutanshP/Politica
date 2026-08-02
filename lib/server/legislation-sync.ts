@@ -1399,7 +1399,15 @@ function buildFederalVoteRows(
         source_system: vote.sourceSystem,
         source_id: `${voteId}-${position.externalId || slugifySegment(position.name)}`,
         synced_at: new Date().toISOString(),
-        raw_payload: position,
+        /*
+         * Not stored, for the same reason as the parent roll call above -- 018 nulled
+         * votes.raw_payload but missed this child table, which is where the volume actually is:
+         * one row per voter, 618k of them, at ~375 bytes each. Every field of the entry is already
+         * a column on this row (name/party/state/vote), and the only consumer was
+         * `rawAvailable: Boolean(row.raw_payload)` -- which votePositionDisplaySelect has excluded
+         * from the read since the egress fix, so it already evaluates false everywhere.
+         */
+        raw_payload: null,
       });
     });
   });
@@ -1453,8 +1461,10 @@ function buildMissingFederalPoliticianRows(
         state_code: row.state || null,
         session_id: null,
         synced_at: new Date().toISOString(),
-        raw_payload: row.raw_payload,
-        raw_member: row.raw_payload,
+        // Both null: these are placeholder members synthesized from a roll call, and the position
+        // row they were built from no longer carries a payload to copy.
+        raw_payload: null,
+        raw_member: null,
       })),
     (row) => row.id,
   );
@@ -1544,7 +1554,9 @@ async function buildFederalCommitteeMembershipRows(
         source_system: "congress_legislators",
         source_id: `${committee.id}:${member.bioguide}`,
         synced_at: new Date().toISOString(),
-        raw_payload: member,
+        // The whole congress-legislators member blob, re-copied per membership row. Everything
+        // used is already extracted above, and politicians.raw_member holds the source copy.
+        raw_payload: null,
       });
     });
   });

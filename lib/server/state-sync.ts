@@ -212,7 +212,8 @@ function buildStateVoteRows(
       source_system: "openstates",
       source_id: `${voteId}-${position.voter_id || slugifySegment(position.voter_name || "member")}`,
       synced_at: new Date().toISOString(),
-      raw_payload: position,
+      // Not stored; see legislation-sync. The position is already extracted into the columns above.
+      raw_payload: null,
     })),
   };
 }
@@ -389,7 +390,10 @@ export async function syncStateLegislationFromOpenStates(
         last_profile_synced_at: new Date().toISOString(),
         last_stats_recomputed_at: existing?.last_stats_recomputed_at || null,
         synced_at: new Date().toISOString(),
-        raw_payload: person,
+        // A byte-identical copy of raw_member, which is what every reader falls back through
+        // (`raw_member ?? raw_payload`). The federal path stopped writing the copy in 78c1f91;
+        // this one was missed.
+        raw_payload: null,
         raw_member: person,
       });
     });
@@ -454,7 +458,8 @@ export async function syncStateLegislationFromOpenStates(
         state_code: state.toUpperCase(),
         session_id: null,
         synced_at: new Date().toISOString(),
-        raw_payload: detail,
+        // Byte-identical copy of raw_committee; readers use `raw_committee ?? raw_payload`.
+        raw_payload: null,
         raw_committee: detail,
       });
 
@@ -470,7 +475,8 @@ export async function syncStateLegislationFromOpenStates(
           source_system: "openstates",
           source_id: `${committeeId}:${member.person_id}`,
           synced_at: new Date().toISOString(),
-          raw_payload: member,
+          // The roster entry is already extracted into committee_id/politician_id/role above.
+          raw_payload: null,
         });
       });
     }
@@ -531,7 +537,8 @@ export async function syncStateLegislationFromOpenStates(
           state_code: state.toUpperCase(),
           session_id: null,
           synced_at: new Date().toISOString(),
-          raw_payload: detail.from_organization,
+          // Byte-identical copy of raw_committee; readers use `raw_committee ?? raw_payload`.
+          raw_payload: null,
           raw_committee: detail.from_organization,
         });
       }
@@ -590,7 +597,8 @@ export async function syncStateLegislationFromOpenStates(
           last_profile_synced_at: null,
           last_stats_recomputed_at: null,
           synced_at: new Date().toISOString(),
-          raw_payload: detail.sponsorships?.[0] || detail,
+          // Byte-identical copy of raw_member; readers use `raw_member ?? raw_payload`.
+          raw_payload: null,
           raw_member: detail.sponsorships?.[0] || detail,
         });
       }
@@ -638,8 +646,8 @@ export async function syncStateLegislationFromOpenStates(
         last_versions_synced_at: new Date().toISOString(),
         last_votes_synced_at: null,
         synced_at: new Date().toISOString(),
-        raw_payload: detail,
-        // Null for the same reason as the federal path: nothing reads the stored source blob.
+        // Both null for the same reason as the federal path: nothing reads the stored source blob.
+        raw_payload: null,
         raw_bill: null,
       });
 

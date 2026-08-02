@@ -54,7 +54,9 @@ function toRow(
     source_system: "fec",
     source_id: candidate.candidate_id,
     synced_at: new Date().toISOString(),
-    raw_payload: candidate,
+    // Not stored: 5.8MB across the roster, and ELECTION_CANDIDATE_SELECT does not read it back --
+    // every field the app uses is already a column above. Same call as bills.raw_bill in 022.
+    raw_payload: null,
   };
 }
 
