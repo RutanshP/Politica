@@ -25,6 +25,15 @@ const JOBS: Record<string, string[]> = {
   federal: [
     "/api/internal/sync/politicians?limit=250",
     "/api/internal/sync/legislation?offset=0&limit=25&syncVotes=true",
+    /*
+     * Re-fetches stored roll calls, which is how a parser change reaches rows already stored --
+     * votes.question and votes.description were backfilled this way. listOffset stays 0 because
+     * the endpoint returns what most needs refreshing first (question nulls-first, then
+     * oldest-synced), so repeated calls advance on their own. Kept in step with the
+     * VOTE_REFRESH_* loop in .github/workflows/sync-daily.yml, which is the schedule actually in
+     * use; run one or the other, not both.
+     */
+    "/api/internal/sync/legislation?refreshStoredVotes=1&listOffset=0&listLimit=25",
   ],
   // Weekly-ish deeper refresh.
   finance: ["/api/internal/sync/finance"],

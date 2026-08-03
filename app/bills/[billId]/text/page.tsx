@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { EmptyState } from "@/components/empty-state";
@@ -6,32 +7,48 @@ import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { BillTabs } from "@/components/bill-tabs";
 import { BillTextViewer } from "@/components/bill-text-viewer";
-import { fetchBillTextDocument, pickBillTextSource } from "@/lib/adapters/bill-text";
+import {
+  fetchBillTextDocument,
+  hasReadableBillText,
+  orderBillTextVersions,
+  resolveBillTextSource,
+} from "@/lib/adapters/bill-text";
 import {
   getBillData,
   getBillsSourceLabel,
   isLiveBillsSource,
 } from "@/lib/data/bills";
+import { cn } from "@/lib/utils";
 
 export const revalidate = 21600;
 
 export default async function BillTextPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ billId: string }>;
+  searchParams: Promise<{ version?: string }>;
 }) {
   const { billId: rawBillId } = await params;
+  const { version: requestedVersionId } = await searchParams;
   const { bill, source } = await getBillData(decodeURIComponent(rawBillId));
   if (!bill) notFound();
   const live = isLiveBillsSource(source);
 
-  const versions = bill.versions.length > 0 ? bill.versions : [];
+  const versions = orderBillTextVersions(bill.versions.length > 0 ? bill.versions : []);
 
-  // Fetch and parse the official text on-demand from the best version's document link. This is a
-  // plain cached document fetch from congress.gov -- it does not touch the rate-limited API.
-  const textSource = pickBillTextSource(versions);
+  /*
+   * Each version resolves to its own document. The tab used to render one version -- whichever
+   * pickBillTextSource judged most authoritative -- and offered no way to read the others, even
+   * though a bill can carry nine stored versions and every one of them has its own link. The
+   * requested version wins; without one, the same default as before.
+   *
+   * Still a plain cached document fetch from congress.gov -- it does not touch the rate-limited API.
+   */
+  const textSource = resolveBillTextSource(versions, requestedVersionId);
   const textDocument = textSource ? await fetchBillTextDocument(textSource.url) : null;
   const displayVersion = textSource?.version ?? versions[0];
+  const readableVersions = versions.filter(hasReadableBillText);
 
   return (
     <div className="space-y-6">
@@ -42,6 +59,36 @@ export default async function BillTextPage({
         actions={<SourceBadge label={getBillsSourceLabel(source)} live={live} />}
       />
       <BillTabs billId={bill.id} active="text" />
+      {/*
+        One chip per version that has readable text, newest first. Plain links rather than a client
+        component: the page is server-rendered and each version is its own cached fetch, so a
+        selection is just another URL -- shareable, and it survives a reload.
+      */}
+      {readableVersions.length > 1 ? (
+        <div className="flex flex-wrap gap-2">
+          {readableVersions.map((version) => {
+            const active = version.id === displayVersion?.id;
+            return (
+              <Link
+                key={version.id}
+                href={`/bills/${encodeURIComponent(bill.id)}/text?version=${encodeURIComponent(version.id)}`}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-[13px] font-semibold transition",
+                  active
+                    ? "border-[var(--accent-2)] bg-[var(--accent-soft)] text-[var(--accent-2)]"
+                    : "border-[var(--line)] bg-[var(--panel-2)] text-[var(--muted)] hover:border-[var(--line-2)] hover:text-[var(--ink)]",
+                )}
+              >
+                {version.label}
+                {version.date ? (
+                  <span className="num ml-1.5 font-normal opacity-70">{version.date}</span>
+                ) : null}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
       <SectionCard
         title={displayVersion?.label ? `${displayVersion.label}${displayVersion.date ? ` · ${displayVersion.date}` : ""}` : "Bill text"}
         description={

@@ -271,6 +271,7 @@ export async function fetchBillTextDocument(xmlUrl: string): Promise<BillTextDoc
 }
 
 interface BillTextVersionLike {
+  id?: string;
   label: string;
   date?: string;
   sourceUrl?: string;
@@ -323,4 +324,55 @@ export function pickBillTextSource(versions: BillTextVersionLike[]): { url: stri
   }
 
   return null;
+}
+
+/** The readable-text url for one specific version, by the same two routes pickBillTextSource uses. */
+export function billTextSourceForVersion(version: BillTextVersionLike) {
+  const xml = billDtdXmlUrl(version);
+  if (xml) return { url: xml, version };
+
+  const htm = version.sourceUrl?.toLowerCase().endsWith(".htm") ? version.sourceUrl : undefined;
+  return htm ? { url: htm.replace(/\.htm$/i, ".xml"), version } : null;
+}
+
+/** Whether a version has text we can render inline, so the picker can say so up front. */
+export function hasReadableBillText(version: BillTextVersionLike) {
+  return billTextSourceForVersion(version) !== null;
+}
+
+/**
+ * Which version the Text tab should show: the one asked for, else the default pick.
+ *
+ * The tab used to render pickBillTextSource's choice and nothing else, so a bill with nine stored
+ * versions -- Introduced, Reported, Engrossed, Enrolled, Public Law -- showed one of them with no
+ * way to read any other, even though every version has its own document link. Falls back rather
+ * than 404s on an unknown or textless id: a stale link should still land on readable text.
+ */
+export function resolveBillTextSource(
+  versions: BillTextVersionLike[],
+  requestedVersionId?: string,
+) {
+  if (requestedVersionId) {
+    const requested = versions.find((version) => version.id === requestedVersionId);
+    const source = requested ? billTextSourceForVersion(requested) : null;
+    if (source) return source;
+  }
+
+  return pickBillTextSource(versions);
+}
+
+/** Newest first, so the version picker reads the way the timeline does. */
+export function orderBillTextVersions<T extends BillTextVersionLike>(versions: T[]): T[] {
+  return versions
+    .map((version, index) => ({ version, index }))
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.version.date || "");
+      const rightTime = Date.parse(right.version.date || "");
+      const leftValid = Number.isNaN(leftTime) ? 0 : leftTime;
+      const rightValid = Number.isNaN(rightTime) ? 0 : rightTime;
+      // Same date is common -- several versions can be published the same day -- so the stored
+      // order breaks the tie, reversed to keep the later one on top.
+      return rightValid - leftValid || right.index - left.index;
+    })
+    .map((entry) => entry.version);
 }

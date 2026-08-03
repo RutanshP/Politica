@@ -10,7 +10,15 @@ on:
     # ~10:23 UTC = ~3:23 AM Pacific. Deliberately off the top of the hour: GitHub
     # runs schedules best-effort and drops/delays many at :00 under load.
     - cron: "23 10 * * *"
-  workflow_dispatch: {} # manual "Run workflow" button
+  # Manual "Run workflow" button. The vote-refresh size is an input so a backfill can be cleared in
+  # one go without editing the workflow: a parser change leaves every stored roll call needing a
+  # re-fetch, and the nightly size is tuned for the steady-state rotation, not for catching up.
+  workflow_dispatch:
+    inputs:
+      vote_refresh_chunks:
+        description: "Vote-refresh chunks this run (25 roll calls each). 60 clears a full backlog."
+        required: false
+        default: ""
 
 concurrency:
   group: politica-sync
@@ -36,6 +44,15 @@ jobs:
       # actions). 8 x 25 = top 200 updated bills/night keeps new bills flowing in.
       BILL_CHUNKS: "8"
       BILL_LIMIT: "25"
+      # Re-fetches stored federal roll calls from the Clerk/LIS feeds, needed whenever a parser
+      # starts reading a field it previously dropped -- votes.question and votes.description were
+      # both backfilled this way. The endpoint returns the roll calls that most need it first
+      # (question nulls-first, then oldest-synced), so a fixed offset walks the whole backlog
+      # instead of re-fetching page one every night. 1,444 federal votes were pending when this was
+      # added, so 12 x 25 clears it in about five nights and then settles into a staleness
+      # rotation that keeps results and tallies current.
+      VOTE_REFRESH_CHUNKS: ${{ github.event.inputs.vote_refresh_chunks || '12' }}
+      VOTE_REFRESH_LIMIT: "25"
     steps:
       - name: Check secrets
         run: |
@@ -70,6 +87,15 @@ jobs:
           while [ "$i" -le "$BILL_CHUNKS" ]; do
             post "/api/internal/sync/legislation?offset=$off&limit=$BILL_LIMIT&syncVotes=true"
             off=$((off + BILL_LIMIT))
+            i=$((i + 1))
+          done
+
+          echo "== Refresh stored federal roll calls ($VOTE_REFRESH_CHUNKS x $VOTE_REFRESH_LIMIT) =="
+          # listOffset stays 0 on purpose: the endpoint orders by what still needs refreshing, so
+          # each chunk picks up where the last left off without anyone tracking a cursor.
+          i=1
+          while [ "$i" -le "$VOTE_REFRESH_CHUNKS" ]; do
+            post "/api/internal/sync/legislation?refreshStoredVotes=1&listOffset=0&listLimit=$VOTE_REFRESH_LIMIT"
             i=$((i + 1))
           done
 

@@ -279,10 +279,22 @@ export async function listStoredVoteHeadersByBillIds(billIds: string[]) {
   return rows;
 }
 
+/**
+ * Federal roll calls to re-fetch, the ones that most need it first.
+ *
+ * Ordered by `question` nulls-first, then oldest-synced. That ordering is what makes the refresh
+ * self-advancing: a scheduled job can call it with a fixed offset=0 forever and still walk the
+ * whole table, because each run fixes its rows and they stop sorting to the front. Ordering by
+ * `id.asc` instead meant a nightly job with a fixed offset re-fetched the same page every night,
+ * which is why the backfill had to be driven by hand.
+ *
+ * Once nothing is missing a question it degrades to a staleness rotation, which is what a periodic
+ * re-fetch wants anyway.
+ */
 export async function listStoredFederalVoteHeadersPage(limit: number, offset: number) {
   return fetchSupabasePage<Pick<VoteRow, "id" | "canonical_id" | "source_system" | "bill_id">>(
     "votes",
-    "source_system=in.(house_clerk,senate_lis)&order=id.asc",
+    "source_system=in.(house_clerk,senate_lis)&order=question.asc.nullsfirst,synced_at.asc,id.asc",
     {
       cache: "no-store",
       select: "id,canonical_id,source_system,bill_id",
