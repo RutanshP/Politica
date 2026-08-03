@@ -3,12 +3,7 @@ const assert = require("node:assert/strict");
 
 const jiti = require("../support/jiti.cjs");
 
-const {
-  billTextSourceForVersion,
-  hasReadableBillText,
-  orderBillTextVersions,
-  resolveBillTextSource,
-} = jiti("@/lib/adapters/bill-text");
+const { billTextSourceForVersion, resolveBillTextSource } = jiti("@/lib/adapters/bill-text");
 
 function version(id, label, date, xmlUrl, sourceUrl) {
   return {
@@ -59,19 +54,13 @@ test("billTextSourceForVersion derives the xml url from an .htm source", () => {
   );
 });
 
-test("hasReadableBillText separates renderable versions from link-only ones", () => {
-  assert.equal(hasReadableBillText(ENROLLED), true);
-  assert.equal(hasReadableBillText(version("v6", "Public Law", "Jul 10, 2026")), false);
+test("billTextSourceForVersion returns nothing for a version with no readable document", () => {
+  // "Public Law" ships only USLM, which this does not render, so the caller falls back.
+  assert.equal(billTextSourceForVersion(version("v6", "Public Law", "Jul 10, 2026")), null);
 });
 
-test("orderBillTextVersions puts the newest version first", () => {
-  const ordered = orderBillTextVersions([INTRODUCED, ENROLLED, REPORTED]);
-  assert.deepEqual(ordered.map((item) => item.id), ["v3", "v2", "v1"]);
-});
-
-test("orderBillTextVersions keeps same-day versions in reverse stored order", () => {
-  // Several versions are routinely published on one day, so the date alone cannot order them.
-  const first = version("a", "Engrossed in House", "Apr 1, 2026", "https://x/a.xml");
-  const second = version("b", "Engrossed Amendment Senate", "Apr 1, 2026", "https://x/b.xml");
-  assert.deepEqual(orderBillTextVersions([first, second]).map((item) => item.id), ["b", "a"]);
-});
+/*
+ * Ordering coverage moved to tests/unit/bill-versions.test.cjs when the standalone Text tab folded
+ * into Version Details: bill texts are now ordered together with amendments in one list, so
+ * ordering them in isolation no longer describes anything the app does.
+ */

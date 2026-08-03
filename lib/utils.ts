@@ -99,11 +99,6 @@ export function billHref(billId: string, suffix = "") {
  * January 9 vote opened whichever vote the fallback chose (the January 28 one). Anything rendering
  * a single vote should link through here so the destination is the vote that was clicked.
  */
-export function voteHref(billId: string, voteId?: string) {
-  const base = billHref(billId, "/votes");
-  return voteId ? `${base}?voteId=${encodeURIComponent(voteId)}` : base;
-}
-
 /**
  * Opens the bill on the version a given roll call was taken on.
  *

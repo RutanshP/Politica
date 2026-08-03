@@ -106,13 +106,7 @@ export function isSubstantiveVote(category: VoteCategory) {
   return category === "policy" || category === "amendment";
 }
 
-/** `tone` names a shared tone from components/ui/tones, not a Tailwind class. */
-export const VOTE_CATEGORY_META: Record<
-  VoteCategory,
-  { label: string; tone: "emerald" | "sky" | "indigo" | "slate" }
-> = {
-  policy: { label: "Policy", tone: "emerald" },
-  amendment: { label: "Amendment", tone: "sky" },
-  nomination: { label: "Nomination", tone: "indigo" },
-  procedural: { label: "Procedural", tone: "slate" },
-};
+// VOTE_CATEGORY_META and VoteTypeBadge lived here to label a roll call Policy / Amendment /
+// Nomination / Procedural. Their only consumer was the standalone bill votes page, which folded
+// into Version Details -- where the version list already names what each roll call was on. Removed
+// rather than left as an unused export; classifyVote and isSubstantiveVote still do the real work.

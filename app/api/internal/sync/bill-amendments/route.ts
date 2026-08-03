@@ -36,7 +36,9 @@ export async function POST(request: Request) {
   const result = await runPipeline("bill_amendment_links", async () => {
     const sync = await syncAmendmentLinks({
       congress,
-      limit: Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 10,
+      // Small by default: with withText on, a bill costs a Rules page plus one PDF per amendment,
+      // so 10 bills can exceed this route's 300s budget on a heavily amended measure.
+      limit: Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 4,
       dryRun,
       withText,
     });

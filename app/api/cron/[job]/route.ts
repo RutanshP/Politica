@@ -37,7 +37,7 @@ const JOBS: Record<string, string[]> = {
     // Labels amendment roll calls with the amendment they were on. Paged by bill and need-ordered,
     // so like the refresh above it advances without a cursor. Runs after it: this only considers
     // votes whose question says they were on an amendment.
-    "/api/internal/sync/bill-amendments?limit=10",
+    "/api/internal/sync/bill-amendments?limit=4",
   ],
   // Weekly-ish deeper refresh.
   finance: ["/api/internal/sync/finance"],

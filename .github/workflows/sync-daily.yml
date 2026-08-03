@@ -57,12 +57,16 @@ jobs:
       # rotation that keeps results and tallies current.
       VOTE_REFRESH_CHUNKS: ${{ github.event.inputs.vote_refresh_chunks || '12' }}
       VOTE_REFRESH_LIMIT: "25"
-      # Labels amendment roll calls with the amendment they were on. Paged by *bill*, since one
-      # congress.gov request returns a bill's whole slate -- H.R. 8800's single call labels 19
-      # votes. Picks the bills with the most unlabelled amendment votes first, so it clears the
-      # backlog on its own and goes quiet when there is nothing left.
+      # Labels amendment roll calls with the amendment they were on, and pulls each amendment's
+      # legislative text. Paged by *bill*: one congress.gov request returns a bill's whole slate.
+      #
+      # Deliberately small. A bill costs one congress.gov call, one ~900KB Rules Committee page and
+      # one PDF per amendment -- H.R. 8800 alone is ~21 requests. At 10 bills a chunk that is 210
+      # requests inside the route's 300s budget and ~800 a night against two House servers, which
+      # is neither safe for the timeout nor polite. 4 x 4 covers 16 bills a night and still clears
+      # the backlog, since it only ever picks bills that still need labelling.
       AMENDMENT_CHUNKS: ${{ github.event.inputs.amendment_chunks || '4' }}
-      AMENDMENT_LIMIT: "10"
+      AMENDMENT_LIMIT: "4"
     steps:
       - name: Check secrets
         run: |

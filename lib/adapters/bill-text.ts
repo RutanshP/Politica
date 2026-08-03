@@ -335,11 +335,6 @@ export function billTextSourceForVersion(version: BillTextVersionLike) {
   return htm ? { url: htm.replace(/\.htm$/i, ".xml"), version } : null;
 }
 
-/** Whether a version has text we can render inline, so the picker can say so up front. */
-export function hasReadableBillText(version: BillTextVersionLike) {
-  return billTextSourceForVersion(version) !== null;
-}
-
 /**
  * Which version the Text tab should show: the one asked for, else the default pick.
  *
@@ -361,18 +356,6 @@ export function resolveBillTextSource(
   return pickBillTextSource(versions);
 }
 
-/** Newest first, so the version picker reads the way the timeline does. */
-export function orderBillTextVersions<T extends BillTextVersionLike>(versions: T[]): T[] {
-  return versions
-    .map((version, index) => ({ version, index }))
-    .sort((left, right) => {
-      const leftTime = Date.parse(left.version.date || "");
-      const rightTime = Date.parse(right.version.date || "");
-      const leftValid = Number.isNaN(leftTime) ? 0 : leftTime;
-      const rightValid = Number.isNaN(rightTime) ? 0 : rightTime;
-      // Same date is common -- several versions can be published the same day -- so the stored
-      // order breaks the tie, reversed to keep the later one on top.
-      return rightValid - leftValid || right.index - left.index;
-    })
-    .map((entry) => entry.version);
-}
+// orderBillTextVersions and hasReadableBillText were written for the standalone Text tab's chip
+// row. That tab folded into Version Details, where lib/bill-versions.ts orders bill texts together
+// with amendments in one list, so both were left with no callers and removed.
