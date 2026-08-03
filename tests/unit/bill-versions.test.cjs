@@ -34,13 +34,13 @@ const VOTES = [
   vote("r-278", "On Passage", "22-Jul-2026", { result: "Passed", yea: 216, nay: 212 }),
 ];
 
-test("buildBillVersionEntries puts amendments and bill texts in one list, newest first", () => {
+test("buildBillVersionEntries puts amendments, votes and bill texts in one list, newest first", () => {
   const entries = buildBillVersionEntries(BILL, VOTES);
 
-  // 2 amendments + 2 bill texts. Passage is not its own entry.
-  assert.equal(entries.length, 4);
+  // 2 amendments + 1 passage vote + 2 bill texts.
+  assert.equal(entries.length, 5);
   assert.deepEqual(entries.map((e) => e.label), [
-    "H.Amdt. 266", "H.Amdt. 261", "Reported in House", "Introduced in House",
+    "H.Amdt. 266", "H.Amdt. 261", "On Passage", "Reported in House", "Introduced in House",
   ]);
 });
 
@@ -53,14 +53,31 @@ test("buildBillVersionEntries carries the sponsor and what the amendment did", (
   assert.deepEqual(first.tally, { yea: 175, nay: 254, present: 0, notVoting: 3 });
 });
 
-test("a passage vote attaches to the bill text it was taken on, not its own entry", () => {
-  const entries = buildBillVersionEntries(BILL, VOTES);
-  const reported = entries.find((e) => e.label === "Reported in House");
+test("every roll call resolves to an entry, including a second vote on the same text", () => {
+  /*
+   * The bug this covers: H.R. 8800 has a motion to recommit and a passage vote on one text. When
+   * non-amendment votes were folded into the text, only the first could claim it and the second
+   * resolved to nothing -- so a member's link to it opened the newest version instead.
+   */
+  const entries = buildBillVersionEntries(BILL, [
+    ...VOTES,
+    vote("r-277", "On Motion to Recommit", "22-Jul-2026", { result: "Failed" }),
+  ]);
 
-  // Passage on 22 Jul lands on the text reported 14 Jun, the one operative that day.
-  assert.equal(reported.voteId, "r-278");
-  assert.equal(reported.result, "Passed");
-  assert.equal(entries.some((e) => e.label === "On Passage"), false);
+  for (const id of ["r-276", "r-275", "r-277", "r-278"]) {
+    const resolved = resolveBillVersion(entries, { voteId: id });
+    assert.equal(resolved.voteId, id, `vote ${id} must resolve to its own entry`);
+  }
+});
+
+test("a passage vote reads against the bill text in force on its date", () => {
+  const entries = buildBillVersionEntries(BILL, VOTES);
+  const passage = entries.find((e) => e.label === "On Passage");
+
+  assert.equal(passage.kind, "vote");
+  assert.equal(passage.result, "Passed");
+  // Voted 22 Jul, so it reads against the text reported 14 Jun.
+  assert.equal(baseTextForVersion(entries, passage).label, "Reported in House");
 });
 
 test("resolveBillVersion prefers the requested id, then the vote, then the newest", () => {

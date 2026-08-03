@@ -6,7 +6,14 @@ import type { Bill, Vote } from "@/types/civic";
  * the same question -- what was being voted on -- and separating them buries the amendments, which
  * are where nearly all the roll calls are. H.R. 8800 has 2 bill texts and 19 amendments.
  */
-export type BillVersionKind = "text" | "amendment";
+/**
+ * `vote` covers a roll call that is not on an amendment -- passage, a motion to recommit, a motion
+ * to table. These used to be folded into the bill text they were taken on, which meant only the
+ * first one got anywhere: a bill with both a recommit and a passage vote left the second with no
+ * entry at all, so a link to it resolved to nothing and fell back to the newest version. That is
+ * what made clicking a member's fifth vote open the wrong thing.
+ */
+export type BillVersionKind = "text" | "amendment" | "vote";
 
 export interface BillVersionEntry {
   /** URL-safe, stable across syncs: `text-<versionId>` or `amdt-<voteId>`. */
@@ -112,24 +119,24 @@ export function buildBillVersionEntries(bill: Bill, votes: Vote[]): BillVersionE
   }));
 
   /*
-   * A passage vote is not its own version -- it is a vote *on* a bill text. Attaching it to the
-   * text operative that day means selecting "Reported in House" shows both the text and the vote
-   * that carried it, rather than stranding passage in a list of amendments.
+   * Every remaining roll call gets its own entry, rather than being folded into the bill text it
+   * was taken on. Folding looked tidier and was wrong: H.R. 8800 has both a motion to recommit
+   * (roll 277) and passage (roll 278) on the same text, so only the first could claim it and the
+   * second became unreachable. Every vote must resolve, or a link to it silently opens something
+   * else.
    */
-  const passageVotes = byRecentFirst(
-    votes.filter((vote) => !isAmendmentVote(vote)).map((vote) => ({ vote, time: parseTime(vote.dateLabel) })),
-  );
-  const orderedTexts = byRecentFirst(texts);
+  const otherVotes: BillVersionEntry[] = votes.filter((vote) => !isAmendmentVote(vote)).map((vote) => ({
+    id: `vote-${vote.id}`,
+    kind: "vote" as const,
+    label: vote.question || vote.title,
+    date: vote.dateLabel,
+    time: parseTime(vote.dateLabel),
+    voteId: vote.id,
+    result: vote.result,
+    tally: { yea: vote.yea, nay: vote.nay, present: vote.present, notVoting: vote.notVoting },
+  }));
 
-  for (const { vote, time } of passageVotes) {
-    const target = orderedTexts.find((entry) => entry.time > 0 && entry.time <= time) ?? orderedTexts[0];
-    if (!target || target.voteId) continue;
-    target.voteId = vote.id;
-    target.result = vote.result;
-    target.tally = { yea: vote.yea, nay: vote.nay, present: vote.present, notVoting: vote.notVoting };
-  }
-
-  return byRecentFirst([...amendments, ...orderedTexts]);
+  return byRecentFirst([...amendments, ...otherVotes, ...texts]);
 }
 
 /**
@@ -159,7 +166,12 @@ export function resolveBillVersion(
   return entries[0];
 }
 
-/** The bill text a version sits against: itself for a text, the operative one for an amendment. */
+/**
+ * The bill text a version sits against: itself for a text, the operative one otherwise.
+ *
+ * An amendment and a passage vote both read against the text in force on their date, so the Text
+ * view shows the same document either way -- what changes is the amendment panel above it.
+ */
 export function baseTextForVersion(entries: BillVersionEntry[], selected?: BillVersionEntry) {
   if (!selected) return undefined;
   if (selected.kind === "text") return selected;

@@ -5,9 +5,12 @@ import { Info } from "lucide-react";
 import { BillTabs } from "@/components/bill-tabs";
 import { BillTextViewer } from "@/components/bill-text-viewer";
 import { BillVersionSelect } from "@/components/bill-version-select";
+import { ChartCard } from "@/components/chart-card";
 import { EmptyState } from "@/components/empty-state";
+import { MemberVoteTable } from "@/components/member-vote-table";
 import { PageHeader } from "@/components/page-header";
 import { SourceBadge } from "@/components/source-badge";
+import { VoteBarChart } from "@/components/trend-charts";
 import { fetchBillTextDocument, resolveBillTextSource } from "@/lib/adapters/bill-text";
 import {
   baseTextForVersion,
@@ -17,7 +20,7 @@ import {
 } from "@/lib/bill-versions";
 import { getBillData, getBillsSourceLabel, isLiveBillsSource } from "@/lib/data/bills";
 import { getVotesDataForBill } from "@/lib/data/votes";
-import { cn, voteHref } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export const revalidate = 21600;
 
@@ -88,39 +91,53 @@ export default async function BillVersionPage({
         />
       ) : (
         <>
-          {/* The control and the view switch on one row, directly above what they govern. */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <BillVersionSelect
-                entries={entries}
-                selectedId={selected?.id ?? entries[0].id}
-                billId={bill.id}
-                view={view}
-              />
+          {/* The selector, then the view switch beneath it, both above what they govern. */}
+          <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] px-4 py-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+              <div className="min-w-0 flex-1">
+                <BillVersionSelect
+                  entries={entries}
+                  selectedId={selected?.id ?? entries[0].id}
+                  billId={bill.id}
+                  view={view}
+                />
+              </div>
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--accent-2)] bg-[var(--accent-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent-2)]">
+                Controls Text + Votes
+              </span>
             </div>
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--accent-2)] bg-[var(--accent-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent-2)]">
-              Controls Text + Votes
-            </span>
-            <div className="flex shrink-0 gap-1 rounded-[var(--r-sm)] border border-[var(--line-2)] p-0.5">
-              {(["text", "votes"] as const).map((option) => (
-                <Link
-                  key={option}
-                  href={`/bills/${encodeURIComponent(bill.id)}/version?v=${encodeURIComponent(selected?.id ?? "")}&view=${option}`}
-                  aria-current={view === option ? "page" : undefined}
-                  className={cn(
-                    "rounded-[6px] px-3.5 py-1.5 text-[13px] font-semibold capitalize transition",
-                    view === option
-                      ? "bg-[var(--accent-soft)] text-[var(--accent-2)]"
-                      : "text-[var(--muted)] hover:text-[var(--ink)]",
-                  )}
-                >
-                  {option}
-                </Link>
-              ))}
+
+            {/*
+              Centred and full-size rather than a small control off to the right. These are the two
+              views of the selected version, so they carry the same weight as the tab bar above --
+              at the old size they read as a minor toggle and were easy to miss entirely.
+            */}
+            <div className="mt-4 flex justify-center">
+              <div className="flex gap-1 rounded-[var(--r-md)] border border-[var(--line-2)] bg-[var(--panel-2)] p-1">
+                {([
+                  ["text", "Text"],
+                  ["votes", "Votes"],
+                ] as const).map(([option, label]) => (
+                  <Link
+                    key={option}
+                    href={`/bills/${encodeURIComponent(bill.id)}/version?v=${encodeURIComponent(selected?.id ?? "")}&view=${option}`}
+                    aria-current={view === option ? "page" : undefined}
+                    className={cn(
+                      "min-w-[140px] rounded-[var(--r-sm)] px-6 py-2.5 text-center text-[14px] font-semibold transition",
+                      view === option
+                        ? "bg-[var(--accent)] text-white shadow-sm"
+                        : "text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--ink)]",
+                    )}
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+          {/* Full width: the tally used to sit in a 300px rail that squeezed both it and the text. */}
+          <div className="space-y-4">
             <div className="min-w-0 space-y-4">
               {selected?.kind === "amendment" ? (
                 <div className="rounded-[var(--r-md)] border border-[var(--line-2)] bg-[var(--panel-2)] p-4">
@@ -189,65 +206,61 @@ export default async function BillVersionPage({
                     />
                   )}
                 </div>
-              ) : (
-                <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] p-4">
-                  {selectedVote ? (
-                    <>
-                      <p className="text-[13px] font-semibold text-[var(--ink)]">
-                        {selectedVote.question || selectedVote.title}
-                      </p>
-                      <p className="mt-1 text-[12px] text-[var(--muted)]">
-                        {selectedVote.chamber} · {selectedVote.dateLabel} · {selectedVote.result}
-                      </p>
-                      <Link
-                        href={voteHref(bill.id, selectedVote.id)}
-                        className="mt-3 inline-block text-[12px] font-semibold text-[var(--accent-2)]"
-                      >
-                        Full roll call — every member’s vote →
-                      </Link>
-                    </>
-                  ) : (
-                    <EmptyState
-                      title="No recorded vote on this version"
-                      description="This version was not decided by a recorded roll call — amendments are often agreed to by voice vote, and a bill text is only voted on at passage."
+              ) : selectedVote ? (
+                /*
+                 * The real roll call, in place. This used to be a stub linking out to
+                 * /bills/[id]/votes, which meant picking a version and then leaving the page that
+                 * scopes it -- the chart and member table belong under the version that produced
+                 * them.
+                 */
+                <div className="space-y-4">
+                  <ChartCard
+                    title={selectedVote.question || selectedVote.title}
+                    description={`${selectedVote.chamber} · ${selectedVote.dateLabel} · ${selectedVote.result}`}
+                  >
+                    <VoteBarChart
+                      data={[
+                        { label: "Yea", value: selectedVote.yea },
+                        { label: "Nay", value: selectedVote.nay },
+                        { label: "Present", value: selectedVote.present },
+                        { label: "Not voting", value: selectedVote.notVoting },
+                      ]}
                     />
-                  )}
-                </div>
-              )}
-            </div>
+                  </ChartCard>
 
-            {/* Always present, on both views: the tally is what a version is usually looked up for. */}
-            <aside className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] p-4">
-              <p className="text-[13px] font-semibold text-[var(--ink)]">Vote on this version</p>
-              {selected?.tally && selectedVote ? (
-                <>
-                  <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--muted)]">
-                    {selectedVote.chamber} — {selected.date}
-                  </p>
-                  <p className="mt-0.5 text-[12px] font-semibold text-[var(--ink)]">{selected.result}</p>
-                  <dl className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="grid gap-3 sm:grid-cols-4">
                     {([
-                      ["Yea", selected.tally.yea, "var(--success)"],
-                      ["Nay", selected.tally.nay, "var(--danger)"],
-                      ["Present", selected.tally.present, "var(--warning)"],
-                      ["Not voting", selected.tally.notVoting, "var(--muted)"],
+                      ["Yea", selectedVote.yea, "var(--success)"],
+                      ["Nay", selectedVote.nay, "var(--danger)"],
+                      ["Present", selectedVote.present, "var(--warning)"],
+                      ["Not voting", selectedVote.notVoting, "var(--muted)"],
                     ] as const).map(([label, value, tone]) => (
                       <div
                         key={label}
-                        className="rounded-[var(--r-sm)] border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2"
+                        className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] px-4 py-3"
                       >
-                        <dt className="text-[11px] font-semibold" style={{ color: tone }}>{label}</dt>
-                        <dd className="num mt-0.5 text-[18px] font-semibold text-[var(--ink)]">{value}</dd>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.1em]" style={{ color: tone }}>
+                          {label}
+                        </p>
+                        <p className="num mt-1 text-[26px] font-semibold leading-none text-[var(--ink)]">{value}</p>
                       </div>
                     ))}
-                  </dl>
-                </>
+                  </div>
+
+                  <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel)] p-4">
+                    <p className="mb-3 text-[13px] font-semibold text-[var(--ink)]">
+                      How every member voted
+                    </p>
+                    <MemberVoteTable positions={selectedVote.positions} />
+                  </div>
+                </div>
               ) : (
-                <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--muted)]">
-                  No recorded roll call for this version.
-                </p>
+                <EmptyState
+                  title="No recorded vote on this version"
+                  description="This version was not decided by a recorded roll call — amendments are often agreed to by voice vote, and a bill text is only voted on at passage."
+                />
               )}
-            </aside>
+            </div>
           </div>
         </>
       )}
