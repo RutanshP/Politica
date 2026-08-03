@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
-import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
+import { isAuthorizedSyncRequest, stateSyncDisabledResponse } from "@/lib/server/internal-api";
 import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 import { syncStateLegislationFromOpenStates } from "@/lib/server/state-sync";
@@ -12,6 +12,11 @@ export async function POST(request: Request) {
   if (!isAuthorizedSyncRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Gated: stored state data has been deleted, and this route would refill it.
+  const disabled = stateSyncDisabledResponse();
+  if (disabled) return disabled;
+
   const url = new URL(request.url);
   const mode = /^full$/i.test(url.searchParams.get("mode") || "") ? "full" : "incremental";
   // scope=people syncs only legislators (skips the per-bill and per-committee detail fetches,

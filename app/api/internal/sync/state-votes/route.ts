@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
-import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
+import { isAuthorizedSyncRequest, stateSyncDisabledResponse } from "@/lib/server/internal-api";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { syncStateVotesFromOpenStates } from "@/lib/server/state-vote-sync";
@@ -13,6 +13,10 @@ export async function POST(request: Request) {
   if (!isAuthorizedSyncRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Gated: this was the heaviest writer in the system and its data has been deleted.
+  const disabled = stateSyncDisabledResponse();
+  if (disabled) return disabled;
 
   try {
     const url = new URL(request.url);
