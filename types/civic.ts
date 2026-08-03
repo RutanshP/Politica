@@ -151,8 +151,13 @@ export interface Vote {
   title: string;
   /** The motion: "On Agreeing to the Amendment", "On Passage", "On Motion to Recommit". */
   question?: string;
-  /** Which amendment, where the source names one: "Amendment No. 12 by Mr. Smith of Texas". */
+  /** What the amendment does, where the roll call was on one. */
   description?: string;
+  /** "H.Amdt. 266". */
+  amendmentNumber?: string;
+  amendmentSponsor?: string;
+  /** congress.gov page for the amendment, which is where its text reads. */
+  amendmentUrl?: string;
   chamber: string;
   dateLabel: string;
   /** Orders roll calls within a single day, which dateLabel cannot. */

@@ -19,6 +19,10 @@ on:
         description: "Vote-refresh chunks this run (25 roll calls each). 60 clears a full backlog."
         required: false
         default: ""
+      amendment_chunks:
+        description: "Amendment-link chunks this run (10 bills each). 20 clears a full backlog."
+        required: false
+        default: ""
 
 concurrency:
   group: politica-sync
@@ -53,6 +57,12 @@ jobs:
       # rotation that keeps results and tallies current.
       VOTE_REFRESH_CHUNKS: ${{ github.event.inputs.vote_refresh_chunks || '12' }}
       VOTE_REFRESH_LIMIT: "25"
+      # Labels amendment roll calls with the amendment they were on. Paged by *bill*, since one
+      # congress.gov request returns a bill's whole slate -- H.R. 8800's single call labels 19
+      # votes. Picks the bills with the most unlabelled amendment votes first, so it clears the
+      # backlog on its own and goes quiet when there is nothing left.
+      AMENDMENT_CHUNKS: ${{ github.event.inputs.amendment_chunks || '4' }}
+      AMENDMENT_LIMIT: "10"
     steps:
       - name: Check secrets
         run: |
@@ -96,6 +106,15 @@ jobs:
           i=1
           while [ "$i" -le "$VOTE_REFRESH_CHUNKS" ]; do
             post "/api/internal/sync/legislation?refreshStoredVotes=1&listOffset=0&listLimit=$VOTE_REFRESH_LIMIT"
+            i=$((i + 1))
+          done
+
+          echo "== Link amendment roll calls ($AMENDMENT_CHUNKS x $AMENDMENT_LIMIT bills) =="
+          # Runs after the vote refresh: that populates votes.question, and this only considers
+          # roll calls whose question is "On Agreeing to the Amendment".
+          i=1
+          while [ "$i" -le "$AMENDMENT_CHUNKS" ]; do
+            post "/api/internal/sync/bill-amendments?limit=$AMENDMENT_LIMIT"
             i=$((i + 1))
           done
 

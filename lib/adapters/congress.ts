@@ -286,6 +286,43 @@ export async function fetchCongressBillTextVersions(input: {
   );
 }
 
+export interface CongressAmendmentListItem {
+  congress?: number;
+  type?: string;
+  number?: string;
+  /** The full purpose: "An amendment numbered 316 ... to require the Secretary of Defense to ...". */
+  description?: string;
+  purpose?: string;
+  url?: string;
+  latestAction?: {
+    actionDate?: string;
+    actionTime?: string;
+    /** Carries "(Roll no. 276)", which is what ties an amendment to its roll call. */
+    text?: string;
+  };
+  sponsors?: Array<{ fullName?: string }>;
+}
+
+/**
+ * Amendments offered to a bill.
+ *
+ * One request returns all of them with their purpose and latest action, so linking a bill's whole
+ * slate of amendment votes costs a single call -- H.R. 8800 has 25. The per-amendment detail
+ * endpoint adds only a sponsor list beyond this, which is not worth 25 more requests against a
+ * rate-limited API.
+ */
+export async function fetchCongressBillAmendments(input: {
+  congress: string;
+  billType: string;
+  billNumber: string;
+  limit?: number;
+}) {
+  return fetchCongressJson<{ amendments?: CongressAmendmentListItem[] }>(
+    `/bill/${input.congress}/${input.billType}/${input.billNumber}/amendments`,
+    { limit: input.limit ?? 250 },
+  );
+}
+
 export async function fetchCongressTextContent(url: string) {
   const response = await fetchCongressWithRetry(
     url,

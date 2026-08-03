@@ -140,10 +140,16 @@ export default async function PoliticianVotesPage({
                             */}
                             <span className="flex min-w-0 flex-1 flex-col">
                               <span className="truncate text-[13px] text-[var(--ink)] group-hover/row:text-[var(--accent-2)]">
+                                {vote.amendmentNumber ? (
+                                  <span className="num mr-1.5 font-semibold text-[var(--accent-2)]">
+                                    {vote.amendmentNumber}
+                                  </span>
+                                ) : null}
                                 {voteQuestionOf(vote)}
                               </span>
                               {vote.description ? (
-                                <span className="truncate text-[11px] text-[var(--muted)]">
+                                <span className="line-clamp-2 text-[11px] leading-relaxed text-[var(--muted)]">
+                                  {vote.amendmentSponsor ? `${vote.amendmentSponsor} — ` : null}
                                   {vote.description}
                                 </span>
                               ) : null}

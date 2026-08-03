@@ -182,8 +182,13 @@ export interface VoteRow {
   title: string;
   /** The motion: "On Agreeing to the Amendment", "On Passage", "On Motion to Recommit". */
   question?: string | null;
-  /** Which amendment, where the source names one: "Amendment No. 12 by Mr. Smith of Texas". */
+  /** What the amendment does, or the Clerk's <vote-desc> where no amendment link was resolved. */
   description?: string | null;
+  /** "H.Amdt. 266", for a roll call on an amendment. */
+  amendment_number?: string | null;
+  amendment_sponsor?: string | null;
+  /** congress.gov page for the amendment, which is where its text reads. */
+  amendment_url?: string | null;
   chamber: string;
   /** Display text only ("September 9, 2025,  12:48 PM" / "Sep 9, 2025"). Never sort by this. */
   date_label: string;
