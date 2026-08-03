@@ -30,12 +30,23 @@ export function formatBillNumber(raw: string) {
 }
 
 /**
- * Roll-call titles are the motion ("On Passage", "On Agreeing to the Amendment") except where the
- * sync linked a bill and substituted its title. "On ..." is the motion convention in both chambers,
- * so anything else is the measure's own name and worth showing as the group heading.
+ * Whether `title` is the measure's name rather than a restatement of the motion.
+ *
+ * Where `question` is populated the test is exact -- the sync only replaces title with the bill's
+ * name, so a title differing from the question is that name. Rows synced before votes.question
+ * existed have no question to compare against, so they fall back to the motion convention: both
+ * chambers phrase one as "On ...".
  */
-function isMotionTitle(title: string) {
-  return /^on\b/i.test((title || "").trim());
+function measureTitleOf(vote: Vote) {
+  const title = (vote.title || "").trim();
+  if (!title) return undefined;
+  if (vote.question) return title === vote.question.trim() ? undefined : title;
+  return /^on\b/i.test(title) ? undefined : title;
+}
+
+/** What a roll call's row should be labelled: the motion, however the record spells it. */
+export function voteQuestionOf(vote: Vote) {
+  return vote.question?.trim() || vote.title;
 }
 
 function positionOf(vote: Vote): MemberPosition {
@@ -48,6 +59,25 @@ function positionOf(vote: Vote): MemberPosition {
 function voteTime(vote: Vote) {
   const parsed = Date.parse(vote.dateLabel);
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * Roll-call number, for ordering votes that share a date.
+ *
+ * dateLabel has day resolution and a bill can draw fifteen roll calls in one sitting, so sorting on
+ * the date alone left them in whatever order the query returned -- there was no answer to "which of
+ * these is the newer one". Roll numbers are assigned in order within a session, so they are the
+ * sequence. Taken from canonicalId ("house-roll-119-2-255") and falling back to the padded id.
+ */
+function rollSequence(vote: Vote) {
+  const source = vote.canonicalId || vote.id || "";
+  const trailing = /(\d+)\s*$/.exec(source);
+  return trailing ? Number(trailing[1]) : 0;
+}
+
+/** Newest first: by day, then by roll-call number within the day. */
+function compareRecentFirst(left: Vote, right: Vote) {
+  return voteTime(right) - voteTime(left) || rollSequence(right) - rollSequence(left);
 }
 
 /**
@@ -80,18 +110,18 @@ export function groupVotesByBill(votes: Vote[]): GroupedBillVotes[] {
     group.votes.push(vote);
     group.counts[positionOf(vote)] += 1;
     group.latestTime = Math.max(group.latestTime, voteTime(vote));
-    if (!group.billTitle && !isMotionTitle(vote.title)) {
-      group.billTitle = vote.title;
-    }
+    group.billTitle = group.billTitle ?? measureTitleOf(vote);
 
     groups.set(key, group);
   }
 
   for (const group of groups.values()) {
-    group.votes.sort((left, right) => voteTime(right) - voteTime(left));
+    group.votes.sort(compareRecentFirst);
   }
 
-  return [...groups.values()].sort((left, right) => right.latestTime - left.latestTime);
+  return [...groups.values()].sort((left, right) =>
+    right.latestTime - left.latestTime
+    || rollSequence(right.votes[0]) - rollSequence(left.votes[0]));
 }
 
 /** "4 Yea · 2 Nay", in a fixed order so the same split always reads the same way. */

@@ -190,6 +190,10 @@ function buildStateVoteRows(
       canonical_id: vote.id || null,
       bill_number: vote.bill?.identifier || "State Bill",
       title: vote.motion_text || "State vote",
+      // OpenStates gives the motion and nothing else, so title and question are the same text here.
+      // Populated anyway so the column means one thing across both jurisdictions.
+      question: vote.motion_text || "State vote",
+      description: null,
       // Kept in step with state-vote-sync: this writer stored the raw upper/lower classification
       // while the other mapped it, so the same table held two chamber vocabularies.
       chamber: normalizeChamber(vote.organization?.classification) || "State Legislature",

@@ -1359,9 +1359,19 @@ function buildFederalVoteRows(
       bill_id: linkedBill?.id || vote.billId || null,
       canonical_id: vote.canonicalId,
       bill_number: linkedBill?.number || vote.billNumber,
+      /*
+       * Still the measure's name when the bill is linked -- that is what heads the group in the UI.
+       * What changed is that the motion is no longer lost to it: `question` keeps it unconditionally
+       * below. Before, whether a roll call said what it was about depended on whether its bill
+       * happened to be in the batch, so H.R. 8800's votes kept their motions while H.R. 7008's two
+       * different votes both rendered as "Stop Insider Trading Act".
+       */
       title: linkedBill?.title || vote.title,
+      question: vote.question || vote.title,
+      description: vote.description,
       chamber: vote.chamber,
       date_label: vote.dateLabel,
+      action_time: vote.actionTime,
       result: vote.result,
       yea: vote.yea,
       nay: vote.nay,

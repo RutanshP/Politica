@@ -30,8 +30,22 @@ export interface FederalVoteRecord {
   billId: string | null;
   billNumber: string;
   title: string;
+  /**
+   * The motion itself -- "On Agreeing to the Amendment", "On Passage", "On Motion to Recommit".
+   * Kept apart from `title`, which the sync replaces with the measure's name once the bill is
+   * linked; that replacement was destroying the only field saying what the vote was about, so two
+   * different roll calls on one bill rendered as the same line twice.
+   */
+  question: string;
+  /**
+   * Which amendment, where the source says. The House prints "Amendment No. 12 by Mr. Smith of
+   * Texas" in <vote-desc>; without it a bill's twenty amendment votes are twenty identical rows.
+   */
+  description: string | null;
   chamber: string;
   dateLabel: string;
+  /** Orders roll calls inside a single day, which the date alone cannot do. */
+  actionTime: string | null;
   result: string;
   yea: number;
   nay: number;
@@ -41,6 +55,16 @@ export interface FederalVoteRecord {
   sourceSystem: "house_clerk" | "senate_lis";
   sourceId: string;
   rawPayload: string;
+}
+
+/** "Amendment No. 12 by Mr. Smith of Texas", from whichever halves the feed supplied. */
+function composeAmendmentDescription(number: string, author: string) {
+  const parts = [
+    number ? `Amendment No. ${number.replace(/^amendment\s*(no\.?)?\s*/i, "").trim()}` : "",
+    author ? `by ${author}` : "",
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" ") : null;
 }
 
 function decodeXmlText(value: string) {
@@ -199,8 +223,20 @@ export function parseHouseRollCallVoteXml(xml: string) {
     billId,
     billNumber,
     title: getTagValue(metadata, "vote-question") || billNumber || "House Vote",
+    question: getTagValue(metadata, "vote-question") || "",
+    /*
+     * <vote-desc> is where the Clerk names the amendment. Some vote files leave it out but still
+     * carry <amendment-num>/<amendment-author>, so those are composed as a fallback rather than
+     * relied on -- getTagValue returns "" for a tag that is not there.
+     */
+    description: getTagValue(metadata, "vote-desc")
+      || composeAmendmentDescription(
+        getTagValue(metadata, "amendment-num"),
+        getTagValue(metadata, "amendment-author"),
+      ),
     chamber: "House",
     dateLabel: getTagValue(metadata, "action-date"),
+    actionTime: getTagValue(metadata, "action-time") || null,
     result: getTagValue(metadata, "vote-result") || "Unknown",
     yea: totals.yea,
     nay: totals.nay,
@@ -238,8 +274,16 @@ export function parseSenateRollCallVoteXml(xml: string) {
     billId,
     billNumber,
     title: getTagValue(xml, "vote_title") || getTagValue(xml, "vote_question_text") || billNumber || "Senate Vote",
+    question: getTagValue(xml, "question") || getTagValue(xml, "vote_question_text") || "",
+    // The Senate names the amendment in its own tags rather than a single printed line.
+    description: getTagValue(xml, "amendment_purpose")
+      || composeAmendmentDescription(
+        getTagValue(xml, "amendment_number"),
+        getTagValue(xml, "amendment_sponsor"),
+      ),
     chamber: "Senate",
     dateLabel: getTagValue(xml, "vote_date"),
+    actionTime: getTagValue(xml, "vote_time") || null,
     result: getTagValue(xml, "vote_result") || getTagValue(xml, "vote_result_text") || "Unknown",
     yea: toNumber(getTagValue(xml, "yeas")),
     nay: toNumber(getTagValue(xml, "nays")),

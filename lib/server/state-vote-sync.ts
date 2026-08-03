@@ -229,6 +229,9 @@ export async function syncStateVotesFromOpenStates(options: { state: string; dry
         canonical_id: voteId,
         bill_number: bill.identifier || "State Bill",
         title: vote.motion_text || "State vote",
+        // See state-sync: OpenStates carries the motion only, so both fields hold it.
+        question: vote.motion_text || "State vote",
+        description: null,
         /*
          * Normalized to the same Senate/House vocabulary as everything else. That is only safe
          * because jurisdiction_type and state_code travel with it -- this line used to produce a

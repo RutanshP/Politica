@@ -91,3 +91,41 @@ test("summarizePositions reads in a fixed order", () => {
     "3 Yea · 1 Nay · 2 Not Voting",
   );
 });
+
+test("groupVotesByBill orders same-day roll calls by roll number, newest first", () => {
+  // Fifteen roll calls can share one date, so the date alone left them in query order and there
+  // was no answer to which was the newer.
+  const rows = [
+    { ...vote("house-119-2-0255", "hr-8800", "H R 8800", "On Agreeing to the Amendment", "Failed", "21-Jul-2026", "Nay"), canonicalId: "house-roll-119-2-255" },
+    { ...vote("house-119-2-0278", "hr-8800", "H R 8800", "On Passage", "Passed", "21-Jul-2026", "Nay"), canonicalId: "house-roll-119-2-278" },
+    { ...vote("house-119-2-0260", "hr-8800", "H R 8800", "On Agreeing to the Amendment", "Agreed to", "21-Jul-2026", "Nay"), canonicalId: "house-roll-119-2-260" },
+  ];
+
+  const [group] = groupVotesByBill(rows);
+  assert.deepEqual(group.votes.map((item) => item.canonicalId), [
+    "house-roll-119-2-278",
+    "house-roll-119-2-260",
+    "house-roll-119-2-255",
+  ]);
+});
+
+test("voteQuestionOf prefers the motion over the substituted measure title", () => {
+  const { voteQuestionOf } = jiti("@/lib/vote-grouping");
+  // H.R. 7008: the sync replaced both roll calls' titles with the bill name, so the recommit and
+  // the passage vote read identically. question keeps the motion.
+  const recommit = { ...vote("a", "hr-7008", "HR.7008", "Stop Insider Trading Act", "Failed", "22-Jul-2026", "Yea"), question: "On Motion to Recommit" };
+  assert.equal(voteQuestionOf(recommit), "On Motion to Recommit");
+  // A legacy row with no question still reads as something.
+  assert.equal(voteQuestionOf(vote("b", "hr-1", "HR.1", "On Passage", "Passed", "22-Jul-2026", "Yea")), "On Passage");
+});
+
+test("groupVotesByBill takes the measure title from the title that differs from the question", () => {
+  const rows = [
+    { ...vote("a", "hr-7008", "HR.7008", "Stop Insider Trading Act", "Failed", "22-Jul-2026", "Yea"), question: "On Motion to Recommit" },
+    { ...vote("b", "hr-7008", "HR.7008", "Stop Insider Trading Act", "Passed", "22-Jul-2026", "Nay"), question: "On Passage" },
+  ];
+
+  const [group] = groupVotesByBill(rows);
+  assert.equal(group.billTitle, "Stop Insider Trading Act");
+  assert.deepEqual(group.votes.map((item) => item.question), ["On Motion to Recommit", "On Passage"]);
+});

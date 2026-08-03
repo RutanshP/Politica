@@ -147,9 +147,16 @@ export interface Vote {
   /** Absent for roll calls whose bill was never imported (state votes). */
   billId?: string;
   billNumber: string;
+  /** The measure's name once a bill is linked, otherwise the motion. Use `question` for the motion. */
   title: string;
+  /** The motion: "On Agreeing to the Amendment", "On Passage", "On Motion to Recommit". */
+  question?: string;
+  /** Which amendment, where the source names one: "Amendment No. 12 by Mr. Smith of Texas". */
+  description?: string;
   chamber: string;
   dateLabel: string;
+  /** Orders roll calls within a single day, which dateLabel cannot. */
+  actionTime?: string;
   result: string;
   yea: number;
   nay: number;

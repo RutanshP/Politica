@@ -178,10 +178,17 @@ export interface VoteRow {
   bill_id: string | null;
   canonical_id: string | null;
   bill_number: string;
+  /** The measure's name once a bill is linked, otherwise the motion. Use `question` for the motion. */
   title: string;
+  /** The motion: "On Agreeing to the Amendment", "On Passage", "On Motion to Recommit". */
+  question?: string | null;
+  /** Which amendment, where the source names one: "Amendment No. 12 by Mr. Smith of Texas". */
+  description?: string | null;
   chamber: string;
   /** Display text only ("September 9, 2025,  12:48 PM" / "Sep 9, 2025"). Never sort by this. */
   date_label: string;
+  /** Orders roll calls within a single day, which date_label cannot. */
+  action_time?: string | null;
   /** The parsed vote timestamp. This is what orders a vote list chronologically. */
   voted_on?: string | null;
   result: string;

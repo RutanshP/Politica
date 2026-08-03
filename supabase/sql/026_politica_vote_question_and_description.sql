@@ -1,0 +1,52 @@
+-- Splits what a roll call was about away from the measure's name. Already applied; kept as the
+-- record. Backfilling the new columns needs a re-sync (see the bottom).
+--
+-- Found while checking whether a member's stored votes were correct. They are: Ocasio-Cortez's 21
+-- roll calls on H.R. 8800 are 21 distinct roll numbers (255-269, 273-278) with distinct tallies,
+-- and every result agrees with its own yea/nay counts. Nothing is duplicated or miscounted. The
+-- records were unreadable rather than wrong, for two reasons.
+--
+-- 1. buildFederalVoteRows sets `title: linkedBill?.title || vote.title`, so once a bill is linked
+--    the motion is overwritten by the measure's name. H.R. 7008's two roll calls -- a recommit that
+--    failed 211-218 and passage that carried 232-198 -- both rendered as "Stop Insider Trading Act",
+--    one Failed and one Passed, with nothing to distinguish them. Worse, it was inconsistent: H.R.
+--    8800's votes kept their motions only because that bill was not in the same batch, so the field
+--    meant different things on adjacent rows.
+--
+--    `title` still holds the measure's name, because that is what heads the group in the UI.
+--    `question` now holds the motion unconditionally.
+--
+-- 2. parseHouseRollCallVoteXml read <vote-question> and nothing else, so the Clerk's <vote-desc> --
+--    "Amendment No. 12 by Mr. Smith of Texas" -- was discarded. That is what made 19 amendment
+--    votes on one bill 19 rows reading "On Agreeing to the Amendment" with no way to tell which
+--    amendment. Now captured into `description`, with <amendment-num>/<amendment-author> composed
+--    as a fallback for vote files that omit the printed line, and the Senate's
+--    amendment_purpose/amendment_number equivalents.
+--
+-- action_time is the third piece: date_label has day resolution and a bill can draw fifteen roll
+-- calls in one sitting, so same-day votes had no defined order and "which is newer" had no answer.
+-- The UI does not wait for it -- it sorts on the roll-call number parsed from canonical_id, which
+-- is already stored and already sequential -- but the source prints a time and it is worth keeping.
+
+alter table public.votes add column if not exists question text;
+alter table public.votes add column if not exists description text;
+alter table public.votes add column if not exists action_time text;
+
+-- ---------------------------------------------------------------------------
+-- Backfill
+-- ---------------------------------------------------------------------------
+-- Existing rows keep question/description null until re-synced, and the read path degrades to the
+-- old behaviour for them: voteQuestionOf falls back to title, and a row with no description just
+-- omits the second line. So this is safe to deploy before the backfill finishes.
+--
+-- The refresh path already exists -- it re-fetches each stored roll call from the Clerk and calls
+-- replaceStoredVotes -- and is paged, because it is one XML request per roll call:
+--
+--   POST /api/internal/sync/legislation?refreshStoredVotes=1&listOffset=0&listLimit=25
+--
+-- Walk listOffset up by listLimit until it reports no rows. 8,978 stored votes, of which the
+-- federal ones are what this refreshes; state rows get question from the OpenStates motion text on
+-- their next ordinary sync.
+--
+-- Progress:
+--   select count(*) filter (where question is null) as pending, count(*) from public.votes;

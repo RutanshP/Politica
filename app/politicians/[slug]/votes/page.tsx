@@ -18,7 +18,7 @@ import {
 } from "@/lib/data/votes";
 import { hasVotePerformanceStats, voteHref } from "@/lib/utils";
 import { isSubstantiveVote } from "@/lib/vote-classification";
-import { groupVotesByBill, summarizePositions } from "@/lib/vote-grouping";
+import { groupVotesByBill, summarizePositions, voteQuestionOf } from "@/lib/vote-grouping";
 
 export const revalidate = 21600;
 
@@ -131,8 +131,22 @@ export default async function PoliticianVotesPage({
                               style={{ background: position.ink }}
                               aria-hidden
                             />
-                            <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--ink)] group-hover/row:text-[var(--accent-2)]">
-                              {vote.title}
+                            {/*
+                              The motion, then which amendment it was on. Without the second line a
+                              bill's amendment votes are an unreadable run of identical rows -- the
+                              House names the amendment in <vote-desc> and the parser was dropping
+                              it. Rows synced before votes.description existed have nothing to show
+                              here and fall back to the motion alone.
+                            */}
+                            <span className="flex min-w-0 flex-1 flex-col">
+                              <span className="truncate text-[13px] text-[var(--ink)] group-hover/row:text-[var(--accent-2)]">
+                                {voteQuestionOf(vote)}
+                              </span>
+                              {vote.description ? (
+                                <span className="truncate text-[11px] text-[var(--muted)]">
+                                  {vote.description}
+                                </span>
+                              ) : null}
                             </span>
                             <span
                               className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
