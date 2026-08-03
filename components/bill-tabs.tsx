@@ -1,13 +1,18 @@
 import { Tabs } from "@/components/ui/tabs";
 import { billHref } from "@/lib/utils";
 
-type BillTab = "overview" | "timeline" | "text" | "votes";
+type BillTab = "overview" | "timeline" | "version" | "text" | "votes";
 
 /**
- * The four real, navigable bill pages. Kept as one component so every bill sub-page shows the
- * same tab set -- previously the overview added Sponsors/Amendments/Related/News tabs that were
- * only anchor scrolls to overview content, so they vanished when you switched tabs. Do not add a
- * tab here that isn't a route.
+ * The real, navigable bill pages. Kept as one component so every bill sub-page shows the same tab
+ * set -- previously the overview added Sponsors/Amendments/Related/News tabs that were only anchor
+ * scrolls to overview content, so they vanished when you switched tabs. Do not add a tab here that
+ * isn't a route.
+ *
+ * Text and Votes are one tab now. As separate tabs nothing said that a version governs both, or
+ * that Overview and Timeline are unaffected by it; folding them under Version Details puts the
+ * selector above exactly the content it controls. "text" and "votes" stay in the union because the
+ * old routes still exist and redirect.
  *
  * Counts are optional: a tab shows a badge only where the caller actually knows the number.
  */
@@ -32,16 +37,10 @@ export function BillTabs({
           count: counts?.timeline,
         },
         {
-          label: "Text",
-          href: billHref(billId, "/text"),
-          active: active === "text",
+          label: "Version Details",
+          href: billHref(billId, "/version"),
+          active: active === "version" || active === "text" || active === "votes",
           count: counts?.text,
-        },
-        {
-          label: "Votes",
-          href: billHref(billId, "/votes"),
-          active: active === "votes",
-          count: counts?.votes,
         },
       ]}
     />

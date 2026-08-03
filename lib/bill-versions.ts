@@ -1,0 +1,138 @@
+import type { Bill, Vote } from "@/types/civic";
+
+/**
+ * A "version" is whatever the House had in front of it: the bill's own text at a milestone, or a
+ * proposed amendment to that text. They belong in one list because from a reader's side they answer
+ * the same question -- what was being voted on -- and separating them buries the amendments, which
+ * are where nearly all the roll calls are. H.R. 8800 has 2 bill texts and 19 amendments.
+ */
+export type BillVersionKind = "text" | "amendment";
+
+export interface BillVersionEntry {
+  /** URL-safe, stable across syncs: `text-<versionId>` or `amdt-<voteId>`. */
+  id: string;
+  kind: BillVersionKind;
+  /** "Introduced in House" or "H.Amdt. 266". */
+  label: string;
+  /** "Grothman (R-WI)" for an amendment; the reporting committee or sponsor for a bill text. */
+  sponsor?: string;
+  /** What the amendment does, where the source says. */
+  summary?: string;
+  date: string;
+  /** Parsed `date`, for ordering. 0 when unparseable, which sorts last rather than throwing. */
+  time: number;
+  /** The roll call this version was decided by, where there was one. */
+  voteId?: string;
+  result?: string;
+  tally?: { yea: number; nay: number; present: number; notVoting: number };
+  /** congress.gov page for the amendment, or the official document for a bill text. */
+  sourceUrl?: string;
+}
+
+function parseTime(value?: string) {
+  const parsed = Date.parse(value || "");
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * Newest first, preserving source order within a shared date.
+ *
+ * Dates here have day resolution and a bill can draw fifteen roll calls in one sitting, so the
+ * tiebreak decides real ordering rather than edge cases. Both inputs already arrive newest-first --
+ * votes from the `voted_on desc` query, bill texts from the normalizer -- so a stable sort keeps
+ * H.Amdt. 266 (roll 276) above H.Amdt. 261 (roll 275). Reversing the index instead, which is what
+ * this did first, silently inverted every same-day group.
+ */
+function byRecentFirst<T extends { time: number }>(entries: T[]) {
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => right.entry.time - left.entry.time || left.index - right.index)
+    .map((wrapped) => wrapped.entry);
+}
+
+/** Roll calls on an amendment, which are the ones that become their own version entry. */
+function isAmendmentVote(vote: Vote) {
+  return Boolean(vote.amendmentNumber) || /agreeing to the amendment/i.test(vote.question || vote.title || "");
+}
+
+export function buildBillVersionEntries(bill: Bill, votes: Vote[]): BillVersionEntry[] {
+  const amendments: BillVersionEntry[] = votes.filter(isAmendmentVote).map((vote) => ({
+    id: `amdt-${vote.id}`,
+    kind: "amendment" as const,
+    // Falls back to the motion for rows synced before votes.amendment_number existed.
+    label: vote.amendmentNumber || vote.question || vote.title,
+    sponsor: vote.amendmentSponsor,
+    summary: vote.description,
+    date: vote.dateLabel,
+    time: parseTime(vote.dateLabel),
+    voteId: vote.id,
+    result: vote.result,
+    tally: { yea: vote.yea, nay: vote.nay, present: vote.present, notVoting: vote.notVoting },
+    sourceUrl: vote.amendmentUrl,
+  }));
+
+  const texts: BillVersionEntry[] = bill.versions.map((version) => ({
+    id: `text-${version.id}`,
+    kind: "text" as const,
+    label: version.label,
+    date: version.date,
+    time: parseTime(version.date),
+    sourceUrl: version.sourceUrl,
+  }));
+
+  /*
+   * A passage vote is not its own version -- it is a vote *on* a bill text. Attaching it to the
+   * text operative that day means selecting "Reported in House" shows both the text and the vote
+   * that carried it, rather than stranding passage in a list of amendments.
+   */
+  const passageVotes = byRecentFirst(
+    votes.filter((vote) => !isAmendmentVote(vote)).map((vote) => ({ vote, time: parseTime(vote.dateLabel) })),
+  );
+  const orderedTexts = byRecentFirst(texts);
+
+  for (const { vote, time } of passageVotes) {
+    const target = orderedTexts.find((entry) => entry.time > 0 && entry.time <= time) ?? orderedTexts[0];
+    if (!target || target.voteId) continue;
+    target.voteId = vote.id;
+    target.result = vote.result;
+    target.tally = { yea: vote.yea, nay: vote.nay, present: vote.present, notVoting: vote.notVoting };
+  }
+
+  return byRecentFirst([...amendments, ...orderedTexts]);
+}
+
+/**
+ * Which entry the page should show.
+ *
+ * `requestedId` wins, then the entry carrying `voteId` -- that is what makes a link from a member's
+ * vote land on the exact amendment they voted on. Otherwise the most recent, so an unqualified
+ * visit opens on the latest state of the bill.
+ *
+ * Falls back rather than 404s on an id that no longer exists: version ids move when a bill
+ * re-syncs, and a stale bookmark should still land on readable text.
+ */
+export function resolveBillVersion(
+  entries: BillVersionEntry[],
+  options?: { versionId?: string; voteId?: string },
+): BillVersionEntry | undefined {
+  if (options?.versionId) {
+    const requested = entries.find((entry) => entry.id === options.versionId);
+    if (requested) return requested;
+  }
+
+  if (options?.voteId) {
+    const byVote = entries.find((entry) => entry.voteId === options.voteId);
+    if (byVote) return byVote;
+  }
+
+  return entries[0];
+}
+
+/** The bill text a version sits against: itself for a text, the operative one for an amendment. */
+export function baseTextForVersion(entries: BillVersionEntry[], selected?: BillVersionEntry) {
+  if (!selected) return undefined;
+  if (selected.kind === "text") return selected;
+
+  const texts = entries.filter((entry) => entry.kind === "text");
+  return texts.find((entry) => entry.time > 0 && entry.time <= selected.time) ?? texts[0];
+}
