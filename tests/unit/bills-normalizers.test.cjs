@@ -239,3 +239,46 @@ test("deriveBillStatus recognizes defeats that never use the word passage", () =
     "Failed",
   );
 });
+
+test("deriveBillStatus reads the Clerk's own passage wording", () => {
+  // "On passage Passed by the Yeas and Nays: 232 - 198 (Roll no. 280)." is how the House records
+  // the vote that passes a bill, and it matched nothing -- H.R. 7008 passed 232-198 and still
+  // reported "Introduced".
+  assert.equal(
+    deriveBillStatus(["On passage Passed by the Yeas and Nays: 232 - 198 (Roll no. 280)."]),
+    "Passed Chamber",
+  );
+  assert.equal(
+    deriveBillStatus(["On motion to suspend the rules and pass the bill Agreed to by voice vote."]),
+    "Passed Chamber",
+  );
+});
+
+test("deriveBillStatus treats receipt by the other chamber as proof of passage", () => {
+  // Often the only stored action saying the originating chamber passed it.
+  assert.equal(deriveBillStatus([], "Received in the Senate."), "Passed Chamber");
+  assert.equal(deriveBillStatus([], "Held at the desk."), "Passed Chamber");
+});
+
+test("deriveBillStatus does not read a failed recommit as the bill failing", () => {
+  // The bill survived that motion; only the motion failed.
+  assert.equal(
+    deriveBillStatus(
+      ["On passage Passed by the Yeas and Nays: 232 - 198 (Roll no. 280)."],
+      "On motion to recommit Failed by the Yeas and Nays: 211 - 218 (Roll no. 279).",
+    ),
+    "Passed Chamber",
+  );
+});
+
+test("deriveBillStatus still takes the furthest rung across the whole history", () => {
+  assert.equal(
+    deriveBillStatus([
+      "Introduced in House",
+      "Referred to the House Committee on House Administration.",
+      "Placed on the Union Calendar, Calendar No. 409.",
+      "On passage Passed by the Yeas and Nays: 232 - 198 (Roll no. 280).",
+    ], "Received in the Senate."),
+    "Passed Chamber",
+  );
+});

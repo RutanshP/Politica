@@ -149,6 +149,21 @@ function milestoneFromActionText(actionText: string): BillStatus | undefined {
     /passed\/agreed to in (?:the )?(?:house|senate)/.test(text)
     || text.includes("passed house")
     || text.includes("passed senate")
+    /*
+     * The Clerk's own wording for the vote that passes a bill: "On passage Passed by the Yeas and
+     * Nays: 232 - 198 (Roll no. 280)." None of the patterns above match it, so the single most
+     * important action in a bill's life counted for nothing -- H.R. 7008 passed the House 232-198
+     * and still reported "Introduced".
+     */
+    || /on passage[^.]*passed/.test(text)
+    || /on motion to suspend the rules and pass[^.]*(?:agreed to|passed)/.test(text)
+    /*
+     * Receipt by the other chamber is proof the originating one passed it, and it is often the only
+     * action that says so -- a bill can be "Received in the Senate." with no House-passage line
+     * stored at all.
+     */
+    || /received in the (?:house|senate)/.test(text)
+    || /held at the desk/.test(text)
   ) {
     return "Passed Chamber";
   }
@@ -319,13 +334,24 @@ export function mergeCongressBillDetail(
     isFullTextAvailable: false,
   }));
 
-  // The seed's status came from the list row's single latest action. Now that the full history is
-  // in hand, recompute it -- this is the only place that can see the whole climb.
+  /*
+   * The seed's status came from the list row's single latest action. Now that the full history is
+   * in hand, recompute it -- this is the only place that can see the whole climb.
+   *
+   * Never below what the bill had already reached, though. `actions` is empty whenever the actions
+   * request failed or returned nothing, and deriving from the lone latest action then reads as a
+   * regression: "Received in the Senate." matches no earlier rung, so H.R. 7008 -- reported,
+   * calendared, debated, passed 232-198 -- was stored as "Introduced". Progress is cumulative, so
+   * a recompute that sees less history than last time must not overwrite the better answer.
+   */
   const latestActionText = detail.latestAction?.text || seed.latestAction;
-  const status = deriveBillStatus(
+  const derived = deriveBillStatus(
     actions.map((action) => action.detail),
     latestActionText,
   );
+  const status = derived === "Failed" || STATUS_RANK[derived] >= STATUS_RANK[seed.status]
+    ? derived
+    : seed.status;
 
   return {
     ...seed,
