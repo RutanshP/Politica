@@ -94,3 +94,69 @@ test("dedupeBillActions ignores whitespace and case differences", () => {
 test("dedupeBillActions handles an empty list", () => {
   assert.deepEqual(dedupeBillActions([]), []);
 });
+
+test("createBillActionIndex will not re-append an action that differs only by a CR citation", () => {
+  // The append writers keyed on the raw text, so a citation-suffixed copy of an action already
+  // stored looked new and landed beside it -- S.5123 ended up with three copies of one action.
+  const { createBillActionIndex } = jiti("@/lib/normalizers/legislation");
+  const index = createBillActionIndex();
+  index.add("s-5123", action("Jul 22, 2026", "Floor", "Introduced in the Senate, read twice, considered, read the third time, and passed without amendment by Unanimous Consent.", "floor"));
+
+  assert.equal(
+    index.has("s-5123", action("Jul 22, 2026", "Floor", "Introduced in the Senate, read twice, considered, read the third time, and passed without amendment by Unanimous Consent. (consideration: CR S4273-4274; text: CR S4273-4274)", "floor")),
+    true,
+  );
+});
+
+test("createBillActionIndex still admits the same motion on a later day", () => {
+  // The date is compared exactly, which is safe now that formatDisplayDate pins the zone. A motion
+  // considered on two consecutive days is two real actions, not a duplicate.
+  const { createBillActionIndex } = jiti("@/lib/normalizers/legislation");
+  const index = createBillActionIndex();
+  index.add("s-1", action("Mar 2, 2026", "Floor", "Motion to proceed to measure considered in Senate.", "floor"));
+
+  assert.equal(
+    index.has("s-1", action("Mar 3, 2026", "Floor", "Motion to proceed to measure considered in Senate.", "floor")),
+    false,
+  );
+});
+
+test("dedupeBillActions strips the Congressional Record citation before comparing", () => {
+  const result = dedupeBillActions([
+    action("Jul 22, 2026", "Floor", "Introduced in the Senate, read twice, considered, read the third time, and passed without amendment by Unanimous Consent. (consideration: CR S4273-4274; text: CR S4273-4274)", "floor"),
+    action("Jul 22, 2026", "Floor", "Passed/agreed to in Senate: Introduced in the Senate, read twice, considered, read the third time, and passed without amendment by Unanimous Consent.", "floor"),
+    action("Jul 22, 2026", "Floor", "Introduced in the Senate, read twice, considered, read the third time, and passed without amendment by Unanimous Consent.", "floor"),
+  ]);
+
+  assert.equal(result.length, 1);
+  assert.ok(!result[0].detail.includes("consideration:"));
+  assert.ok(!result[0].detail.startsWith("Passed/agreed to"));
+});
+
+test("dedupeBillActions leaves a genuine repeat on another date alone", () => {
+  // "Committee Hearings Held." really does recur. The one-day-apart copies in the stored data came
+  // from the timezone bug, so they are cleaned out by 025 rather than masked here -- collapsing on
+  // text alone would hide real events.
+  const result = dedupeBillActions([
+    action("Mar 3, 2026", "Committee", "Committee Hearings Held.", "committee"),
+    action("May 5, 2026", "Committee", "Committee Hearings Held.", "committee"),
+  ]);
+
+  assert.equal(result.length, 2);
+});
+
+test("sortBillActionsRecentFirst puts the newest action at the top", () => {
+  const { sortBillActionsRecentFirst } = jiti("@/lib/normalizers/legislation");
+  const sorted = sortBillActionsRecentFirst([
+    action("Jul 22, 2026", "IntroReferral", "Introduced in Senate"),
+    action("Jul 22, 2026", "Floor", "Passed the Senate.", "floor"),
+    action("Jul 30, 2026", "Floor", "Message on Senate action sent to the House.", "floor"),
+  ]);
+
+  assert.deepEqual(sorted.map((item) => item.detail), [
+    "Message on Senate action sent to the House.",
+    // Within one date the later action still reads above the earlier one.
+    "Passed the Senate.",
+    "Introduced in Senate",
+  ]);
+});

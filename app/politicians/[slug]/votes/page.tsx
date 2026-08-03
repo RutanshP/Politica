@@ -18,6 +18,7 @@ import {
 } from "@/lib/data/votes";
 import { hasVotePerformanceStats, voteHref } from "@/lib/utils";
 import { isSubstantiveVote } from "@/lib/vote-classification";
+import { groupVotesByBill, summarizePositions } from "@/lib/vote-grouping";
 
 export const revalidate = 21600;
 
@@ -48,6 +49,9 @@ export default async function PoliticianVotesPage({
   const { votes, source: voteSource } = await getVotesDataForPolitician(politician.id);
   const substantiveVotes = votes.filter((vote) => isSubstantiveVote(vote.category ?? "policy"));
   const proceduralCount = votes.length - substantiveVotes.length;
+  // Grouped by measure: one bill can draw six recorded votes, which used to be six near-identical
+  // cards that crowded every other measure off the list.
+  const voteGroups = groupVotesByBill(substantiveVotes).slice(0, 8);
   const hasVoteStats = hasVotePerformanceStats(politician.stats);
 
   return (
@@ -87,39 +91,67 @@ export default async function PoliticianVotesPage({
             ? `Substantive passage and amendment votes. ${proceduralCount} procedural motion${proceduralCount === 1 ? "" : "s"} (cloture, motions to proceed, etc.) set aside.`
             : "Substantive passage and amendment votes."}
         >
-          {substantiveVotes.length > 0 ? (
+          {voteGroups.length > 0 ? (
             <div className="space-y-3">
-              {substantiveVotes.slice(0, 8).map((vote) => {
-                const memberVote = vote.positions[0]?.vote;
-                const position = positionStyle(memberVote);
-                const outcome = resultStyle(vote.result);
+              {voteGroups.map((group) => {
+                const multiple = group.votes.length > 1;
                 return (
-                  <Link
-                    key={vote.id}
-                    href={vote.billId ? voteHref(vote.billId, vote.id) : `/politicians/${politician.slug}/votes`}
-                    className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4 transition hover:border-[var(--line-2)]"
+                  <div
+                    key={group.key}
+                    className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-semibold text-[var(--accent-2)]">{vote.billNumber}</p>
-                      <span
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
-                        style={{ background: position.soft, color: position.ink }}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: position.ink }} />
-                        {position.label}
-                      </span>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="font-semibold text-[var(--accent-2)]">{group.billNumber}</p>
+                      <p className="num shrink-0 text-xs text-[var(--muted)]">
+                        {multiple ? `${group.votes.length} votes · ` : null}
+                        {summarizePositions(group.counts)}
+                      </p>
                     </div>
-                    <p className="mt-1 text-sm text-[var(--ink)]">{vote.title}</p>
-                    <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
-                      <span
-                        className="inline-flex items-center rounded-full px-2 py-0.5 font-semibold"
-                        style={{ background: outcome.soft, color: outcome.ink }}
-                      >
-                        {outcome.label}
-                      </span>
-                      <span>{vote.dateLabel}</span>
+                    {group.billTitle ? (
+                      <p className="mt-1 text-sm text-[var(--ink)]">{group.billTitle}</p>
+                    ) : null}
+
+                    {/*
+                      Each roll call keeps its own row -- the motion, the outcome, the date and how
+                      they voted -- so grouping loses none of the detail the flat list carried. The
+                      rows are the links; the card is a plain container, since a link cannot nest.
+                    */}
+                    <div className="mt-2.5 flex flex-col divide-y divide-[var(--line)] border-t border-[var(--line)]">
+                      {group.votes.map((vote) => {
+                        const position = positionStyle(vote.positions[0]?.vote);
+                        const outcome = resultStyle(vote.result);
+                        return (
+                          <Link
+                            key={vote.id}
+                            href={vote.billId ? voteHref(vote.billId, vote.id) : `/politicians/${politician.slug}/votes`}
+                            className="group/row flex flex-wrap items-center gap-x-2.5 gap-y-1 py-2 transition hover:bg-[var(--panel)]"
+                          >
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ background: position.ink }}
+                              aria-hidden
+                            />
+                            <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--ink)] group-hover/row:text-[var(--accent-2)]">
+                              {vote.title}
+                            </span>
+                            <span
+                              className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                              style={{ background: outcome.soft, color: outcome.ink }}
+                            >
+                              {outcome.label}
+                            </span>
+                            <span
+                              className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                              style={{ background: position.soft, color: position.ink }}
+                            >
+                              {position.label}
+                            </span>
+                            <span className="num shrink-0 text-[11px] text-[var(--muted)]">{vote.dateLabel}</span>
+                          </Link>
+                        );
+                      })}
                     </div>
-                  </Link>
+                  </div>
                 );
               })}
             </div>

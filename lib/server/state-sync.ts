@@ -16,6 +16,7 @@ import {
   listStoredBillActionRowsByBillIds,
   listStoredBillVersionRowsByBillIds,
 } from "@/lib/supabase/bills";
+import { createBillActionIndex } from "@/lib/normalizers/legislation";
 import { replaceStoredCommitteeMemberships } from "@/lib/supabase/committees";
 import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import { appendStoredVotes, fetchPoliticianVoteStatCounters, listStoredVoteHeaders } from "@/lib/supabase/votes";
@@ -50,6 +51,9 @@ function buildQuotedInFilter(values: string[]) {
     .join(",");
 }
 
+// UTC-pinned for the same reason as formatDisplayDate in lib/normalizers/bills.ts: the rendered
+// string is part of the stored action dedupe signature, so it has to be a stable function of the
+// source value rather than of wherever the sync happens to run.
 function displayDate(value?: string) {
   if (!value) return "Unknown";
   const parsed = new Date(value);
@@ -57,6 +61,7 @@ function displayDate(value?: string) {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -779,24 +784,19 @@ export async function syncStateLegislationFromOpenStates(
   const changedBillIds = billRows.map((row) => row.id);
   const changedCommitteeIds = committeeRows.map((row) => row.id);
   const existingActionRows = await listStoredBillActionRowsByBillIds(changedBillIds);
-  const existingActionSignaturesByBillId = new Map<string, Set<string>>();
+  const actionIndex = createBillActionIndex();
   const nextActionSortOrderByBillId = new Map<string, number>();
   existingActionRows.forEach((row) => {
-    const signatures = existingActionSignaturesByBillId.get(row.bill_id) || new Set<string>();
-    signatures.add(`${row.date}|${row.label}|${row.detail}|${row.type}`);
-    existingActionSignaturesByBillId.set(row.bill_id, signatures);
+    actionIndex.add(row.bill_id, row);
     nextActionSortOrderByBillId.set(row.bill_id, Math.max(nextActionSortOrderByBillId.get(row.bill_id) || 0, row.sort_order + 1));
   });
   const appendedActionRows = billActionRows.flatMap((row) => {
-    const signatures = existingActionSignaturesByBillId.get(row.bill_id) || new Set<string>();
-    const signature = `${row.date}|${row.label}|${row.detail}|${row.type}`;
-    if (signatures.has(signature)) {
+    if (actionIndex.has(row.bill_id, row)) {
       return [];
     }
     const sortOrder = nextActionSortOrderByBillId.get(row.bill_id) || 0;
     nextActionSortOrderByBillId.set(row.bill_id, sortOrder + 1);
-    signatures.add(signature);
-    existingActionSignaturesByBillId.set(row.bill_id, signatures);
+    actionIndex.add(row.bill_id, row);
     return [{ ...row, sort_order: sortOrder }];
   });
 

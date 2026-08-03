@@ -12,6 +12,7 @@ import {
   getBillsSourceLabel,
   isLiveBillsSource,
 } from "@/lib/data/bills";
+import { sortBillActionsRecentFirst } from "@/lib/normalizers/legislation";
 
 export const revalidate = 21600;
 
@@ -23,7 +24,7 @@ export default async function BillTimelinePage({
   const { billId: rawBillId } = await params;
   const { bill, source } = await getBillData(decodeURIComponent(rawBillId));
   if (!bill) notFound();
-  const chronologicalActions = bill.actions;
+  const recentFirstActions = sortBillActionsRecentFirst(bill.actions);
 
   return (
     <div className="space-y-6">
@@ -37,7 +38,7 @@ export default async function BillTimelinePage({
       <BillProgressStepper bill={bill} />
       <SectionCard title="Legislative timeline">
         {bill.actions.length > 0 ? (
-          <Timeline items={chronologicalActions} />
+          <Timeline items={recentFirstActions} />
         ) : (
           <EmptyState
             title="No stored timeline actions yet"

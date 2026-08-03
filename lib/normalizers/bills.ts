@@ -6,6 +6,21 @@ import type {
   CongressBillTextPayload,
 } from "@/types/congress";
 
+/*
+ * Formatted in UTC, deliberately.
+ *
+ * Congress.gov sends action dates as bare "2026-07-22", which `new Date` parses as UTC midnight.
+ * Formatting that without a timeZone uses the runtime's zone, so the same action renders "Jul 22,
+ * 2026" on Vercel (UTC) and "Jul 21, 2026" on a US-local machine -- and timestamped values go the
+ * other way, rendering a day later in UTC+ zones.
+ *
+ * That is not just a cosmetic drift. Stored actions are appended, not replaced, and the dedupe
+ * signature is `date|label|detail|type` -- so the moment the rendered date moves, every action on
+ * the bill fails its signature check and gets appended a second time. It produced 4,199 duplicate
+ * rows across 1,190 bills, 4,088 of them exactly one day apart, including impossible pairs like
+ * "Introduced in Senate" on two dates. Pinning the zone makes the string a stable function of the
+ * source value, which is what the signature assumes.
+ */
 function formatDisplayDate(value?: string) {
   if (!value) return "Unknown";
 
@@ -16,6 +31,7 @@ function formatDisplayDate(value?: string) {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   }).format(date);
 }
 

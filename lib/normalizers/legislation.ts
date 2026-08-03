@@ -28,6 +28,17 @@ const ACTION_RESTATEMENT_PREFIXES: RegExp[] = [
 ];
 
 /**
+ * Congressional Record citations, which the same action carries in one feed and not the other.
+ *
+ * S.5123 stored "...passed without amendment by Unanimous Consent." three times on one day: bare,
+ * prefixed with "Passed/agreed to in Senate:", and suffixed with "(consideration: CR S4273-4274;
+ * text: CR S4273-4274)". The prefix was already handled; the citation was not, so the suffixed copy
+ * kept its own timeline entry. It is a pointer to where the action was printed, never part of the
+ * action, so it comes off before the texts are compared.
+ */
+const ACTION_CITATION_SUFFIX = /\s*\((?:consideration|text|cr)\s*:[^()]*\)\s*$/i;
+
+/**
  * Which label to keep when the same action arrives under several of them, most specific first.
  *
  * Congress.gov files one action under multiple stage codes -- "Became Public Law No: 119-101."
@@ -61,7 +72,13 @@ function stripActionRestatement(detail: string) {
   for (const prefix of ACTION_RESTATEMENT_PREFIXES) {
     text = text.replace(prefix, "");
   }
+  // Repeated: a citation can sit behind a prefix, and stripping the prefix can expose another.
+  text = text.replace(ACTION_CITATION_SUFFIX, "");
   return text.trim();
+}
+
+function actionTextKey(detail: string) {
+  return stripActionRestatement(detail || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 /**
@@ -78,7 +95,14 @@ export function dedupeBillActions<T extends { date: string; label: string; detai
 
   actions.forEach((action, order) => {
     const detail = stripActionRestatement(action.detail || "");
-    const key = `${action.date}|${detail.replace(/\s+/g, " ").toLowerCase()}`;
+    /*
+     * Same date, same normalized text. Deliberately NOT tolerant of a date difference: an action
+     * really can repeat on consecutive days ("Motion to proceed to measure considered in Senate."),
+     * and collapsing those would hide real events. The one-day-apart copies in the stored data came
+     * from the timezone bug in formatDisplayDate rather than from the source, so they are fixed at
+     * the writer and cleaned out by 025 instead of being masked here.
+     */
+    const key = `${action.date}|${actionTextKey(action.detail)}`;
     const existing = byKey.get(key);
 
     if (!existing) {
@@ -96,6 +120,56 @@ export function dedupeBillActions<T extends { date: string; label: string; detai
   return [...byKey.values()]
     .sort((left, right) => left.order - right.order)
     .map((entry) => entry.action);
+}
+
+interface BillActionLike { date: string; label: string; detail: string; type: string }
+
+/**
+ * Newest first, for the timeline view.
+ *
+ * Stored actions are in source order, which is oldest first -- fine for deriving a bill's current
+ * stage, wrong for reading a history, where the thing that just happened is what you came for.
+ * Within a single date the source order is preserved but reversed, so the last action of a day sits
+ * above the first.
+ */
+export function sortBillActionsRecentFirst<T extends { date: string }>(actions: T[]): T[] {
+  return actions
+    .map((action, index) => ({ action, index }))
+    .sort((left, right) =>
+      parseDateLabel(right.action.date) - parseDateLabel(left.action.date)
+      || right.index - left.index)
+    .map((entry) => entry.action);
+}
+
+/**
+ * Tracks which actions a bill already has, for the append-only sync writers.
+ *
+ * They used to test a raw `date|label|detail|type` string against a Set, which missed a duplicate
+ * whenever the text differed cosmetically -- a Congressional Record citation on one copy and not
+ * the other was enough to append the same action twice on the same day. Normalizing the text the
+ * same way the read path does closes that.
+ *
+ * The date stays part of the key and is compared exactly. It can be trusted again now that
+ * formatDisplayDate pins the zone: the string is a function of the source value, not of where the
+ * sync ran. Being exact is what lets a genuinely repeated action -- the same motion considered on
+ * two consecutive days -- still register as new.
+ */
+export function createBillActionIndex() {
+  const byBill = new Map<string, Set<string>>();
+
+  const signature = (action: BillActionLike) =>
+    `${action.date}|${action.label}|${action.type}|${actionTextKey(action.detail)}`;
+
+  return {
+    has(billId: string, action: BillActionLike) {
+      return byBill.get(billId)?.has(signature(action)) ?? false;
+    },
+    add(billId: string, action: BillActionLike) {
+      const forBill = byBill.get(billId) ?? new Set<string>();
+      forBill.add(signature(action));
+      byBill.set(billId, forBill);
+    },
+  };
 }
 
 export function mapBillToRow(

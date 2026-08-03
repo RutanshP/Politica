@@ -24,6 +24,7 @@ import {
   normalizeFederalVoteMatchKey,
 } from "@/lib/adapters/federal-votes";
 import {
+  createBillActionIndex,
   mapBillActionToRow,
   mapBillToRow,
   mapRowToBill,
@@ -2176,14 +2177,11 @@ export async function syncLegislationFromCongress(options?: {
     try {
       const billIds = finalizedBills.map(({ bill }) => bill.id);
       const existingActionRows = await listStoredBillActionRowsByBillIds(billIds);
-      const existingActionSignatureByBillId = new Map<string, Set<string>>();
+      const actionIndex = createBillActionIndex();
       const nextActionSortOrderByBillId = new Map<string, number>();
 
       existingActionRows.forEach((row) => {
-        const signature = `${row.date}|${row.label}|${row.detail}|${row.type}`;
-        const signatures = existingActionSignatureByBillId.get(row.bill_id) || new Set<string>();
-        signatures.add(signature);
-        existingActionSignatureByBillId.set(row.bill_id, signatures);
+        actionIndex.add(row.bill_id, row);
         nextActionSortOrderByBillId.set(
           row.bill_id,
           Math.max(nextActionSortOrderByBillId.get(row.bill_id) || 0, row.sort_order + 1),
@@ -2192,16 +2190,13 @@ export async function syncLegislationFromCongress(options?: {
 
       const appendedActionRows = finalizedBills.flatMap(({ bill }) =>
         bill.actions.flatMap((action) => {
-          const signature = `${action.date}|${action.label}|${action.detail}|${action.type}`;
-          const existingSignatures = existingActionSignatureByBillId.get(bill.id) || new Set<string>();
-          if (existingSignatures.has(signature)) {
+          if (actionIndex.has(bill.id, action)) {
             return [];
           }
 
           const nextSortOrder = nextActionSortOrderByBillId.get(bill.id) || 0;
           nextActionSortOrderByBillId.set(bill.id, nextSortOrder + 1);
-          existingSignatures.add(signature);
-          existingActionSignatureByBillId.set(bill.id, existingSignatures);
+          actionIndex.add(bill.id, action);
 
           return [mapBillActionToRow(bill.id, action, nextSortOrder)];
         }),
