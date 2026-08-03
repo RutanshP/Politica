@@ -158,6 +158,8 @@ export interface Vote {
   amendmentSponsor?: string;
   /** congress.gov page for the amendment, which is where its text reads. */
   amendmentUrl?: string;
+  /** The amendment's own legislative text, from its Rules Committee PDF. */
+  amendmentText?: string;
   chamber: string;
   dateLabel: string;
   /** Orders roll calls within a single day, which dateLabel cannot. */

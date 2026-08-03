@@ -80,8 +80,9 @@ export function BillTextViewer({
       {/* Table of contents */}
       <aside className="space-y-3">
         <div className="flex items-center justify-between">
+          {/* Named for the version, not the bill: the panel re-renders when the selector changes. */}
           <p className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
-            Contents
+            Sections in this version
           </p>
           <button
             type="button"

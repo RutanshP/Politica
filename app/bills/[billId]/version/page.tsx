@@ -13,6 +13,7 @@ import {
   baseTextForVersion,
   buildBillVersionEntries,
   resolveBillVersion,
+  splitAmendmentText,
 } from "@/lib/bill-versions";
 import { getBillData, getBillsSourceLabel, isLiveBillsSource } from "@/lib/data/bills";
 import { getVotesDataForBill } from "@/lib/data/votes";
@@ -56,6 +57,7 @@ export default async function BillVersionPage({
   const textDocument = textSource ? await fetchBillTextDocument(textSource.url) : null;
 
   const selectedVote = selected?.voteId ? votes.find((item) => item.id === selected.voteId) : undefined;
+  const amendmentText = splitAmendmentText(selected?.amendmentText);
 
   return (
     <div className="space-y-5">
@@ -136,12 +138,32 @@ export default async function BillVersionPage({
                   {selected.summary ? (
                     <p className="mt-2 text-[13px] leading-relaxed text-[var(--muted)]">{selected.summary}</p>
                   ) : null}
+
+                  {/*
+                    The amendment's own words, where the Rules Committee PDF yielded them. The
+                    instruction line is separated because it is the sentence that says where the
+                    change lands -- "At the end of subtitle A of title XI, insert the following new
+                    section:" -- which is what ties the amendment to the text below.
+                  */}
+                  {amendmentText ? (
+                    <div className="mt-3 rounded-[var(--r-sm)] border border-[var(--line)] bg-[var(--panel)] p-3">
+                      {amendmentText.instruction ? (
+                        <p className="mb-2 border-l-2 border-[var(--accent-2)] bg-[var(--accent-soft)] px-2.5 py-1.5 text-[12px] font-semibold leading-relaxed text-[var(--accent-2)]">
+                          {amendmentText.instruction}
+                        </p>
+                      ) : null}
+                      <pre className="num max-h-[26rem] overflow-auto whitespace-pre-wrap break-words text-[11.5px] leading-relaxed text-[var(--ink)]">
+                        {amendmentText.body}
+                      </pre>
+                    </div>
+                  ) : null}
+
                   {selected.sourceUrl ? (
                     <a
                       href={selected.sourceUrl}
                       className="mt-2.5 inline-block text-[12px] font-semibold text-[var(--accent-2)]"
                     >
-                      Official amendment text →
+                      {amendmentText ? "Amendment on congress.gov →" : "Official amendment text →"}
                     </a>
                   ) : null}
                 </div>

@@ -104,6 +104,23 @@ export function voteHref(billId: string, voteId?: string) {
   return voteId ? `${base}?voteId=${encodeURIComponent(voteId)}` : base;
 }
 
+/**
+ * Opens the bill on the version a given roll call was taken on.
+ *
+ * This is what makes a member's vote list navigable: clicking their vote from three roll calls ago
+ * lands on that amendment's text, not on the bill's current state. `?vote=` rather than `?v=`
+ * because the page resolves a vote to its version -- the caller does not have to know which bill
+ * text was operative that day.
+ */
+export function billVersionHref(billId: string, options?: { voteId?: string; view?: "text" | "votes" }) {
+  const query = new URLSearchParams();
+  if (options?.voteId) query.set("vote", options.voteId);
+  if (options?.view) query.set("view", options.view);
+
+  const suffix = query.toString();
+  return billHref(billId, `/version${suffix ? `?${suffix}` : ""}`);
+}
+
 export function slugifySegment(input: string) {
   return input
     .toLowerCase()

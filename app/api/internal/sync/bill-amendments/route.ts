@@ -29,11 +29,16 @@ export async function POST(request: Request) {
   const dryRun = /^(1|true|yes)$/i.test(url.searchParams.get("dryRun") || "");
   const congress = url.searchParams.get("congress")?.trim() || getDefaultCongress();
 
+  // withText=0 skips the Rules Committee PDFs, which are one fetch per amendment on top of the
+  // page scrape. On by default: the text is the point of the link.
+  const withText = !/^(0|false|no)$/i.test(url.searchParams.get("withText") || "");
+
   const result = await runPipeline("bill_amendment_links", async () => {
     const sync = await syncAmendmentLinks({
       congress,
       limit: Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 10,
       dryRun,
+      withText,
     });
     return { recordCount: sync.votesLabelled, metadata: sync };
   });

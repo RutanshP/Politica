@@ -189,6 +189,9 @@ export interface VoteRow {
   amendment_sponsor?: string | null;
   /** congress.gov page for the amendment, which is where its text reads. */
   amendment_url?: string | null;
+  /** The amendment's own legislative text, extracted from its Rules Committee PDF. */
+  amendment_text?: string | null;
+  amendment_text_url?: string | null;
   chamber: string;
   /** Display text only ("September 9, 2025,  12:48 PM" / "Sep 9, 2025"). Never sort by this. */
   date_label: string;

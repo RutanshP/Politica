@@ -18,7 +18,7 @@ const votePositionStatSelect = "vote_id,politician_id,party,vote";
 // null: it was 83MB of per-voter duplicates of the columns beside it, so `rawAvailable` below is
 // now false for the same reason twice over.
 const votePositionDisplaySelect = "vote_id,politician_id,name,party,state,vote,source_system,source_id,synced_at";
-const voteDisplaySelect = "id,bill_id,canonical_id,bill_number,title,question,description,amendment_number,amendment_sponsor,amendment_url,chamber,date_label,action_time,voted_on,result,yea,nay,present,not_voting,source_system,source_id,synced_at";
+const voteDisplaySelect = "id,bill_id,canonical_id,bill_number,title,question,description,amendment_number,amendment_sponsor,amendment_url,amendment_text,chamber,date_label,action_time,voted_on,result,yea,nay,present,not_voting,source_system,source_id,synced_at";
 
 /**
  * Vote lists are ordered by the parsed timestamp, never by `date_label`.
@@ -73,6 +73,7 @@ function mapRowToVote(row: VoteRow, positions: VotePositionRow[]): Vote {
     amendmentNumber: row.amendment_number || undefined,
     amendmentSponsor: row.amendment_sponsor || undefined,
     amendmentUrl: row.amendment_url || undefined,
+    amendmentText: row.amendment_text || undefined,
     chamber: row.chamber,
     dateLabel: row.date_label,
     actionTime: row.action_time || undefined,

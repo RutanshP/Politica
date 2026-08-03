@@ -27,6 +27,36 @@ export interface BillVersionEntry {
   tally?: { yea: number; nay: number; present: number; notVoting: number };
   /** congress.gov page for the amendment, or the official document for a bill text. */
   sourceUrl?: string;
+  /** The amendment's own legislative text, where the Rules Committee PDF yielded one. */
+  amendmentText?: string;
+}
+
+/**
+ * Splits an amendment's text into its instruction line and the language it proposes.
+ *
+ * Amendments open with a structural address -- "At the end of subtitle A of title XI, insert the
+ * following new section:" -- and that line is the most useful sentence in the document: it says
+ * where the change lands. Pulling it out lets the reader see the target before the body.
+ *
+ * Returns the whole text as `body` when no instruction is recognisable, which is the honest
+ * outcome for the phrasings this does not cover -- better a plain document than a wrong anchor.
+ */
+export function splitAmendmentText(text?: string) {
+  if (!text) return undefined;
+
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  // The first two lines are the Rules Comm. Print header and the sponsor; the instruction follows.
+  const instructionIndex = lines.findIndex((line) =>
+    /^(at the end of|page \d+|in section|strike|insert|add the following|beginning on page)/i.test(line));
+
+  if (instructionIndex === -1) {
+    return { instruction: undefined, body: lines.join("\n") };
+  }
+
+  return {
+    instruction: lines[instructionIndex],
+    body: lines.slice(instructionIndex + 1).join("\n"),
+  };
 }
 
 function parseTime(value?: string) {
@@ -69,6 +99,7 @@ export function buildBillVersionEntries(bill: Bill, votes: Vote[]): BillVersionE
     result: vote.result,
     tally: { yea: vote.yea, nay: vote.nay, present: vote.present, notVoting: vote.notVoting },
     sourceUrl: vote.amendmentUrl,
+    amendmentText: vote.amendmentText,
   }));
 
   const texts: BillVersionEntry[] = bill.versions.map((version) => ({

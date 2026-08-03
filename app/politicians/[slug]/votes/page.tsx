@@ -16,7 +16,7 @@ import {
   getVotesDataForPolitician,
   isLiveVoteSource,
 } from "@/lib/data/votes";
-import { hasVotePerformanceStats, voteHref } from "@/lib/utils";
+import { billVersionHref, hasVotePerformanceStats } from "@/lib/utils";
 import { isSubstantiveVote } from "@/lib/vote-classification";
 import { groupVotesByBill, summarizePositions, voteQuestionOf } from "@/lib/vote-grouping";
 
@@ -123,7 +123,14 @@ export default async function PoliticianVotesPage({
                         return (
                           <Link
                             key={vote.id}
-                            href={vote.billId ? voteHref(vote.billId, vote.id) : `/politicians/${politician.slug}/votes`}
+                            /*
+                              Lands on the exact thing they voted on -- the amendment's own text,
+                              not the bill's current state. The page resolves the vote to its
+                              version, so this does not need to know which text was operative.
+                            */
+                            href={vote.billId
+                              ? billVersionHref(vote.billId, { voteId: vote.id, view: "text" })
+                              : `/politicians/${politician.slug}/votes`}
                             className="group/row flex flex-wrap items-center gap-x-2.5 gap-y-1 py-2 transition hover:bg-[var(--panel)]"
                           >
                             <span

@@ -1,3 +1,8 @@
+import {
+  fetchAmendmentPdfText,
+  fetchRulesAmendments,
+  matchRulesRow,
+} from "@/lib/adapters/amendment-text";
 import { fetchCongressBillAmendments, type CongressAmendmentListItem } from "@/lib/adapters/congress";
 import { fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import type { VoteRow } from "@/types/supabase";
@@ -93,7 +98,8 @@ export function buildAmendmentLinks(amendments: CongressAmendmentListItem[]): Ma
  */
 const LINKABLE_VOTE_SELECT = [
   "id", "bill_id", "canonical_id", "bill_number", "title", "question", "description",
-  "amendment_number", "amendment_sponsor", "amendment_url", "chamber", "date_label", "action_time",
+  "amendment_number", "amendment_sponsor", "amendment_url", "amendment_text", "amendment_text_url",
+  "chamber", "date_label", "action_time",
   "result", "yea", "nay", "present", "not_voting", "source_system", "source_id",
   "synced_at", "jurisdiction_type", "state_code",
 ].join(",");
@@ -142,6 +148,7 @@ export interface AmendmentLinkSyncResult {
   billsScanned: number;
   billsLinked: number;
   votesLabelled: number;
+  amendmentTextsFetched: number;
   unmatchedBills: string[];
   at: string;
 }
@@ -150,11 +157,14 @@ export async function syncAmendmentLinks(options: {
   congress: string;
   limit?: number;
   dryRun?: boolean;
+  /** Also pull each amendment's legislative text from its Rules Committee PDF. */
+  withText?: boolean;
 }): Promise<AmendmentLinkSyncResult> {
   const targets = await listBillsNeedingAmendmentLinks(options.limit ?? 10);
   const updates: VoteRow[] = [];
   const unmatchedBills: string[] = [];
   let billsLinked = 0;
+  let amendmentTextsFetched = 0;
 
   for (const target of targets) {
     const parsed = parseFederalBillId(target.billId, options.congress);
@@ -172,11 +182,34 @@ export async function syncAmendmentLinks(options: {
     const links = buildAmendmentLinks(payload.amendments ?? []);
     let labelledForBill = 0;
 
+    /*
+     * The Rules page is fetched once per bill, not once per amendment: it is a ~900KB render
+     * listing every amendment submitted to the measure -- 1,007 rows for H.R. 8800 -- and each
+     * amendment's PDF link is in it. Only the PDFs are per-amendment.
+     */
+    const rulesRows = options.withText
+      ? await fetchRulesAmendments(parsed).catch(() => [])
+      : [];
+
     for (const vote of target.votes) {
       // votes.source_id is "roll-276" for the House feed; that number is the join.
       const rollCallNumber = (vote.source_id || "").replace(/^roll-/i, "").trim();
       const link = links.get(rollCallNumber);
       if (!link) continue;
+
+      let amendmentText: string | null = vote.amendment_text ?? null;
+      let amendmentTextUrl: string | null = vote.amendment_text_url ?? null;
+
+      if (options.withText && !amendmentText && rulesRows.length > 0) {
+        // Matched on sponsor plus summary overlap: the Rules row and congress.gov state the same
+        // amendment in the same words, but neither carries the other's identifier.
+        const row = matchRulesRow(rulesRows, { sponsor: link.sponsor, summary: link.description });
+        if (row) {
+          amendmentText = await fetchAmendmentPdfText(row.pdfUrl).catch(() => null);
+          amendmentTextUrl = amendmentText ? row.pdfUrl : null;
+          if (amendmentText) amendmentTextsFetched += 1;
+        }
+      }
 
       updates.push({
         ...vote,
@@ -186,6 +219,8 @@ export async function syncAmendmentLinks(options: {
         // Overwrites the Clerk's <vote-desc> where both exist: congress.gov states what the
         // amendment does, while <vote-desc> only names its sponsor and number.
         description: link.description,
+        amendment_text: amendmentText,
+        amendment_text_url: amendmentTextUrl,
       });
       labelledForBill += 1;
     }
@@ -202,6 +237,7 @@ export async function syncAmendmentLinks(options: {
     billsScanned: targets.length,
     billsLinked,
     votesLabelled: updates.length,
+    amendmentTextsFetched,
     unmatchedBills: unmatchedBills.slice(0, 25),
     at: new Date().toISOString(),
   };
