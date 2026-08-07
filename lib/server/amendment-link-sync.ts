@@ -16,6 +16,10 @@ import type { VoteRow } from "@/types/supabase";
  * a latest action naming the roll call, so a single call labels a bill's whole slate.
  */
 
+function describeError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** Only these motions are on an amendment; passage and recommit are not, and must not be relabelled. */
 const AMENDMENT_QUESTION = /agreeing to the amendment/i;
 
@@ -149,6 +153,14 @@ export interface AmendmentLinkSyncResult {
   billsLinked: number;
   votesLabelled: number;
   amendmentTextsFetched: number;
+  /** Why text was not stored, per amendment. Senate bills have no Rules page, which is expected. */
+  textFailures: {
+    noRulesPage: number;
+    noMatchingRow: number;
+    emptyExtraction: number;
+    extractionError: number;
+  };
+  firstTextError: string | null;
   unmatchedBills: string[];
   at: string;
 }
@@ -165,6 +177,10 @@ export async function syncAmendmentLinks(options: {
   const unmatchedBills: string[] = [];
   let billsLinked = 0;
   let amendmentTextsFetched = 0;
+  // Broken down by cause: "no text" has four very different explanations and they need telling
+  // apart from the sync log rather than by re-running things by hand.
+  const textFailures = { noRulesPage: 0, noMatchingRow: 0, emptyExtraction: 0, extractionError: 0 };
+  let firstTextError: string | null = null;
 
   for (const target of targets) {
     const parsed = parseFederalBillId(target.billId, options.congress);
@@ -187,9 +203,16 @@ export async function syncAmendmentLinks(options: {
      * listing every amendment submitted to the measure -- 1,007 rows for H.R. 8800 -- and each
      * amendment's PDF link is in it. Only the PDFs are per-amendment.
      */
-    const rulesRows = options.withText
-      ? await fetchRulesAmendments(parsed).catch(() => [])
-      : [];
+    let rulesRows: Awaited<ReturnType<typeof fetchRulesAmendments>> = [];
+    if (options.withText) {
+      try {
+        rulesRows = await fetchRulesAmendments(parsed);
+      } catch (error) {
+        // Senate bills have no Rules Committee page at all, so an empty result is normal there and
+        // must not read as a fault. A thrown error is different and is worth surfacing.
+        if (!firstTextError) firstTextError = describeError(error).slice(0, 200);
+      }
+    }
 
     for (const vote of target.votes) {
       // votes.source_id is "roll-276" for the House feed; that number is the join.
@@ -200,14 +223,35 @@ export async function syncAmendmentLinks(options: {
       let amendmentText: string | null = vote.amendment_text ?? null;
       let amendmentTextUrl: string | null = vote.amendment_text_url ?? null;
 
-      if (options.withText && !amendmentText && rulesRows.length > 0) {
-        // Matched on sponsor plus summary overlap: the Rules row and congress.gov state the same
-        // amendment in the same words, but neither carries the other's identifier.
-        const row = matchRulesRow(rulesRows, { sponsor: link.sponsor, summary: link.description });
-        if (row) {
-          amendmentText = await fetchAmendmentPdfText(row.pdfUrl).catch(() => null);
-          amendmentTextUrl = amendmentText ? row.pdfUrl : null;
-          if (amendmentText) amendmentTextsFetched += 1;
+      if (options.withText && !amendmentText) {
+        if (rulesRows.length === 0) {
+          textFailures.noRulesPage += 1;
+        } else {
+          // Matched on sponsor plus summary overlap: the Rules row and congress.gov state the same
+          // amendment in the same words, but neither carries the other's identifier.
+          const row = matchRulesRow(rulesRows, { sponsor: link.sponsor, summary: link.description });
+          if (!row) {
+            textFailures.noMatchingRow += 1;
+          } else {
+            /*
+             * Errors are recorded, not swallowed. Both of these calls used to `.catch(() => null)`,
+             * so a failure was indistinguishable from an amendment that simply has no text -- which
+             * is why 66 linked amendments sat with no text and no way to tell whether the scrape,
+             * the match or pdf.js was at fault.
+             */
+            try {
+              amendmentText = await fetchAmendmentPdfText(row.pdfUrl);
+              if (amendmentText) {
+                amendmentTextUrl = row.pdfUrl;
+                amendmentTextsFetched += 1;
+              } else {
+                textFailures.emptyExtraction += 1;
+              }
+            } catch (error) {
+              textFailures.extractionError += 1;
+              if (!firstTextError) firstTextError = describeError(error).slice(0, 200);
+            }
+          }
         }
       }
 
@@ -238,6 +282,8 @@ export async function syncAmendmentLinks(options: {
     billsLinked,
     votesLabelled: updates.length,
     amendmentTextsFetched,
+    textFailures,
+    firstTextError,
     unmatchedBills: unmatchedBills.slice(0, 25),
     at: new Date().toISOString(),
   };
