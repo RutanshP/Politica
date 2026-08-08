@@ -91,3 +91,19 @@ test("a state with no governor in the source yields no rows rather than a wrong 
 
   assert.deepEqual(rows, []);
 });
+
+test("a governor stores a two-letter state code, not the state's name", () => {
+  /*
+   * The state directory filters state_code=eq.TX. Storing "Texas" made every governor unreachable
+   * through the UI -- present in the table, matching nothing.
+   */
+  const [row] = buildGovernorRows("tx", [{ name: "Greg Abbott", current_role: { title: "Governor" } }]);
+  assert.equal(row.state_code, "TX");
+  assert.equal(row.state, "Texas");
+});
+
+test("the President and Vice President carry no state code", () => {
+  // National offices; a state filter must never match them.
+  const rows = buildFederalExecutiveRows([VANCE], "2026-08-08");
+  assert.equal(rows[0].state_code, null);
+});

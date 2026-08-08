@@ -7,7 +7,7 @@ import {
   type ExecutiveTerm,
 } from "@/lib/adapters/executive";
 import { upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
-import { normalizeStateLabel, slugifySegment } from "@/lib/utils";
+import { normalizeStateCode, normalizeStateLabel, slugifySegment } from "@/lib/utils";
 import type { PoliticianRow } from "@/types/supabase";
 
 /**
@@ -40,6 +40,15 @@ function buildExecutiveRow(input: {
   party: string;
   state: string;
   jurisdictionType: "federal" | "state";
+  /**
+   * Two-letter code, or null for the two national offices.
+   *
+   * Must be the code, not the label. The state directory filters `state_code=eq.TX`, so storing
+   * "Texas" here made every governor unreachable through the UI -- they were in the table and
+   * matched nothing. mapPoliticianToRow uses normalizeStateCode for exactly this reason; this
+   * reached for normalizeStateLabel and got a display string.
+   */
+  stateCode: string | null;
   biography: string;
   website: string;
   sourceSystem: string;
@@ -73,7 +82,7 @@ function buildExecutiveRow(input: {
     source_system: input.sourceSystem,
     source_id: input.sourceId,
     jurisdiction_type: input.jurisdictionType,
-    state_code: normalizeStateLabel(input.state) || input.state || null,
+    state_code: input.stateCode,
     session_id: null,
     branch: "executive",
     source_updated_at: null,
@@ -104,6 +113,8 @@ export function buildFederalExecutiveRows(records: ExecutiveRecord[], today?: st
       title: office,
       party: term.party || "Unknown",
       state: "United States",
+      // National office: no state, so nothing should match a state filter.
+      stateCode: null,
       jurisdictionType: "federal",
       biography: `${office} of the United States since ${term.start || "an unrecorded date"}.`,
       website: office === "President" ? "https://www.whitehouse.gov" : "https://www.whitehouse.gov",
@@ -143,6 +154,7 @@ export function buildGovernorRows(state: string, people: OpenStatesExecutive[]):
       title: "Governor",
       party: person.party || "Unknown",
       state: stateLabel,
+      stateCode: normalizeStateCode(stateLabel) || state.toUpperCase(),
       jurisdictionType: "state",
       biography: `Governor of ${stateLabel}.`,
       website: person.links?.[0]?.url || person.openstates_url || "Not stated",
