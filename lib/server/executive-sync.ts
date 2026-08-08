@@ -170,7 +170,10 @@ export interface ExecutiveSyncResult {
   presidentsSynced: number;
   governorsSynced: number;
   statesScanned: number;
+  /** Queried successfully, but the source lists no governor -- a real gap in OpenStates. */
   statesWithoutGovernor: string[];
+  /** The request itself failed. Retryable, and not evidence of anything about the state. */
+  statesFailed: Array<{ state: string; reason: string }>;
   at: string;
 }
 
@@ -192,16 +195,30 @@ export async function syncExecutiveBranch(options?: {
 
   const states = options?.states ?? [];
   const statesWithoutGovernor: string[] = [];
+  const statesFailed: ExecutiveSyncResult["statesFailed"] = [];
   let governorsSynced = 0;
 
   if (states.length > 0 && isOpenStatesConfigured()) {
     for (const state of states) {
-      const people = await fetchOpenStatesExecutives(state).catch(() => []);
-      const governors = buildGovernorRows(state, people as OpenStatesExecutive[]);
+      /*
+       * A failed request and a state with no governor are different facts and must not be reported
+       * as one. Swallowing the error made NH, NJ and UT -- which returned 502/504 -- look identical
+       * to California, which genuinely lists only a lieutenant governor, attorney general and
+       * secretary of state. One is retryable; the other is the source's own gap.
+       */
+      let people: OpenStatesExecutive[];
+      try {
+        people = (await fetchOpenStatesExecutives(state)) as OpenStatesExecutive[];
+      } catch (error) {
+        statesFailed.push({
+          state,
+          reason: (error instanceof Error ? error.message : String(error)).slice(0, 160),
+        });
+        continue;
+      }
 
+      const governors = buildGovernorRows(state, people);
       if (governors.length === 0) {
-        // California is a known example: OpenStates returns its lieutenant governor, attorney
-        // general and secretary of state but not the governor. A gap in the source, not a failure.
         statesWithoutGovernor.push(state);
         continue;
       }
@@ -220,6 +237,7 @@ export async function syncExecutiveBranch(options?: {
     governorsSynced,
     statesScanned: states.length,
     statesWithoutGovernor,
+    statesFailed,
     at: new Date().toISOString(),
   };
 }

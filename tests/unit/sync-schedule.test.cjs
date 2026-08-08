@@ -58,6 +58,26 @@ test("no scheduler writes state data", () => {
   }
 });
 
+test("the governor rotation covers all fifty states exactly once", () => {
+  /*
+   * Governors are split across seven day-of-week buckets because OpenStates throttles to 10
+   * requests a minute. A state missing from every bucket would simply never refresh, and one in
+   * two buckets wastes a slot -- neither would raise anything at runtime.
+   */
+  const workflow = fs.readFileSync(WORKFLOW, "utf8");
+  const buckets = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => {
+    const value = new RegExp(`GOV_${day}:\\s*"([^"]+)"`).exec(workflow)?.[1];
+    assert.ok(value, `GOV_${day} should be set in the workflow`);
+    return value.split(",").map((code) => code.trim()).filter(Boolean);
+  });
+
+  const all = buckets.flat();
+  const unique = new Set(all);
+
+  assert.equal(all.length, 50, `expected 50 state slots, saw ${all.length}`);
+  assert.equal(unique.size, 50, "a state appears in more than one bucket");
+});
+
 test("the amendment sync stays within its request budget", () => {
   /*
    * With text extraction on, one bill costs a congress.gov call, a ~900KB Rules Committee page and

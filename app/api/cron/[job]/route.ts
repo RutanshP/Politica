@@ -38,6 +38,13 @@ const JOBS: Record<string, string[]> = {
     // so like the refresh above it advances without a cursor. Runs after it: this only considers
     // votes whose question says they were on an amendment.
     "/api/internal/sync/bill-amendments?limit=4",
+    /*
+     * President and Vice President only -- one static file, one request. Governors are omitted
+     * here because OpenStates throttles to 10 requests a minute and all fifty would blow this
+     * job's budget; the GitHub workflow, which is the schedule actually in use, walks a seventh of
+     * the states each night instead.
+     */
+    "/api/internal/sync/executive",
   ],
   // Weekly-ish deeper refresh.
   finance: ["/api/internal/sync/finance"],

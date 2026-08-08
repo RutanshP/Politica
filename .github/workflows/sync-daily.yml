@@ -67,6 +67,18 @@ jobs:
       # the backlog, since it only ever picks bills that still need labelling.
       AMENDMENT_CHUNKS: ${{ github.event.inputs.amendment_chunks || '4' }}
       AMENDMENT_LIMIT: "4"
+      # Governors, one seventh of the states per night. OpenStates throttles to 10 requests a
+      # minute, so all fifty in one call is five minutes against a 300s route budget. Splitting by
+      # day of week needs no cursor and refreshes every state weekly, which is far more often than
+      # governors change. The President and Vice President come from a single static file and run
+      # every night alongside.
+      GOV_MON: "al,ak,az,ar,ca,co,ct"
+      GOV_TUE: "de,fl,ga,hi,id,il,in"
+      GOV_WED: "ia,ks,ky,la,me,md,ma"
+      GOV_THU: "mi,mn,ms,mo,mt,ne,nv"
+      GOV_FRI: "nh,nj,nm,ny,nc,nd,oh"
+      GOV_SAT: "ok,or,pa,ri,sc,sd,tn"
+      GOV_SUN: "tx,ut,vt,va,wa,wv,wi,wy"
     steps:
       - name: Check secrets
         run: |
@@ -121,6 +133,19 @@ jobs:
             post "/api/internal/sync/bill-amendments?limit=$AMENDMENT_LIMIT"
             i=$((i + 1))
           done
+
+          echo "== Executive branch (President, VP + one seventh of the governors) =="
+          case "$(date -u +%u)" in
+            1) GOV_STATES="$GOV_MON" ;;
+            2) GOV_STATES="$GOV_TUE" ;;
+            3) GOV_STATES="$GOV_WED" ;;
+            4) GOV_STATES="$GOV_THU" ;;
+            5) GOV_STATES="$GOV_FRI" ;;
+            6) GOV_STATES="$GOV_SAT" ;;
+            *) GOV_STATES="$GOV_SUN" ;;
+          esac
+          echo "   states today: $GOV_STATES"
+          post "/api/internal/sync/executive?states=$GOV_STATES"
 
           echo "== FEC funding rotation ($FEC_CHUNKS x limit=$FEC_LIMIT) =="
           i=1
