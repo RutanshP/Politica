@@ -51,6 +51,13 @@ export interface PoliticianRow {
   jurisdiction_type?: "federal" | "state";
   state_code?: string | null;
   session_id?: string | null;
+  /**
+   * "legislative" (Congress) or "executive" (President, Vice President, governors).
+   *
+   * Separate from jurisdiction_type, which cannot express it: a governor is state-executive and
+   * the President is federal-executive.
+   */
+  branch?: "legislative" | "executive";
   source_updated_at?: string | null;
   source_fingerprint?: string | null;
   last_profile_synced_at?: string | null;

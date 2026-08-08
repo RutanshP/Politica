@@ -177,6 +177,25 @@ export async function fetchOpenStatesPeople(state?: string) {
   });
 }
 
+/**
+ * A state's executive officers -- governor, lieutenant governor, attorney general, secretary of
+ * state.
+ *
+ * Separate from fetchOpenStatesPeople because the default people query returns the legislature,
+ * which this deployment no longer stores. Filtering by org_classification keeps a governors sync
+ * from dragging 123 California legislators back in with it.
+ *
+ * Coverage is good but not complete: of six states sampled, five returned their governor and
+ * California returned only its lieutenant governor, attorney general and secretary of state. Treat
+ * a missing governor as a gap in the source, not a bug here.
+ */
+export async function fetchOpenStatesExecutives(state?: string) {
+  return fetchOpenStatesPaginatedResults<OpenStatesPerson>("/people", state, {
+    org_classification: "executive",
+    include: ["links", "offices"],
+  });
+}
+
 export async function fetchOpenStatesBills(state?: string) {
   return fetchOpenStatesPaginatedResults<OpenStatesBill>("/bills", state, {
     sort: "updated_desc",
