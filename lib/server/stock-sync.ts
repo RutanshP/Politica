@@ -12,7 +12,7 @@ import {
 } from "@/lib/adapters/senate-efd";
 import { buildFilerIndex, matchFiler, type MatchableMember } from "@/lib/stock-filer-match";
 import type { DisclosedTransaction } from "@/lib/stock-disclosures";
-import { fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
+import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 
 /**
  * Loads congressional stock disclosures into `stock_filings` and `stock_transactions`.
@@ -129,6 +129,23 @@ async function writeTransactions(rows: TransactionRow[]) {
   await upsertSupabaseRowsInChunks("stock_transactions", rows, "id", 200);
 }
 
+/**
+ * Clears the transactions of every filing this run touched, before rewriting them.
+ *
+ * Upserting alone is not enough, because a re-run can legitimately produce a *different* set of rows
+ * for the same filing. Two ways that happens, both of which occurred here: a parser fix changes how
+ * many transactions a document yields, leaving orphans at the higher indices; and a matcher fix
+ * turns a wrongly-attributed filing into an unmatched one, which writes no transactions at all and
+ * would otherwise leave the bad attribution in place forever.
+ */
+async function clearFilingTransactions(filingIds: string[]) {
+  for (let index = 0; index < filingIds.length; index += 50) {
+    const chunk = filingIds.slice(index, index + 50);
+    const filter = chunk.map((id) => `"${id.replace(/"/g, '\\"')}"`).join(",");
+    await deleteSupabaseRows("stock_transactions", `filing_id=in.(${filter})`);
+  }
+}
+
 function toTransactionRows(input: {
   filingId: string;
   chamber: "house" | "senate";
@@ -236,6 +253,7 @@ export async function syncHouseStockYear(input: {
 
   if (!input.dryRun) {
     await writeFilings(filingRows);
+    await clearFilingTransactions(filingRows.map((row) => row.id));
     await writeTransactions(transactionRows);
   }
 
@@ -341,6 +359,7 @@ export async function syncSenateStocks(input: {
 
   if (!input.dryRun) {
     await writeFilings(filingRows);
+    await clearFilingTransactions(filingRows.map((row) => row.id));
     await writeTransactions(transactionRows);
   }
 

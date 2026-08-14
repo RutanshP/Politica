@@ -225,6 +225,23 @@ test("chamber is a tiebreaker, never a filter", () => {
   );
 });
 
+test("a departed member's filings are not handed to the surname they share", () => {
+  // Jeff Sessions left the Senate in 2017 and is not on the roster. His filings found the only
+  // stored Sessions -- Pete, a sitting representative -- and 20 of his trades were attributed to a
+  // man who never made them. A surname alone must not be enough when the given name disagrees.
+  const index = buildFilerIndex([{ id: "S000250", name: "Pete Sessions", state: "TX", chamber: "house" }]);
+  assert.equal(matchFiler(index, { first: "Jefferson B", last: "Sessions", chamber: "senate" }), null);
+});
+
+test("a lone surname still matches when a signal corroborates it", () => {
+  const index = buildFilerIndex([{ id: "S000250", name: "Pete Sessions", state: "TX", chamber: "house" }]);
+  // Same chamber and state: this really is him, filed under a fuller name.
+  assert.equal(
+    matchFiler(index, { first: "Peter A", last: "Sessions", stateDistrict: "TX17", chamber: "house" })?.id,
+    "S000250",
+  );
+});
+
 test("a roster name carrying a state still indexes under its surname", () => {
   // Some rows are stored as "Greene (GA)". Stripping only the brackets leaves "greene ga", whose
   // last word is the state -- which filed those members under "ga" and made them unmatchable.

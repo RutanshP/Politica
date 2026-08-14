@@ -199,14 +199,21 @@ export function matchFiler(
 
   if (byGivenName.length === 1) return byGivenName[0];
 
-  // No given name agreed. The surname alone settles it when only one member has it; otherwise fall
-  // through to the tiebreakers, because this is exactly the case where the filing uses a legal name
-  // the roster does not carry -- "Rafael E Cruz" for Ted Cruz.
-  const pool = byGivenName.length > 0 ? byGivenName : candidates;
-  if (pool.length === 1) return pool[0];
+  if (byGivenName.length > 1) {
+    const narrowed = narrow(byGivenName, identity);
+    return narrowed.length === 1 ? narrowed[0] : null;
+  }
 
-  const narrowed = narrow(pool, identity);
-  return narrowed.length === 1 ? narrowed[0] : null;
+  /*
+   * No given name agreed, which happens when a filing uses a legal name the roster does not carry
+   * ("Rafael E Cruz" for Ted Cruz). A surname on its own is NOT enough here: Jeff Sessions left the
+   * Senate in 2017 and is not on the roster, so his filings found the only stored Sessions -- Pete,
+   * a sitting representative -- and 20 of his trades were attributed to a man who never made them.
+   * Accepting a lone surname while the given name actively disagrees is how that happens, so a
+   * corroborating signal is required.
+   */
+  const corroborated = narrow(candidates, identity, { require: true });
+  return corroborated.length === 1 ? corroborated[0] : null;
 }
 
 /**
@@ -215,20 +222,38 @@ export function matchFiler(
  * Chamber separates people that state cannot: Ted Cruz and Monica De La Cruz share a surname and a
  * state, and only one of them sits in the chamber the filing came from.
  */
-function narrow(candidates: MatchableMember[], identity: FilerIdentity) {
+function narrow(
+  candidates: MatchableMember[],
+  identity: FilerIdentity,
+  options?: {
+    /**
+     * Demand that a signal actually agreed, rather than accepting whatever survives. Used when no
+     * given name matched, where returning the pool unchanged would accept a lone surname.
+     */
+    require?: boolean;
+  },
+) {
   let pool = candidates;
+  let corroborated = false;
 
   const state = stateFromDistrict(identity.stateDistrict);
   if (state) {
     const byState = pool.filter((candidate) => (candidate.state || "").toUpperCase() === state);
     if (byState.length === 1) return byState;
-    if (byState.length > 1) pool = byState;
+    if (byState.length > 1) {
+      pool = byState;
+      corroborated = true;
+    }
   }
 
   if (identity.chamber) {
     const byChamber = pool.filter((candidate) => candidate.chamber === identity.chamber);
     if (byChamber.length === 1) return byChamber;
+    if (byChamber.length > 1) {
+      pool = byChamber;
+      corroborated = true;
+    }
   }
 
-  return pool;
+  return options?.require && !corroborated ? [] : pool;
 }
