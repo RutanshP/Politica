@@ -66,7 +66,7 @@ export default async function PoliticianTradingPage({
           />
         }
       />
-      <PoliticianTabs slug={politician.slug} active="trading" />
+      <PoliticianTabs slug={politician.slug} active="trading" title={politician.title} />
 
       {totalTrades === 0 ? (
         <EmptyState
@@ -74,7 +74,11 @@ export default async function PoliticianTradingPage({
           description={
             trading.coverage.total > 0
               ? `${trading.coverage.total} filing${trading.coverage.total === 1 ? "" : "s"} were found for this member, but none could be read — they are scans of paper rather than electronic filings. This is not evidence that no trades occurred.`
-              : "No periodic transaction reports have been filed by this member. Members only file when a transaction exceeds $1,000, so this may mean no reportable trades rather than no holdings."
+              : /senator|representative|delegate|commissioner/i.test(politician.title || "")
+                ? "No periodic transaction reports have been filed by this member. Members only file when a transaction exceeds $1,000, so this may mean no reportable trades rather than no holdings."
+                : // Only members of Congress file these. Telling a governor that none were filed
+                  // would read as "they made no trades" rather than "this regime does not cover them".
+                  "Periodic transaction reports are filed by members of Congress. This office discloses under a different regime, which this page does not cover."
           }
         />
       ) : (

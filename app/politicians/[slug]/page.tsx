@@ -228,6 +228,7 @@ export default async function PoliticianProfilePage({
       <PoliticianTabs
         slug={politician.slug}
         active="overview"
+        title={politician.title}
         counts={{
           bills: sponsoredBills.length || undefined,
           votes: politician.stats.totalVotes || undefined,
