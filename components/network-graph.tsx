@@ -30,6 +30,35 @@ const nodeColor: Record<FundingNode["type"], string> = {
 
 const EDGE_STROKE = "#5c6780";
 
+/**
+ * Amounts here span six orders of magnitude -- a $2,900 individual contribution beside a $14M
+ * independent expenditure. A linear scale (the previous `amount / 250000`) pinned everything above
+ * $2M to the maximum and squashed everything below it to the minimum, so the drawing carried no
+ * information about size at all. Log scale keeps both ends legible.
+ */
+function edgeWidth(amount: number) {
+  if (!amount || amount <= 0) return 1;
+  return Math.max(1, Math.min(Math.log10(amount) - 2, 9));
+}
+
+/**
+ * Support and opposition are the most informative distinction in this data and were drawn
+ * identically. They are separate relationship types upstream, so the colour is free.
+ */
+function edgeColor(label: string) {
+  if (/oppose/i.test(label)) return "#f87171";
+  if (/support/i.test(label)) return "#34d399";
+  if (/retained/i.test(label)) return "#fbbf24";
+  return EDGE_STROKE;
+}
+
+function formatAmount(amount: number) {
+  if (!amount) return "No amount recorded";
+  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `$${Math.round(amount / 1_000)}k`;
+  return `$${amount.toLocaleString()}`;
+}
+
 export function NetworkGraph({
   nodes,
   edges,
@@ -136,21 +165,25 @@ export function NetworkGraph({
     },
   }));
 
-  const flowEdges = normalizedEdges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    label: edge.label,
-    markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_STROKE },
-    style: {
-      strokeWidth: Math.max(2, Math.min(edge.amount / 250000, 8)),
-      stroke: EDGE_STROKE,
-    },
-    labelStyle: { fill: "#8b95ad", fontSize: 11, fontWeight: 600 },
-    labelBgStyle: { fill: "#111726" },
-  }));
+  const flowEdges = normalizedEdges.map((edge) => {
+    const stroke = edgeColor(edge.label);
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      label: edge.label,
+      markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
+      style: { strokeWidth: edgeWidth(edge.amount), stroke },
+      labelStyle: { fill: "#8b95ad", fontSize: 11, fontWeight: 600 },
+      labelBgStyle: { fill: "#111726" },
+    };
+  });
 
   const selectedEdge = normalizedEdges.find((edge) => edge.id === selectedEdgeId);
+  const nodeLabelById = useMemo(
+    () => new Map(normalizedNodes.map((node) => [node.id, node.label])),
+    [normalizedNodes],
+  );
 
   return (
     <div className="relative h-[520px] overflow-hidden rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--canvas)]">
@@ -176,10 +209,14 @@ export function NetworkGraph({
       </ReactFlow>
       {selectedEdge ? (
         <div className="pointer-events-none absolute bottom-4 right-4 max-w-xs rounded-[var(--r-md)] border border-[var(--line-2)] bg-[var(--panel-2)] px-3.5 py-2.5 text-xs text-[var(--muted)]">
-          <p className="font-semibold text-[var(--ink)]">Relationship detail</p>
+          {/* Names and the amount, not raw entity ids -- the ids meant nothing to a reader. */}
+          <p className="font-semibold text-[var(--ink)]">{formatAmount(selectedEdge.amount)}</p>
           <p className="mt-1">
-            {selectedEdge.source} - {selectedEdge.label} - {selectedEdge.target}
+            {nodeLabelById.get(selectedEdge.source) || selectedEdge.source}
+            {" → "}
+            {nodeLabelById.get(selectedEdge.target) || selectedEdge.target}
           </p>
+          <p className="mt-1 text-[var(--faint)]">{selectedEdge.label}</p>
         </div>
       ) : null}
     </div>
