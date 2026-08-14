@@ -124,9 +124,20 @@ function isAmendmentVote(vote: LinkableVote) {
  * through the backlog -- the same reason listStoredFederalVoteHeadersPage orders nulls-first.
  */
 export async function listBillsNeedingAmendmentLinks(limit: number) {
+  /*
+   * Two kinds of work, not one. Selecting only `amendment_number is null` meant a bill was never
+   * revisited once linked -- so the 66 amendments linked before text extraction shipped could
+   * never acquire it, and the sync reported billsScanned: 0 while sitting on a backlog.
+   *
+   * `amendment_text is null` picks those up. Senate bills are excluded from the text half because
+   * the Rules Committee only publishes House amendments; retrying them nightly would burn the
+   * budget on something that cannot succeed.
+   */
   const rows = await fetchSupabaseRows<LinkableVote>(
     "votes",
-    "source_system=in.(house_clerk,senate_lis)&amendment_number=is.null&bill_id=not.is.null&order=bill_id.asc,id.asc",
+    "source_system=in.(house_clerk,senate_lis)&bill_id=not.is.null"
+      + "&or=(amendment_number.is.null,and(amendment_text.is.null,bill_id.like.hr-*))"
+      + "&order=bill_id.asc,id.asc",
     { cache: "no-store", paginateAll: true, paginateTiebreaker: null, select: LINKABLE_VOTE_SELECT },
   );
 
