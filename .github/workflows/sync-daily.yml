@@ -23,6 +23,14 @@ on:
         description: "Amendment-link chunks this run (10 bills each). 20 clears a full backlog."
         required: false
         default: ""
+      stock_limit:
+        description: "Stock filings per chamber this run. Raise to catch up after an outage."
+        required: false
+        default: ""
+      stock_price_symbols:
+        description: "Symbols to price this run. Bounded by the provider's ~8/min rate limit."
+        required: false
+        default: ""
 
 concurrency:
   group: politica-sync
@@ -79,6 +87,13 @@ jobs:
       GOV_FRI: "nh,nj,nm,ny,nc,nd,oh"
       GOV_SAT: "ok,or,pa,ri,sc,sd,tn"
       GOV_SUN: "tx,ut,vt,va,wa,wv,wi,wy"
+      # Stock disclosures for the current year. Each readable House filing costs one PDF fetch and
+      # extraction; the Senate half is HTML and cheaper. 150 covers a night's new filings several
+      # times over -- both chambers together file roughly 900 transaction reports a year.
+      STOCK_LIMIT: ${{ github.event.inputs.stock_limit || '150' }}
+      # Symbols to price per night. The free tiers allow ~8 lookups a minute, so 25 is about three
+      # minutes inside the route's 300s budget.
+      STOCK_PRICE_SYMBOLS: ${{ github.event.inputs.stock_price_symbols || '25' }}
     steps:
       - name: Check secrets
         run: |
@@ -146,6 +161,19 @@ jobs:
           esac
           echo "   states today: $GOV_STATES"
           post "/api/internal/sync/executive?states=$GOV_STATES"
+
+          echo "== Stock disclosures (current year, both chambers) =="
+          # Members file within 45 days of a trade, so only the current year moves. Prior years are
+          # backfilled once by hand with ?year=; re-fetching them nightly would be several thousand
+          # PDF requests for documents that never change.
+          post "/api/internal/sync/stock-disclosures?chamber=both&limit=$STOCK_LIMIT"
+
+          echo "== Stock performance ($STOCK_PRICE_SYMBOLS symbols) =="
+          # Bounded by the price provider's rate limit rather than by document count: roughly eight
+          # symbols a minute on a free tier, so this walks the backlog a slice per night. Answers 200
+          # with configured:false when no key is set, which is not a failure -- the disclosures are
+          # complete without it and only the performance columns stay empty.
+          post "/api/internal/sync/stock-performance?limit=$STOCK_PRICE_SYMBOLS"
 
           echo "== FEC funding rotation ($FEC_CHUNKS x limit=$FEC_LIMIT) =="
           i=1

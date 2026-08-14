@@ -46,6 +46,17 @@ const JOBS: Record<string, string[]> = {
      */
     "/api/internal/sync/executive",
   ],
+  /*
+   * Stock disclosures for the current year, plus a slice of price scoring. Only the current year
+   * moves -- members file within 45 days of a trade -- so prior years are backfilled once by hand
+   * with ?year= rather than re-fetched nightly. The performance call is bounded by the price
+   * provider's rate limit (~8 symbols a minute), not by document count, and returns
+   * configured:false rather than failing when no key is set.
+   */
+  stocks: [
+    "/api/internal/sync/stock-disclosures?chamber=both&limit=150",
+    "/api/internal/sync/stock-performance?limit=25",
+  ],
   // Weekly-ish deeper refresh.
   finance: ["/api/internal/sync/finance"],
   committees: ["/api/internal/sync/legislation?offset=0&limit=25&syncCommittees=true"],

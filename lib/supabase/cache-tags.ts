@@ -16,6 +16,7 @@ export const FUNDING_GRAPH_CACHE_TAG = "politica:funding-graph";
 export const SEARCH_CACHE_TAG = "politica:search";
 export const SYNC_CACHE_TAG = "politica:sync";
 export const ELECTIONS_CACHE_TAG = "politica:elections";
+export const STOCKS_CACHE_TAG = "politica:stocks";
 
 export const ALL_CACHE_TAGS = [
   BILLS_CACHE_TAG,
@@ -28,4 +29,5 @@ export const ALL_CACHE_TAGS = [
   SEARCH_CACHE_TAG,
   SYNC_CACHE_TAG,
   ELECTIONS_CACHE_TAG,
+  STOCKS_CACHE_TAG,
 ];
