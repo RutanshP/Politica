@@ -11,7 +11,7 @@ import {
   type SenateFilingRow,
 } from "@/lib/adapters/senate-efd";
 import { buildFilerIndex, matchFiler, type MatchableMember } from "@/lib/stock-filer-match";
-import type { DisclosedTransaction } from "@/lib/stock-disclosures";
+import type { DisclosedTransaction, HouseIndexRow } from "@/lib/stock-disclosures";
 import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 
 /**
@@ -177,6 +177,24 @@ function toTransactionRows(input: {
 }
 
 /**
+ * Filings newest first, so a bounded run takes the most recent rather than the alphabetically first.
+ *
+ * The Clerk's index is ordered by surname. Slicing it directly meant the nightly `limit=150` only
+ * ever reached Alford through Hoyle -- around 200 of the year's 351 transaction reports, everyone
+ * from Hoyle to Yakym, would never have been picked up no matter how long the schedule ran. The
+ * Senate search already returns newest first, which is why only this half was affected.
+ *
+ * The DocID is the tiebreaker: it ascends with filing order, so filings sharing a date stay in a
+ * stable sequence instead of being reordered on every run.
+ */
+export function newestFirst(filings: HouseIndexRow[]) {
+  return [...filings].sort((left, right) => {
+    const byDate = (right.filingDate || "").localeCompare(left.filingDate || "");
+    return byDate !== 0 ? byDate : right.docId.localeCompare(left.docId);
+  });
+}
+
+/**
  * House filings for one year.
  *
  * Scans are settled from the DocID before any download, so a year of filings costs one request per
@@ -192,7 +210,7 @@ export async function syncHouseStockYear(input: {
   const members = input.members ?? (await loadMatchableMembers());
   const index = buildFilerIndex(members);
 
-  const filings = transactionReportRows(await fetchHouseFilingIndex(input.year));
+  const filings = newestFirst(transactionReportRows(await fetchHouseFilingIndex(input.year)));
   const selected = input.limit ? filings.slice(0, input.limit) : filings;
   result.filingsSeen = selected.length;
 
