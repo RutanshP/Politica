@@ -83,8 +83,18 @@ async function fetchTwelveData(symbol: string, key: string): Promise<PricePoint[
   url.searchParams.set("apikey", key);
 
   const response = await fetch(url, { cache: "no-store" });
-  // 404 is the provider saying it does not carry this symbol at all -- permanent, not transient.
-  if (response.status === 404) throw new SymbolNotFoundError(`${symbol} not carried by Twelve Data`);
+
+  // 404 (not carried) and 400 (rejected as a symbol) are both permanent for this ticker. SUP came
+  // back 400 in all five batches of a run and would have kept doing so nightly.
+  if (response.status === 404 || response.status === 400) {
+    throw new SymbolNotFoundError(`${symbol}: Twelve Data HTTP ${response.status}`);
+  }
+
+  // 429 is the rate limit. It must say so in words the caller matches on, or the run keeps walking
+  // the remaining symbols at eight a minute while every one of them fails -- which cost ~19 minutes
+  // of a backfill hammering an API that had already cut it off.
+  if (response.status === 429) throw new PriceProviderError(`Twelve Data rate limit reached (HTTP 429)`);
+
   if (!response.ok) throw new PriceProviderError(`Twelve Data HTTP ${response.status}`);
 
   const payload = (await response.json()) as {

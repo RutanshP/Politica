@@ -209,9 +209,11 @@ export async function syncStockPerformance(input?: {
       }
 
       result.errors.push(`${ticker}: ${message}`);
-      // A quota error will hit every remaining symbol identically, so stop rather than burn the
-      // rest of the run recording the same failure.
-      if (error instanceof PriceProviderError && /limit|quota|frequency/i.test(message)) break;
+      // A quota or rate-limit error will hit every remaining symbol identically, so stop rather
+      // than burn the rest of the run recording the same failure. 429 is matched explicitly: it is
+      // how both providers signal the limit, and missing it left a run walking 150 symbols at eight
+      // a minute against an API that had already cut it off.
+      if (error instanceof PriceProviderError && /limit|quota|frequency|429|too many/i.test(message)) break;
       await sleep(delay);
       continue;
     }
