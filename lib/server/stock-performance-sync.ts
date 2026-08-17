@@ -1,5 +1,6 @@
 import {
   PriceProviderError,
+  SymbolNotFoundError,
   fetchDailyCloses,
   isPriceProviderConfigured,
   providerRateLimitPerMinute,
@@ -90,6 +91,18 @@ function priceRows(ticker: string, points: PricePoint[]): PriceRow[] {
   return points.map((point) => ({ ticker, price_date: point.date, close: point.close }));
 }
 
+/** Records that a symbol has no series, so later runs skip it instead of paying for another 404. */
+async function markUnpriceable(ticker: string, detail: string) {
+  await upsertSupabaseRowsInChunks(
+    "stock_ticker_status",
+    [{ ticker, status: "unpriceable", detail: detail.slice(0, 300), checked_at: new Date().toISOString() }],
+    "ticker",
+    1,
+  ).catch(() => {
+    // Best effort. Failing to record it costs a retry next run, not correctness.
+  });
+}
+
 /**
  * Computes and stores returns for trades that do not have them yet.
  *
@@ -133,9 +146,22 @@ export async function syncStockPerformance(input?: {
     ).map((row) => row.transaction_id),
   );
 
+  // Symbols already known to have no series. Re-asking spends quota on a guaranteed 404.
+  const unpriceable = new Set(
+    (
+      await fetchSupabaseRows<{ ticker: string }>("stock_ticker_status", "status=eq.unpriceable&order=ticker.asc", {
+        select: "ticker",
+        cache: "no-store",
+        paginateAll: true,
+        paginateTiebreaker: null,
+      }).catch(() => [] as Array<{ ticker: string }>)
+    ).map((row) => row.ticker),
+  );
+
   const pendingByTicker = new Map<string, TransactionRow[]>();
   for (const transaction of transactions) {
     if (scored.has(transaction.id)) continue;
+    if (unpriceable.has(transaction.ticker)) continue;
     pendingByTicker.set(transaction.ticker, [...(pendingByTicker.get(transaction.ticker) ?? []), transaction]);
   }
 
@@ -173,6 +199,15 @@ export async function syncStockPerformance(input?: {
       series = await fetchDailyCloses(ticker);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+
+      // The provider does not carry this symbol. Recorded so no future run asks again.
+      if (error instanceof SymbolNotFoundError) {
+        result.skipped.push(ticker);
+        if (!input?.dryRun) await markUnpriceable(ticker, message);
+        await sleep(delay);
+        continue;
+      }
+
       result.errors.push(`${ticker}: ${message}`);
       // A quota error will hit every remaining symbol identically, so stop rather than burn the
       // rest of the run recording the same failure.
@@ -185,6 +220,7 @@ export async function syncStockPerformance(input?: {
       // Not an error: plenty of disclosed assets are bonds, funds or private holdings with no
       // market price. The UI reports these as unscored rather than as a zero return.
       result.skipped.push(ticker);
+      if (!input?.dryRun) await markUnpriceable(ticker, "provider returned an empty series");
       await sleep(delay);
       continue;
     }
@@ -231,16 +267,38 @@ export async function syncStockPerformance(input?: {
     }
 
     if (!input?.dryRun && returnRows.length > 0) {
-      await upsertSupabaseRowsInChunks("stock_trade_returns", returnRows, "transaction_id,window_days", 500);
+      /*
+       * The disclosure sync can rewrite a filing while this run is in flight, and it deletes a
+       * filing's transactions before reinserting them. This run read its transaction ids minutes
+       * ago and then spent that time fetching prices, so an id it holds may no longer exist -- the
+       * foreign key then rejects the whole batch and, before this, killed the entire backfill 400
+       * symbols in.
+       *
+       * Losing one symbol's scores is not worth losing the run: those trades are simply left
+       * unscored and the next run picks them up, because nothing marks them as done.
+       */
+      try {
+        await upsertSupabaseRowsInChunks("stock_trade_returns", returnRows, "transaction_id,window_days", 500);
+        result.tradesScored += new Set(returnRows.map((row) => row.transaction_id)).size;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result.errors.push(
+          /23503|foreign key/i.test(message)
+            ? `${ticker}: transactions changed mid-run, scores deferred to the next run`
+            : `${ticker}: ${message}`,
+        );
+        await sleep(delay);
+        continue;
+      }
 
       const keep = series.filter((point) => usedDates.has(point.date));
       if (keep.length > 0) {
         await upsertSupabaseRowsInChunks("stock_prices", priceRows(ticker, keep), "ticker,price_date", 500);
         result.pricePointsStored += keep.length;
       }
+    } else {
+      result.tradesScored += new Set(returnRows.map((row) => row.transaction_id)).size;
     }
-
-    result.tradesScored += new Set(returnRows.map((row) => row.transaction_id)).size;
     await sleep(delay);
   }
 

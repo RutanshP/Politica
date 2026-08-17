@@ -48,6 +48,15 @@ export function providerRateLimitPerMinute(provider: PriceProvider = getPricePro
 export class PriceProviderError extends Error {}
 
 /**
+ * The provider has no series for this symbol, and never will.
+ *
+ * Separated from a transient failure because the two want opposite handling: a timeout should be
+ * retried, while a delisted ticker retried on every run spends quota on a guaranteed 404. X and PXD
+ * -- US Steel and Pioneer, both acquired -- came back 404 in three consecutive batches.
+ */
+export class SymbolNotFoundError extends PriceProviderError {}
+
+/**
  * Full daily close history for one symbol.
  *
  * Throws on a provider error rather than returning an empty series. An empty series is
@@ -74,16 +83,25 @@ async function fetchTwelveData(symbol: string, key: string): Promise<PricePoint[
   url.searchParams.set("apikey", key);
 
   const response = await fetch(url, { cache: "no-store" });
+  // 404 is the provider saying it does not carry this symbol at all -- permanent, not transient.
+  if (response.status === 404) throw new SymbolNotFoundError(`${symbol} not carried by Twelve Data`);
   if (!response.ok) throw new PriceProviderError(`Twelve Data HTTP ${response.status}`);
 
   const payload = (await response.json()) as {
     status?: string;
+    code?: number;
     message?: string;
     values?: Array<{ datetime?: string; close?: string }>;
   };
 
-  // A quota overrun arrives as 200 with status:"error".
-  if (payload.status === "error") throw new PriceProviderError(payload.message || "Twelve Data error");
+  // A quota overrun arrives as 200 with status:"error". So does an unknown symbol, under code 404.
+  if (payload.status === "error") {
+    const message = payload.message || "Twelve Data error";
+    if (payload.code === 404 || /not found|not available|invalid symbol/i.test(message)) {
+      throw new SymbolNotFoundError(`${symbol}: ${message}`);
+    }
+    throw new PriceProviderError(message);
+  }
   if (!payload.values) return [];
 
   return payload.values
