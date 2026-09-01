@@ -170,7 +170,7 @@ export function PoliticiansDirectory({
       {needsState ? (
         <EmptyState
           title="Choose a state"
-          description="Pick a state above to load its legislators. State members are loaded one state at a time rather than all at once."
+          description="Pick a state above to load its governor. State coverage is the executive branch only -- Politica does not track state legislatures."
         />
       ) : (
         <Card>

@@ -81,6 +81,16 @@ export function CommitteesDirectory({ committees }: { committees: Committee[] })
     [committeeRows],
   );
 
+  /*
+   * State committees went with the rest of the state data (SQL 027), so the level is offered only
+   * when some are actually stored -- otherwise picking it emptied the table with no way to tell
+   * that from a filter that had simply matched nothing.
+   */
+  const levels = useMemo(
+    () => (committeeRows.some((row) => row.level === "State") ? ["Federal", "State"] : ["Federal"]),
+    [committeeRows],
+  );
+
   /* Everything the level (and state) selection admits -- the source for the remaining dropdowns. */
   const inScope = useMemo(
     () =>
@@ -156,7 +166,7 @@ export function CommitteesDirectory({ committees }: { committees: Committee[] })
 
       <FilterBar
         filters={[
-          { label: "Level", value: level, options: ["Federal", "State"] },
+          { label: "Level", value: level, options: levels },
           ...(isStateLevel ? [{ label: "State", value: state, options: states }] : []),
           { label: "Chamber", value: chamber, options: chambers },
           { label: "Sector", value: sector, options: sectors },

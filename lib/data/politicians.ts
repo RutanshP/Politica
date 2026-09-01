@@ -165,6 +165,9 @@ function getDisplayOfficeLabel(politician: Politician) {
     return "Other federal";
   }
 
+  // State coverage is the governors alone -- SQL 027 deleted the legislatures. The chamber
+  // labels stay for whenever POLITICA_ENABLE_STATE_SYNC brings legislators back.
+  if (politician.title.includes("Governor")) return "Governor";
   if (politician.title.includes("Senator")) return "State Senate";
   if (politician.title.includes("Representative")) return "State House";
   return "Other state";
@@ -362,16 +365,16 @@ export async function getPoliticiansData() {
   }
 
   try {
-    const [politicians, federalMembersRun, federalLegislationRun, stateRun] = await Promise.all([
+    const [politicians, federalMembersRun, federalLegislationRun, executiveRun] = await Promise.all([
       listStoredPoliticians(),
       getLatestSyncRun("federal_members_sync").catch(() => undefined),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
-      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
+      getLatestSyncRun("executive_sync").catch(() => undefined),
     ]);
     const enrichedPoliticians = fillFederalHouseVacancies(
       enforceRenderedOfficeUniqueness(politicians),
     );
-    const latestRun = [federalMembersRun, federalLegislationRun, stateRun]
+    const latestRun = [federalMembersRun, federalLegislationRun, executiveRun]
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const result = withData(
@@ -395,7 +398,7 @@ export async function getPoliticiansData() {
 
 export const POLITICIAN_SORT_OPTIONS = ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"];
 const FEDERAL_CHAMBERS = ["All chambers", "US House", "US Senate", "US President"];
-const STATE_CHAMBERS = ["All chambers", "State House", "State Senate"];
+const STATE_CHAMBERS = ["All chambers", "Governor"];
 export const SELECT_A_STATE = "Select a state";
 
 function emptyDirectoryOptions() {
@@ -441,11 +444,12 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
     };
   }
 
-  // "State" with no state chosen yet: prompt rather than downloading every state legislator.
+  // "State" with no state chosen yet: prompt rather than loading all fifty governors at once.
+  // The one-state-at-a-time shape is kept from when this had to page 1,668 state legislators.
   if (isState && !selectedState) {
     const states = await listStoredPoliticianStates().catch(() => [] as string[]);
     return {
-      ...emptyResult("supabase", "state_legislation_sync", [] as Politician[], "empty"),
+      ...emptyResult("supabase", "executive_sync", [] as Politician[], "empty"),
       source: "supabase" as PoliticianDataSource,
       politicians: [] as Politician[],
       total: 0,
@@ -464,7 +468,7 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
   }
 
   try {
-    const [politicians, availableStates, federalMembersRun, federalLegislationRun, stateRun] = await Promise.all([
+    const [politicians, availableStates, federalMembersRun, federalLegislationRun, executiveRun] = await Promise.all([
       // Only the level (and, for state, the single state) the user is actually looking at.
       listStoredPoliticians(
         isState
@@ -474,7 +478,7 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
       isState ? listStoredPoliticianStates().catch(() => [] as string[]) : Promise.resolve([] as string[]),
       getLatestSyncRun("federal_members_sync").catch(() => undefined),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
-      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
+      getLatestSyncRun("executive_sync").catch(() => undefined),
     ]);
 
     // Vacant-seat placeholders only make sense for the federal House.
@@ -523,7 +527,11 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
       // Chambers are scoped to the level: a federal view never offers "State Senate".
       offices: [
         "All chambers",
-        ...(isState ? ["State House", "State Senate"] : ["US House", "US Senate"]),
+        // Offered only when someone actually holds the office: state coverage is governors
+        // only, so "State House"/"State Senate" stay hidden until legislators are synced back.
+        ...(isState
+          ? (["Governor", "State House", "State Senate"] as const).filter((label) => presentOffices.has(label))
+          : ["US House", "US Senate"]),
         // Only offered once a President row actually exists -- there's no sync source for the
         // office yet (see lib/utils.ts normalizeOfficeTitle), so this stays empty until seeded.
         ...(presentOffices.has("US President") && !isState ? ["US President"] : []),
@@ -536,7 +544,7 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
       sortOptions: POLITICIAN_SORT_OPTIONS,
     };
 
-    const latestRun = [federalMembersRun, federalLegislationRun, stateRun]
+    const latestRun = [federalMembersRun, federalLegislationRun, executiveRun]
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const result = withData(

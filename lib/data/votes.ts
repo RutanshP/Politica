@@ -18,15 +18,11 @@ export async function getVotesDataForBill(billId: string) {
   }
 
   try {
-    const [{ bill }, federalRun, stateRun] = await Promise.all([
+    const [{ bill }, latestRun] = await Promise.all([
       getBillData(billId),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
-      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
     const votes = await listStoredVotesByBillId(billId);
-    const latestRun = [stateRun, federalRun]
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
 
     if (!bill) {
       return {
@@ -74,14 +70,10 @@ export async function getVotesDataForPolitician(politicianId: string) {
   }
 
   try {
-    const [votes, federalRun, stateRun] = await Promise.all([
+    const [votes, latestRun] = await Promise.all([
       listStoredVotesByPoliticianId(politicianId),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
-      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
-    const latestRun = [federalRun, stateRun]
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const source = votes.length > 0 ? "supabase" : "partial";
     const result = withData(
       source,

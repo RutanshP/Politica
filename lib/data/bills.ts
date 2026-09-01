@@ -54,14 +54,10 @@ export async function getBillsData() {
   }
 
   try {
-    const [bills, federalRun, stateRun] = await Promise.all([
+    const [bills, latestRun] = await Promise.all([
       listStoredBills(),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
-      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
-    const latestRun = [federalRun, stateRun]
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const result = withData(
       bills.length > 0 ? "supabase" : "unavailable",
       "federal_legislation_sync",
@@ -131,7 +127,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
   };
 
   try {
-    const [{ bills, total }, facetRows, federalRun, stateRun] = await Promise.all([
+    const [{ bills, total }, facetRows, latestRun] = await Promise.all([
       getStoredBillsPage({
         page,
         pageSize: BILL_DIRECTORY_PAGE_SIZE,
@@ -147,12 +143,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
       }),
       listStoredBillDirectoryFacets().catch(() => [] as BillDirectoryFacetRow[]),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
-      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
-
-    const latestRun = [federalRun, stateRun]
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
 
     // Postgres already grouped these; the rows arrive pre-deduplicated and sorted.
     const facetValues = (facet: string) =>
@@ -239,14 +230,10 @@ export async function getBillData(billId: string, options?: { includeVersionCont
   }
 
   try {
-    const [bill, federalRun, stateRun] = await Promise.all([
+    const [bill, latestRun] = await Promise.all([
       getStoredBillById(billId, options),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
-      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
-    const latestRun = [federalRun, stateRun]
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const result = withData(
       bill ? "supabase" : "unavailable",
       latestRun?.pipeline || "federal_legislation_sync",

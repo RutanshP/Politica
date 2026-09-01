@@ -72,7 +72,7 @@ export default async function PoliticiansPage({
               <CardHeader title="About the photos" />
               <CardNote>
                 Headshots load from the public bioguide image set, keyed on each member&apos;s ID.
-                State legislators and members without a photo fall back to an initials tile.
+                Governors and members without a photo fall back to an initials tile.
               </CardNote>
             </Card>
           </>

@@ -121,7 +121,7 @@ export default async function PoliticianTenurePage({
           <CardBody>
             <p className="text-sm text-[var(--muted)]">
               No term history has been synced for this member yet. Congress.gov publishes a term
-              record for federal members; state legislators are not covered by that feed.
+              record for federal members; governors are not covered by that feed.
             </p>
           </CardBody>
         </Card>

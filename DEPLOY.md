@@ -23,7 +23,7 @@ values from your local `.env.local`:
 | `SUPABASE_SECRET_KEY` | Supabase service/secret key (server-only) |
 | `POLITICA_FEC_API_KEY` | FEC API key |
 | `POLITICA_CONGRESS_API_KEY` | Congress.gov API key |
-| `POLITICA_OPENSTATES_API_KEY` | OpenStates API key (state data) |
+| `POLITICA_OPENSTATES_API_KEY` | OpenStates API key (governors; state legislature sync is off) |
 | `POLITICA_NEWS_API_KEY` | News API key |
 | `POLITICA_SYNC_SECRET` | Bearer token guarding the internal sync routes |
 | `POLITICA_SUPABASE_SCHEMA` | e.g. `public` (only if you set it locally) |

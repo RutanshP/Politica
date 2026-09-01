@@ -76,6 +76,46 @@ test("every state-writing route still checks the gate", () => {
   }
 });
 
+/** Every .ts/.tsx under the given roots. */
+function walkSources(...roots) {
+  const files = [];
+  const visit = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(full);
+      else if (/\.tsx?$/.test(entry.name)) files.push(full);
+    }
+  };
+  roots.forEach(visit);
+  return files;
+}
+
+test("the state sync workers have no caller outside the gated routes", () => {
+  /*
+   * The 410 on those two routes is only worth anything if they are the only way in. They were not:
+   * lib/server/sync-jobs.ts called syncStateLegislationFromOpenStates() with no gate, inside a
+   * "daily" job that nothing imported and that no longer matched the real schedule (the cron route
+   * and sync-daily.yml). Dead code, but one import away from refilling the tables SQL 027 emptied.
+   */
+  const gated = new Set(GATED_ROUTES);
+  const offenders = [];
+
+  for (const file of walkSources(path.join(ROOT, "app"), path.join(ROOT, "lib"))) {
+    const relative = path.relative(ROOT, file).split(path.sep).join("/");
+    // The workers define the functions; the gated routes are the sanctioned callers.
+    if (gated.has(relative) || relative.startsWith("lib/server/state-")) continue;
+    if (/sync(?:StateLegislation|StateVotes)FromOpenStates\s*\(/.test(fs.readFileSync(file, "utf8"))) {
+      offenders.push(relative);
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    `state sync called outside the gated routes: ${offenders.join(", ")}`,
+  );
+});
+
 test("the nightly sync does not call a state route", () => {
   // These were never scheduled, and must not be added back while the data is deleted.
   const workflow = fs.readFileSync(path.join(ROOT, ".github/workflows/sync-daily.yml"), "utf8");

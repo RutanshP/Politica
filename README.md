@@ -35,7 +35,7 @@ Open `http://localhost:3000`.
 
 ## Optional live data setup
 
-To enable live federal, state, finance, and news ingestion:
+To enable live federal, executive, finance, and news ingestion:
 
 1. Copy `.env.example` to `.env.local`
 2. Set the API keys you want to use
@@ -105,7 +105,7 @@ The stored layer now centers on these entities:
 Planned data sources:
 
 - Congress.gov API for federal bills, actions, sponsors, committees, and bill text
-- OpenStates API for state bills, votes, legislators, committees, and sessions
+- OpenStates API for governors (state legislature coverage is switched off -- see below)
 - FEC API for campaign finance
 - NewsAPI.ai / Event Registry for connected political coverage
 
@@ -117,7 +117,6 @@ Protected endpoints now exist for:
 
 - `/api/internal/sync/legislation`
 - `/api/internal/sync/politicians`
-- `/api/internal/sync/state-legislation`
 - `/api/internal/sync/finance`
 - `/api/internal/sync/news`
 - `/api/internal/rebuild`
@@ -128,6 +127,23 @@ Current live-data status:
 - Congress, OpenStates, FEC, and NewsAPI.ai adapters are ingestion-only clients used by sync workers
 - Search, issue clusters, entity indexes, and analytics snapshots are rebuilt into stored tables through the rebuild pipeline
 - `/elections` remains intentionally minimal in v1
+
+## Scope: Congress only
+
+State legislature coverage was built, then switched off and its stored data deleted -- it was over
+half the database (260,564 vote positions, 7,534 roll calls, 1,668 legislators, 419 committees,
+128 bills). `supabase/sql/027_politica_drop_state_data.sql` is the record of that delete.
+
+What this means today:
+
+- Bills, votes, and committees are federal only.
+- The politician directory's "State" level holds the fifty governors and nothing else. They come
+  from OpenStates via `/api/internal/sync/executive`, not from the legislature syncs.
+- `/api/internal/sync/state-legislation` and `/api/internal/sync/state-votes` answer `410` and are
+  not scheduled. The workers behind them are kept intact, not deleted.
+
+Set `POLITICA_ENABLE_STATE_SYNC=1` to turn the syncs back on; nothing else has to change. Expect
+the database to grow by roughly 130MB once the state votes repopulate.
 
 ## Notes
 

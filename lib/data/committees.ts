@@ -21,16 +21,12 @@ export async function getCommitteesData() {
   }
 
   try {
-    const [committees, memberships, federalRun, stateRun] = await Promise.all([
+    const [committees, memberships, latestRun] = await Promise.all([
       listStoredCommittees(),
       listStoredCommitteeMemberships().catch(() => []),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
-      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
     const mergedCommittees = mergeCommitteeMembershipIds(committees, memberships);
-    const latestRun = [federalRun, stateRun]
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const result = withData(
       mergedCommittees.length > 0 ? "supabase" : "unavailable",
       "federal_legislation_sync",
@@ -62,10 +58,9 @@ export async function getCommitteeData(slug: string) {
   try {
     // getStoredCommitteeBySlug was previously called twice in this Promise.all -- once for the
     // committee and once inside the memberships branch -- firing two identical requests.
-    const [committee, federalRun, stateRun] = await Promise.all([
+    const [committee, latestRun] = await Promise.all([
       getStoredCommitteeBySlug(slug),
       getLatestSyncRun("federal_legislation_sync").catch(() => undefined),
-      getLatestSyncRun("state_legislation_sync").catch(() => undefined),
     ]);
     const memberships = committee
       ? await listStoredCommitteeMembershipsByCommitteeId(committee.id).catch(() => [])
@@ -73,9 +68,6 @@ export async function getCommitteeData(slug: string) {
     const mergedCommittee = committee
       ? mergeCommitteeMembershipIds([committee], memberships)[0]
       : undefined;
-    const latestRun = [federalRun, stateRun]
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))[0];
     const result = withData(
       mergedCommittee ? "supabase" : "unavailable",
       "federal_legislation_sync",

@@ -41,7 +41,7 @@ export default async function BillsPage({
     <div>
       <PageHeader
         title="Bills Explorer"
-        description="Search, filter, and track federal legislation. State bills are not synced yet."
+        description="Search, filter, and track federal legislation. Politica covers Congress only."
         actions={<SourceBadge label={getBillsSourceLabel(source)} live={live} />}
       />
 

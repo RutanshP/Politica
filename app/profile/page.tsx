@@ -28,8 +28,8 @@ export default async function ProfilePage() {
         <SectionCard title="Workspace summary">
           <div className="space-y-4 text-sm text-[var(--muted)]">
             <p>Mode: Shared app-level workspace</p>
-            <p>Coverage: Congress.gov, FEC, OpenStates, and News API when configured</p>
-            <p>Focus: Federal and state legislation, committees, finance flows, and issue-level monitoring.</p>
+            <p>Coverage: Congress.gov, FEC, News API, and OpenStates (governors) when configured</p>
+            <p>Focus: Federal legislation, committees, finance flows, and issue-level monitoring.</p>
             <p>Current stored alerts: {summary.upcomingVotes} upcoming vote signals across tracked bills.</p>
           </div>
         </SectionCard>
