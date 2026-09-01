@@ -13,6 +13,7 @@ import {
   Scale,
   Star,
   Users,
+  Vote,
   Wallet,
   X,
 } from "lucide-react";
@@ -41,6 +42,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/bills", label: "Bills", icon: FileText },
   { href: "/politicians", label: "Politicians", icon: CircleUserRound },
   { href: "/committees", label: "Committees", icon: Users },
+  { href: "/elections", label: "Elections", icon: Vote },
   { href: "/money", label: "Money", icon: Wallet },
   { href: "/issues", label: "Issues", icon: Scale },
   { href: "/news", label: "News", icon: Newspaper },

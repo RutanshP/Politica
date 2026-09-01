@@ -13,6 +13,7 @@ Politica is a responsive civic intelligence MVP built with Next.js, TypeScript, 
 - News page
 - Watchlist page
 - Analytics dashboard
+- Elections: federal races on the ballot this cycle
 - Funding network graph page
 - Pipeline health and sync-status routes
 
@@ -126,7 +127,7 @@ Current live-data status:
 - Bills, politicians, committees, issues, news, finance graph data, sync status, and analytics now read from stored Supabase-backed loaders
 - Congress, OpenStates, FEC, and NewsAPI.ai adapters are ingestion-only clients used by sync workers
 - Search, issue clusters, entity indexes, and analytics snapshots are rebuilt into stored tables through the rebuild pipeline
-- `/elections` remains intentionally minimal in v1
+- `/elections` lists every federal race with candidates on file for the cycle, from stored FEC filings
 
 ## Scope: Congress only
 
@@ -144,6 +145,31 @@ What this means today:
 
 Set `POLITICA_ENABLE_STATE_SYNC=1` to turn the syncs back on; nothing else has to change. Expect
 the database to grow by roughly 130MB once the state votes repopulate.
+
+## Elections
+
+`/elections` groups stored FEC candidate filings into the seats they contest -- 479 races for the
+2026 cycle, being 35 Senate seats, 443 House districts and one filing whose district the FEC left
+blank. Each race lists everyone on file, incumbent first, and links sitting members to their
+profile.
+
+This is federal-only by construction, not by a filter: the FEC files House, Senate and President
+and nothing else, so there is no state legislature or governor data in the feed. (State coverage
+elsewhere in the app is the governors, stored in `politicians`.) A midterm has no presidential
+race, and the chamber filter is built from the data, so "President" simply does not appear.
+
+Three caveats the UI states rather than hides:
+
+- Candidates are FEC filings, not a certified ballot -- they include everyone who filed as a
+  statutory candidate, before any primary narrowed the field. Withdrawn (`candidate_inactive`)
+  and not-yet-qualified (`candidate_status != 'C'`) filings are excluded.
+- `election_year` is what separates "up this cycle" from "holds an open committee". Without it,
+  every sitting senator would appear to be defending their seat.
+- Fundraising is stored per `politician_id`, which only sitting members have, so challengers show
+  "No filing stored" rather than $0. `cash_on_hand` is never displayed: it is 0 on every stored
+  snapshot because the finance sync does not populate it.
+
+Set `POLITICA_ELECTION_CYCLE` to move the page to a later cycle.
 
 ## Notes
 
