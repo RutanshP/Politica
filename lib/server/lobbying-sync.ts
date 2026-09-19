@@ -9,7 +9,7 @@ import {
 } from "@/lib/adapters/lda";
 import { congressForYear } from "@/lib/lobbying/lda-text";
 import { purgeLobbyingGraph, upsertGraphEdges, upsertGraphEntities } from "@/lib/supabase/funding-graph";
-import { fetchSupabaseRows, invokeSupabaseRpc, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
+import { deleteSupabaseRows, fetchSupabaseRows, invokeSupabaseRpc, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import { slugifySegment } from "@/lib/utils";
 import type { GraphEdgeRow, GraphEntityRow } from "@/types/funding-graph";
 
@@ -187,7 +187,19 @@ export async function syncLobbyingFilings(options?: {
     );
   }
 
+  // Per-bill counts for the "most lobbied" rankings, recomputed from the mentions just written:
+  // ranking them live cost 3.5s a query once every report was stored.
+  if (!windowed && reports.length > 0) {
+    await invokeSupabaseRpc<number>("lobbying_refresh_bill_stats", {}, { cache: "no-store" }).catch(() => undefined);
+  }
+
   if (!windowed) {
+    /*
+     * Only the Congress in session is kept: a new Congress numbers its bills from 1 again, so older
+     * reports cannot link to stored bills, and two years of reports are ~100MB against the 500MB
+     * cap. Mentions cascade with their reports. A no-op except in the first run of a new Congress.
+     */
+    await deleteSupabaseRows("lobbying_filings", `filing_year=lt.${firstYear}`);
     await upsertSupabaseRowsInChunks(
       "lobbying_sync_state",
       [{ id: SYNC_STATE_ID, posted_after: nextPostedAfter, updated_at: new Date().toISOString() }],
@@ -241,8 +253,12 @@ export interface LobbyingGraphResult {
  * bridges the two layers so that path is traversable.
  */
 export async function rebuildLobbyingGraph(years?: number[]): Promise<LobbyingGraphResult> {
+  /*
+   * One JSON row, not a row set: PostgREST caps a row set at 1,000 and was silently cutting the
+   * rollup, and paging it re-ran the whole grouping (~4s) per page until the statement timed out.
+   */
   const rollup = await invokeSupabaseRpc<LobbyingRollupRow[]>(
-    "lobbying_graph_rollup",
+    "lobbying_graph_rollup_json",
     { p_years: years ?? null },
     { cache: "no-store" },
   );

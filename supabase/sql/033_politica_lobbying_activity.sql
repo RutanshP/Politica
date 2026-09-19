@@ -618,3 +618,119 @@ $$;
 
 revoke execute on function public.lobbying_bill_clients(text, integer) from public, anon, authenticated;
 grant execute on function public.lobbying_bill_clients(text, integer) to service_role;
+
+/*
+ * Third follow-up, applied after the backfill: the posted_at index was never used (the cursor
+ * reads lda.gov, not this table) and the (client_id, registrant_id) pair index served only the
+ * weekly graph rollup, which groups the whole table anyway. ~5.5MB.
+ */
+drop index if exists public.lobbying_filings_posted_idx;
+drop index if exists public.lobbying_filings_pair_idx;
+
+/*
+ * Fourth follow-up, applied: lobbying_graph_rollup passed PostgREST's 1,000-row cap once every
+ * report was ingested and was silently cut to 1,000. It now pages (p_offset, 1,000 per page) and
+ * rebuildLobbyingGraph reads until a short page.
+ */
+drop function if exists public.lobbying_graph_rollup(integer[]);
+
+create or replace function public.lobbying_graph_rollup(p_years integer[] default null, p_offset integer default 0)
+returns table (
+  registrant_id text,
+  registrant_name text,
+  client_id text,
+  client_name text,
+  is_in_house boolean,
+  total_amount numeric,
+  filing_count bigint,
+  first_year integer,
+  last_year integer
+)
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  with grouped as (
+    select
+      f.registrant_id,
+      max(f.registrant_name) as registrant_name,
+      f.client_id,
+      max(f.client_name) as client_name,
+      bool_or(f.is_in_house) as is_in_house,
+      coalesce(sum(f.amount), 0) as total_amount,
+      count(*) as filing_count,
+      min(f.filing_year) as first_year,
+      max(f.filing_year) as last_year
+    from public.lobbying_filings f
+    where (p_years is null or f.filing_year = any(p_years))
+      and f.is_current
+      and f.registrant_id is not null
+      and f.client_id is not null
+    group by f.registrant_id, f.client_id
+  )
+  select g.*
+  from grouped g
+  where exists (
+    select 1
+    from public.graph_entities e
+    where e.entity_type = 'employer'
+      and e.id = 'fec-emp-' || regexp_replace(
+        btrim(regexp_replace(lower(coalesce(g.client_name, '')), '[^a-z0-9 -]', '', 'g')),
+        '\s+', '-', 'g')
+  )
+  order by g.total_amount desc, g.registrant_id, g.client_id
+  offset greatest(p_offset, 0)
+  limit 1000;
+$$;
+
+revoke execute on function public.lobbying_graph_rollup(integer[], integer) from public, anon, authenticated;
+grant execute on function public.lobbying_graph_rollup(integer[], integer) to service_role;
+
+/*
+ * Fifth follow-up, applied: paging the rollup re-ran the whole grouping (~4s) for every page and
+ * hit the statement timeout. A single jsonb row is not subject to PostgRESTs 1,000-row cap, so the
+ * rollup is computed once and returned whole. rebuildLobbyingGraph calls this one.
+ */
+create or replace function public.lobbying_graph_rollup_json(p_years integer[] default null)
+returns jsonb
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  with grouped as (
+    select
+      f.registrant_id,
+      max(f.registrant_name) as registrant_name,
+      f.client_id,
+      max(f.client_name) as client_name,
+      bool_or(f.is_in_house) as is_in_house,
+      coalesce(sum(f.amount), 0) as total_amount,
+      count(*) as filing_count,
+      min(f.filing_year) as first_year,
+      max(f.filing_year) as last_year
+    from public.lobbying_filings f
+    where (p_years is null or f.filing_year = any(p_years))
+      and f.is_current
+      and f.registrant_id is not null
+      and f.client_id is not null
+    group by f.registrant_id, f.client_id
+  ),
+  keyed as (
+    select g.*, 'fec-emp-' || regexp_replace(
+      btrim(regexp_replace(lower(coalesce(g.client_name, '')), '[^a-z0-9 -]', '', 'g')),
+      '\s+', '-', 'g') as employer_id
+    from grouped g
+  )
+  select coalesce(jsonb_agg(to_jsonb(row) order by row.total_amount desc), '[]'::jsonb)
+  from (
+    select k.registrant_id, k.registrant_name, k.client_id, k.client_name, k.is_in_house,
+      k.total_amount, k.filing_count, k.first_year, k.last_year
+    from keyed k
+    join public.graph_entities e on e.id = k.employer_id and e.entity_type = 'employer'
+  ) row;
+$$;
+
+revoke execute on function public.lobbying_graph_rollup_json(integer[]) from public, anon, authenticated;
+grant execute on function public.lobbying_graph_rollup_json(integer[]) to service_role;
+
+drop function if exists public.lobbying_graph_rollup(integer[], integer);
