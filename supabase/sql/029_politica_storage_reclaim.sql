@@ -1,5 +1,6 @@
 -- Storage reclaim, fourth pass. The database had grown from 273MB (after 027) to 468MB of the
--- 500MB ceiling by 2026-09-18.
+-- 500MB ceiling by 2026-09-18. Applied that day -- kept here as the record. Took it to 313MB
+-- (bills 112MB -> 40MB, vote_positions 110MB -> 82MB, entities + entity_relationships 56MB -> 0).
 --
 -- 1. bills.raw_bill / bills.raw_payload came back: 17,511 bills, ~38MB of TOAST plus the heap
 --    churn under it -- bills went 42MB -> 112MB. Current code has written null to both since
