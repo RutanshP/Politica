@@ -67,6 +67,26 @@ interface ContributionRow {
   synced_at: string;
 }
 
+/**
+ * The member's principal campaign committee, trying the likeliest FEC candidate id first.
+ *
+ * Members often hold more than one candidate id -- a House member now running for the Senate or
+ * a governorship files under a new one -- and the id for the seat they hold can have no committee
+ * this cycle. Trying only one left those members with "No principal campaign committee on file".
+ */
+async function findPrincipalCommittee(fecIds: string[], title: string, cycle: number) {
+  const preferred = pickFecCandidateId(fecIds, title);
+  const candidates = [preferred, ...fecIds.filter((id) => id !== preferred)];
+  for (const candidateCycle of [cycle, cycle - 2]) {
+    for (const candidateId of candidates) {
+      const committees = await fetchFecCandidateCommittees(candidateId, candidateCycle);
+      const principal = committees.find((row) => row.designation === "P") || committees.find((row) => row.designation === "A");
+      if (principal?.committee_id) return principal.committee_id;
+    }
+  }
+  return null;
+}
+
 export async function syncPacContributions(options?: PacContributionsSyncOptions) {
   if (!isFecConfigured()) {
     throw new Error("FEC API is not configured");
@@ -139,11 +159,7 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
       const ownFecIds = new Set(fecIdsByBioguide.get(politician.id) ?? []);
       let principal = principalByMember.get(politician.id) ?? stateByMember.get(politician.id)?.principal_committee_id ?? null;
       if (!principal) {
-        const committees = await fetchFecCandidateCommittees(
-          pickFecCandidateId(fecIdsByBioguide.get(politician.id)!, politician.title),
-          cycle,
-        );
-        principal = (committees.find((row) => row.designation === "P") || committees[0])?.committee_id ?? null;
+        principal = await findPrincipalCommittee(fecIdsByBioguide.get(politician.id)!, politician.title, cycle);
       }
       if (!principal) {
         throw new Error("No principal campaign committee on file");
