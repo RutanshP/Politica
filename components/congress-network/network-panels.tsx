@@ -276,7 +276,7 @@ export function FilterPanel({
           </div>
 
           <div className="flex items-center justify-between border-t border-[var(--line)] pt-2.5 text-[11px] text-[var(--faint)]">
-            <span>Big dots are members; small ones are the committees that paid them.</span>
+            <span>Big dots are members, small ones the committees that paid them. Size is dollars.</span>
             {filtered ? (
               <button type="button" onClick={onReset} className="ml-2 flex-none text-[var(--accent-2)] hover:underline">
                 Reset
