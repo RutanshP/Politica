@@ -374,8 +374,15 @@ export function CongressNetwork({
           </div>
 
           {!focusable ? (
-            <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 rounded-full border border-[var(--line)] bg-[rgba(17,23,38,0.85)] px-3.5 py-1.5 text-xs text-[var(--muted)] md:block">
-              Click any dot to focus on it · scroll to zoom · drag to pan
+            <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-[var(--line)] bg-[rgba(17,23,38,0.85)] px-3.5 py-1.5 text-xs text-[var(--muted)] md:flex">
+              {/* The server layout is rotated so this is always true -- see congress-network-layout. */}
+              <span className="h-2 w-2 rounded-full bg-[var(--party-d)]" /> Democrats left
+              <span className="text-[var(--faint)]">·</span>
+              Republicans right <span className="h-2 w-2 rounded-full bg-[var(--party-r)]" />
+              <span className="text-[var(--faint)]">·</span>
+              Members near each other share donors
+              <span className="text-[var(--faint)]">·</span>
+              Click any dot to focus
             </div>
           ) : (
             <button

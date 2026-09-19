@@ -101,6 +101,34 @@ export function layoutCongressNetwork(input: LayoutInput) {
     },
   });
 
+  /*
+   * Orient the picture: rotate so the Democratic centroid sits left of the Republican one on a
+   * horizontal line. The layout only knows who shares donors, so its direction is arbitrary; a
+   * fixed orientation is what lets the page caption the two sides and keeps the picture stable
+   * as the data changes.
+   */
+  const centroid = { D: { x: 0, y: 0, n: 0 }, R: { x: 0, y: 0, n: 0 } };
+  graph.forEachNode((key, attributes) => {
+    const party = input.memberParty[Number(key)];
+    if ((party === "D" || party === "R") && norm[Number(key)] > 0) {
+      centroid[party].x += attributes.x;
+      centroid[party].y += attributes.y;
+      centroid[party].n += 1;
+    }
+  });
+  if (centroid.D.n > 0 && centroid.R.n > 0) {
+    const dx = centroid.R.x / centroid.R.n - centroid.D.x / centroid.D.n;
+    const dy = centroid.R.y / centroid.R.n - centroid.D.y / centroid.D.n;
+    const angle = -Math.atan2(dy, dx);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    graph.updateEachNodeAttributes((_key, attributes) => ({
+      ...attributes,
+      x: attributes.x * cos - attributes.y * sin,
+      y: attributes.x * sin + attributes.y * cos,
+    }));
+  }
+
   // Normalize members into [-1, 1] so committee offsets below have a stable scale.
   const memberXY = new Float64Array(memberCount * 2);
   let minX = Infinity;
@@ -108,16 +136,46 @@ export function layoutCongressNetwork(input: LayoutInput) {
   let minY = Infinity;
   let maxY = -Infinity;
   graph.forEachNode((key, attributes) => {
+    // Only linked members set the frame; unlinked ones are placed separately below.
+    if (norm[Number(key)] === 0) return;
     minX = Math.min(minX, attributes.x);
     maxX = Math.max(maxX, attributes.x);
     minY = Math.min(minY, attributes.y);
     maxY = Math.max(maxY, attributes.y);
   });
+  if (!Number.isFinite(minX)) {
+    minX = maxX = minY = maxY = 0;
+  }
   const scale = 2 / Math.max(maxX - minX, maxY - minY, 1e-9);
   graph.forEachNode((key, attributes) => {
     const member = Number(key);
     memberXY[member * 2] = (attributes.x - (minX + maxX) / 2) * scale;
     memberXY[member * 2 + 1] = (attributes.y - (minY + maxY) / 2) * scale;
+  });
+
+  /*
+   * Members with no PAC gifts on file have no similarity links, so the force layout flung them to
+   * a ring around everything else. Place them on purpose instead: a column just outside their own
+   * party's side, standing apart from the donor network the way they actually do.
+   */
+  const unlinked: Record<"D" | "R" | "I", number[]> = { D: [], R: [], I: [] };
+  for (let member = 0; member < memberCount; member += 1) {
+    if (norm[member] === 0) unlinked[input.memberParty[member]].push(member);
+  }
+  const placeColumn = (members: number[], x: number) => {
+    const rows = Math.max(1, Math.ceil(members.length / 3));
+    members.forEach((member, index) => {
+      const row = index % rows;
+      const column = Math.floor(index / rows);
+      memberXY[member * 2] = x + Math.sign(x || 1) * column * 0.05;
+      memberXY[member * 2 + 1] = rows === 1 ? 0 : -0.8 + (1.6 * row) / (rows - 1);
+    });
+  };
+  placeColumn(unlinked.D, -1.15);
+  placeColumn(unlinked.R, 1.15);
+  unlinked.I.forEach((member, index) => {
+    memberXY[member * 2] = (index - (unlinked.I.length - 1) / 2) * 0.06;
+    memberXY[member * 2 + 1] = -1.12;
   });
 
   // Committees at the money-weighted centre of their recipients.

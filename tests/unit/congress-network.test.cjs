@@ -46,6 +46,9 @@ test("layoutCongressNetwork puts members who share donors closer than members wh
   const [cx, cy] = [layout.committees[committee * 2], layout.committees[committee * 2 + 1]];
   assert.ok(Math.hypot(cx - at(3)[0], cy - at(3)[1]) < 0.2);
 
+  // Oriented: Democrats (0, 1) left of Republicans (2, 3).
+  assert.ok((at(0)[0] + at(1)[0]) / 2 < (at(2)[0] + at(3)[0]) / 2, "Democrats sit left of Republicans");
+
   // Deterministic.
   assert.deepEqual(layoutCongressNetwork({ memberCount: 4, memberParty: ["D", "D", "R", "R"], committeeCount: 8, edges }), layout);
 });
