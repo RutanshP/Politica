@@ -18,7 +18,7 @@ import { Toolbar } from "@/components/ui/layout";
 import { CellSub, CellTitle, Table } from "@/components/ui/table";
 import { BILL_STATUS_TONE, TONE_COLOR } from "@/components/ui/tones";
 import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
-import { billHref, cn } from "@/lib/utils";
+import { billHref, cn, realText } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
 type ViewMode = "table" | "timeline";
@@ -278,7 +278,7 @@ export function BillsDirectory({
                   </Link>
                 ) : (
                   <span key={`${bill.id}-committee`} className="text-[var(--muted)]">
-                    {bill.committeeName}
+                    {realText(bill.committeeName) || "—"}
                   </span>
                 ),
                 <span key={`${bill.id}-action`}>
@@ -292,7 +292,7 @@ export function BillsDirectory({
                       id: bill.id,
                       type: "bill",
                       label: `${bill.number} · ${bill.title}`,
-                      subtitle: bill.committeeName,
+                      subtitle: realText(bill.committeeName) || bill.chamber,
                       href: billHref(bill.id),
                     }}
                   />
@@ -324,7 +324,7 @@ export function BillsDirectory({
                             {bill.number} · {bill.title}
                           </span>
                           <span className="mt-0.5 block text-xs text-[var(--muted)]">
-                            {bill.latestAction} · {bill.committeeName}
+                            {[bill.latestAction, realText(bill.committeeName)].filter(Boolean).join(" · ")}
                           </span>
                         </Link>
                       ))}

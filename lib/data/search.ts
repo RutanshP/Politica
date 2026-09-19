@@ -2,6 +2,7 @@ import { searchStoredSearchDocuments } from "@/lib/supabase/search";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { emptyResult, withData } from "@/lib/data/result";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
+import { realText } from "@/lib/utils";
 
 const EXCERPT_LENGTH = 280;
 
@@ -27,7 +28,7 @@ export async function searchPolitica(query: string) {
     searchStoredSearchDocuments(normalized, normalized ? 24 : 12).catch(() => []),
     getLatestSyncRun("search_rebuild").catch(() => undefined),
   ]);
-  const results = documents.map((result) => ({ ...result, description: excerpt(result.description) }));
+  const results = documents.map((result) => ({ ...result, description: excerpt(realText(result.description)) }));
 
   // Whether the index exists is a different question from whether this query matched, and unlike
   // the entity index -- which is read in full -- these results come back filtered, so an empty

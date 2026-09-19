@@ -395,17 +395,36 @@ export function deriveCommitteeSector(input: {
   return match?.sector || "General";
 }
 
-export function normalizeCommitteeField(value: string, fallback: string) {
-  const normalized = value.trim();
-  const knownPlaceholders = new Set([
-    "Not available from configured sources",
-    "Chair roster not connected from Congress.gov yet",
-    "Ranking member roster not connected from Congress.gov yet",
-    "State hearing calendar not connected",
-    "Hearing calendar sync not connected yet",
-  ]);
+/*
+ * Text the syncs store when a source has nothing to say, rather than leaving the field empty:
+ * "Not available from configured sources" (every member's education), "Chair roster not connected
+ * from Congress.gov yet" (every committee), "Committee data pending full detail sync" (1,500
+ * bills), a generic "US Representative from Texas. Synced from Congress.gov..." biography, and
+ * "Public official" as everyone's occupation. Shown on a page, each reads as data and says nothing.
+ */
+const PLACEHOLDER_PATTERNS = [
+  /not available from configured sources/i,
+  /\bnot connected\b/i,
+  /not provided by the source/i,
+  /pending full detail sync/i,
+  /synced from congress\.gov/i,
+  /^public official$/i,
+  /^(unknown|not available|n\/a)$/i,
+];
 
-  return knownPlaceholders.has(normalized) ? fallback : normalized;
+/** True for a stored placeholder that stands in for missing data. */
+export function isPlaceholderText(value?: string | null) {
+  const text = (value ?? "").trim();
+  return !text || PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/** The value, or "" when it is a placeholder -- for display code that hides empty fields. */
+export function realText(value?: string | null) {
+  return isPlaceholderText(value) ? "" : (value ?? "").trim();
+}
+
+export function normalizeCommitteeField(value: string, fallback: string) {
+  return realText(value) || fallback;
 }
 
 /** Single-letter party label (D / R / I) for compact member rows. */

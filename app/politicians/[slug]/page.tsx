@@ -43,7 +43,9 @@ import {
   getSponsoredBillsForPolitician,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
-import { billHref, hasVotePerformanceStats } from "@/lib/utils";
+import { getStoredPoliticianTerms } from "@/lib/supabase/politicians";
+import { buildTenure, buildTenureFromOfficialTerms, type OfficialTerm } from "@/lib/tenure";
+import { billHref, hasVotePerformanceStats, realText } from "@/lib/utils";
 import type { Bill, Committee, NewsItem } from "@/types/civic";
 
 export const revalidate = 21600;
@@ -57,13 +59,14 @@ export default async function PoliticianProfilePage({
   const { politician, source } = await getPoliticianData(slug);
   if (!politician) notFound();
 
-  const [sponsoredBills, committeesData, receipts, newsData, committeeMemberships] =
+  const [sponsoredBills, committeesData, receipts, newsData, committeeMemberships, terms] =
     await Promise.all([
       getSponsoredBillsForPolitician(slug),
       getCommitteesData(),
       getMemberReceipts(politician.id),
       getNewsData(),
       getCommitteeMembershipsForPolitician(slug),
+      getStoredPoliticianTerms(slug).catch(() => ({ official: [], congressRows: [] })),
     ]);
 
   const relatedCommittees = committeesData.committees.filter((committee: Committee) =>
@@ -94,6 +97,19 @@ export default async function PoliticianProfilePage({
   ];
 
   const ideology = Object.entries(politician.ideology);
+  // From recorded terms, as the Tenure tab does; the stored field is a placeholder for everyone.
+  const asOfYear = new Date().getUTCFullYear();
+  const nextElectionYear = politician.jurisdictionType === "state"
+    ? null
+    : (terms.official.length > 0
+      ? buildTenureFromOfficialTerms(terms.official as OfficialTerm[], asOfYear)
+      : buildTenure(terms.congressRows, asOfYear)).nextElectionYear;
+  const biographyFacts = ([
+    ["Born", realText(politician.born)],
+    ["Education", realText(politician.education)],
+    ["Occupation", realText(politician.occupation)],
+  ] as const).filter(([, value]) => value);
+
   const website = politician.website.startsWith("http")
     ? politician.website
     : `https://${politician.website}`;
@@ -136,11 +152,8 @@ export default async function PoliticianProfilePage({
               {politician.party}
             </Badge>
             <Tag>{politician.state}</Tag>
-            {/* The field carries a placeholder string when no calendar is connected -- don't
-                prefix that with "Next election" and present it as a date. */}
-            {/^\d/.test(politician.nextElection) ? (
-              <Tag>Next election {politician.nextElection}</Tag>
-            ) : null}
+            {/* Derived from recorded terms above; the stored next_election is a placeholder. */}
+            {nextElectionYear ? <Tag>Next election {nextElectionYear}</Tag> : null}
           </div>
         </div>
 
@@ -238,67 +251,82 @@ export default async function PoliticianProfilePage({
       <WithRail
         rail={
           <>
-            <Card id="biography">
-              <CardHeader title="Biography" />
-              <CardBody>
-                <p className="text-[13px] leading-relaxed text-[var(--muted)]">
-                  {politician.biography}
-                </p>
-                <div className="mt-3.5 flex flex-col gap-2.5">
-                  {[
-                    ["Born", politician.born],
-                    ["Education", politician.education],
-                    ["Occupation", politician.occupation],
-                  ].map(([label, value]) => (
-                    <div key={label}>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
-                        {label}
-                      </p>
-                      <p className="text-[13px]">{value}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardBody>
-            </Card>
+            {/*
+              Only facts that are on file. Every member's education read "Not available from
+              configured sources", every occupation "Public official", and most biographies
+              "US Representative from Texas. Synced from Congress.gov..." -- placeholders that
+              filled a card with nothing.
+            */}
+            {biographyFacts.length > 0 || realText(politician.biography) ? (
+              <Card id="biography">
+                <CardHeader title="Biography" />
+                <CardBody>
+                  {realText(politician.biography) ? (
+                    <p className="mb-3.5 text-[13px] leading-relaxed text-[var(--muted)]">
+                      {politician.biography}
+                    </p>
+                  ) : null}
+                  <div className="flex flex-col gap-2.5">
+                    {biographyFacts.map(([label, value]) => (
+                      <div key={label}>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
+                          {label}
+                        </p>
+                        <p className="text-[13px]">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardBody>
+              </Card>
+            ) : null}
 
             <Card>
               <CardHeader title="Contact" />
               <CardBody tight>
-                <ListRow
-                  leading={
-                    <IconTile tone="indigo">
-                      <MapPin />
-                    </IconTile>
-                  }
-                  title={politician.officeAddress}
-                />
-                <ListRow
-                  leading={
-                    <IconTile tone="indigo">
-                      <Phone />
-                    </IconTile>
-                  }
-                  title={<span className="num">{politician.officePhone}</span>}
-                />
-                <ListRow
-                  leading={
-                    <IconTile tone="indigo">
-                      <CalendarDays />
-                    </IconTile>
-                  }
-                  title="Next election"
-                  subtitle={politician.nextElection}
-                />
-                <ListRow
-                  href={website}
-                  leading={
-                    <IconTile tone="indigo">
-                      <Landmark />
-                    </IconTile>
-                  }
-                  title="Official website"
-                  subtitle={politician.website}
-                />
+                {realText(politician.officeAddress) ? (
+                  <ListRow
+                    leading={
+                      <IconTile tone="indigo">
+                        <MapPin />
+                      </IconTile>
+                    }
+                    title={politician.officeAddress}
+                  />
+                ) : null}
+                {realText(politician.officePhone) ? (
+                  <ListRow
+                    leading={
+                      <IconTile tone="indigo">
+                        <Phone />
+                      </IconTile>
+                    }
+                    title={<span className="num">{politician.officePhone}</span>}
+                  />
+                ) : null}
+                {nextElectionYear ? (
+                  <ListRow
+                    href={`/politicians/${politician.slug}/tenure`}
+                    leading={
+                      <IconTile tone="indigo">
+                        <CalendarDays />
+                      </IconTile>
+                    }
+                    title="Next election"
+                    subtitle={`November ${nextElectionYear}`}
+                  />
+                ) : null}
+                {realText(politician.website) ? (
+                  <ListRow
+                    href={website}
+                    leading={
+                      <IconTile tone="indigo">
+                        <Landmark />
+                      </IconTile>
+                    }
+                    title="Official website"
+                    subtitle={politician.website}
+                  />
+                ) : null}
               </CardBody>
             </Card>
 

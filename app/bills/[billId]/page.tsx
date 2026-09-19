@@ -42,7 +42,7 @@ import { listStoredBillsByIds } from "@/lib/supabase/bills";
 import { getStoredCommitteeById } from "@/lib/supabase/committees";
 import { getStoredPoliticianById } from "@/lib/supabase/politicians";
 import { isSubstantiveVote } from "@/lib/vote-classification";
-import { billHref, formatSummaryText } from "@/lib/utils";
+import { billHref, formatSummaryText, realText } from "@/lib/utils";
 
 export const revalidate = 21600;
 
@@ -82,13 +82,16 @@ export default async function BillDetailPage({
     : null;
 
   const { tone: topicTone } = topicVisual(bill.topic);
-  const summary = formatSummaryText(bill.summary);
+  // "Official summary not provided by the source yet..." stands in for 7,048 bills without a CRS
+  // summary; the page already says when there is none, so the placeholder is dropped.
+  const summary = realText(formatSummaryText(bill.summary));
+  const committeeName = realText(bill.committeeName);
 
   const watchItem = {
     id: bill.id,
     type: "bill" as const,
     label: `${bill.number} · ${bill.title}`,
-    subtitle: bill.committeeName,
+    subtitle: committeeName || bill.chamber,
     href: billHref(bill.id),
   };
 
@@ -163,10 +166,10 @@ export default async function BillDetailPage({
                 href={`/committees/${committee.slug}`}
                 className="text-[13px] font-semibold text-[var(--accent-2)] hover:underline"
               >
-                {bill.committeeName}
+                {committeeName || committee.name}
               </Link>
             ) : (
-              <p className="text-[13px] font-semibold">{bill.committeeName}</p>
+              <p className="text-[13px] font-semibold">{committeeName || "Not on file yet"}</p>
             )}
           </div>
 

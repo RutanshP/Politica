@@ -9,7 +9,7 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { MeterRow } from "@/components/ui/meter";
 import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
-import { billHref, cn, formatDateLabel, normalizeCommitteeField, partyAbbrev } from "@/lib/utils";
+import { billHref, cn, formatDateLabel, partyAbbrev, realText } from "@/lib/utils";
 import type { Bill, BillStatus, Committee } from "@/types/civic";
 
 export interface CommitteeMember {
@@ -71,7 +71,9 @@ export function CommitteeTabsView({
     { key: "overview", label: "Overview" },
     { key: "members", label: "Members", count: members.length },
     { key: "bills", label: "Referred Bills", count: billsCount },
-    { key: "hearings", label: "Hearings" },
+    // Only once a hearing is actually on file -- no calendar is synced, so for every committee
+    // this tab held a single "No hearing scheduled" line.
+    ...(realText(committee.hearing) ? [{ key: "hearings" as const, label: "Hearings" }] : []),
   ];
 
   return (
@@ -258,10 +260,7 @@ export function CommitteeTabsView({
         <Card>
           <CardBody>
             <p className="text-sm text-[var(--muted)]">
-              Upcoming hearing: <span className="text-[var(--ink)]">{normalizeCommitteeField(committee.hearing, "No hearing scheduled")}</span>
-            </p>
-            <p className="mt-2 text-xs text-[var(--faint)]">
-              Hearing agendas and schedules are published by the committee and are not part of the current Congress.gov sync.
+              Upcoming hearing: <span className="text-[var(--ink)]">{realText(committee.hearing)}</span>
             </p>
           </CardBody>
         </Card>

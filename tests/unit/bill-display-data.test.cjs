@@ -36,3 +36,23 @@ test("chanceOfBecomingLaw follows the bill's stage, and is certain only at the e
   assert.ok(chanceOfBecomingLaw("Passed Chamber") > chanceOfBecomingLaw("On Floor"));
   assert.ok(chanceOfBecomingLaw("Sent to President") > chanceOfBecomingLaw("Passed Chamber"));
 });
+
+test("realText drops the placeholders the syncs store for missing data, and keeps real text", () => {
+  const { realText, isPlaceholderText } = jiti("@/lib/utils");
+  for (const placeholder of [
+    "Not available from configured sources",
+    "Chair roster not connected from Congress.gov yet",
+    "Committee data pending full detail sync",
+    "Official summary not provided by the source yet. Stored bill details will appear here as more metadata is synced.",
+    "US Representative from Texas. Synced from Congress.gov via scheduled ingestion.",
+    "Public official",
+    "Election calendar not connected",
+    "",
+    null,
+  ]) {
+    assert.equal(realText(placeholder), "", String(placeholder));
+    assert.equal(isPlaceholderText(placeholder), true);
+  }
+  assert.equal(realText("Judiciary Committee"), "Judiciary Committee");
+  assert.equal(realText("  Attorney  "), "Attorney");
+});

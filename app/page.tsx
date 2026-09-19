@@ -1,13 +1,10 @@
 import {
   Activity,
-  Building2,
   CalendarClock,
   CheckCircle2,
-  FileText,
   Flame,
   Layers,
   Newspaper,
-  Scale,
   Star,
   Vote,
 } from "lucide-react";
@@ -29,10 +26,6 @@ import { billHref, billVersionHref } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
 export const revalidate = 21600;
-
-function seriesValue(series: Array<{ label: string; value: number }>, label: string) {
-  return series.find((point) => point.label === label)?.value ?? 0;
-}
 
 export default async function HomePage() {
   const [{ analytics, feed }, issuesData] = await Promise.all([
@@ -61,8 +54,6 @@ export default async function HomePage() {
   const introducedThisPeriod = introductions.at(-1)?.value ?? 0;
   const introductionsDelta = deltaFromSeries(introductions);
   const introductionsMonth = introductions.at(-1)?.label;
-  const clearedChamber =
-    seriesValue(analytics.activitySeries, "Passed") + seriesValue(analytics.activitySeries, "Signed");
 
   // Most active issues, ranked by the bill count already stored on each issue.
   const rankedIssues = [...issuesData.issues]
@@ -79,9 +70,9 @@ export default async function HomePage() {
     <div>
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Welcome back, Alex</h1>
+          <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Congress at a glance</h1>
           <p className="mt-1 text-[13.5px] text-[var(--muted)]">
-            Here is what has moved across Congress in the current stored dataset.
+            What is new, what is moving, and what became law in the current Congress.
           </p>
         </div>
         <SourceBadge
@@ -90,14 +81,12 @@ export default async function HomePage() {
         />
       </div>
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        <StatTile
-          label="Active bills"
-          value={analytics.activeBills.toLocaleString()}
-          icon={<FileText />}
-          tone="indigo"
-          footnote="In the current stored bill set"
-        />
+      {/*
+        Three numbers, each answering a question. Six tiles used to include inventory counts --
+        bills stored, committees tracked, issues tracked -- that describe the database rather than
+        Congress, and a "cleared a chamber" figure that overlapped "upcoming votes".
+      */}
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <StatTile
           label="Introduced last month"
           value={introducedThisPeriod.toLocaleString()}
@@ -107,32 +96,18 @@ export default async function HomePage() {
           footnote={introductionsMonth ? `${introductionsMonth} vs. the month before` : "Latest full month vs. the one before"}
         />
         <StatTile
-          label="Cleared a chamber"
-          value={clearedChamber.toLocaleString()}
-          icon={<CheckCircle2 />}
-          tone="emerald"
-          footnote="Passed chamber or signed"
-        />
-        <StatTile
-          label="Upcoming votes"
+          label="Moving toward a vote"
           value={analytics.upcomingVotes.toLocaleString()}
           icon={<Vote />}
-          tone="sky"
-          footnote="On the floor or awaiting action"
-        />
-        <StatTile
-          label="Committees tracked"
-          value={analytics.committees.toLocaleString()}
-          icon={<Building2 />}
           tone="indigo"
-          footnote="Committee records stored"
+          footnote="On the floor, past one chamber, or awaiting signature"
         />
         <StatTile
-          label="Tracked issues"
-          value={issuesData.issues.length.toLocaleString()}
-          icon={<Scale />}
-          tone="amber"
-          footnote="Linked to stored legislation"
+          label="Became law"
+          value={analytics.enacted.toLocaleString()}
+          icon={<CheckCircle2 />}
+          tone="emerald"
+          footnote={`Signed this Congress, of ${analytics.activeBills.toLocaleString()} bills introduced`}
         />
       </div>
 
@@ -231,7 +206,7 @@ export default async function HomePage() {
 
       <div className="grid gap-3.5 xl:grid-cols-3">
         <Card>
-          <CardHeader title="Upcoming votes" icon={<CalendarClock />} />
+          <CardHeader title="On the floor" icon={<CalendarClock />} />
           <CardBody tight>
             {feed.upcomingVotes.length > 0 ? (
               feed.upcomingVotes.map((vote) => (

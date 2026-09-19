@@ -3,7 +3,7 @@ import Link from "next/link";
 const LINKS = [
   { href: "/search", label: "Search" },
   { href: "/watchlist", label: "Watchlist" },
-  { href: "/profile", label: "Profile" },
+  { href: "/money/graph", label: "Money network" },
 ];
 
 export function Footer() {

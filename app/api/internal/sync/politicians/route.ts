@@ -37,7 +37,6 @@ export async function POST(request: Request) {
     revalidatePath("/politicians/[slug]", "page");
     revalidatePath("/politicians/[slug]/analytics", "page");
     revalidatePath("/politicians/[slug]/votes", "page");
-    revalidatePath("/profile");
 
     return NextResponse.json({
       ...result,

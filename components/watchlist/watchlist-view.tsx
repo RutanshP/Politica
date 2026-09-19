@@ -146,7 +146,7 @@ export function WatchlistView({
   suggested,
   activity,
 }: {
-  tab: "watchlist" | "alerts" | "saved" | "notifications";
+  tab: "watchlist" | "activity";
   /** Derived starter entities, shown only when the browser watchlist is empty. */
   suggested: WatchlistItem[];
   activity: ActivityEntry[];
@@ -164,39 +164,7 @@ export function WatchlistView({
     return <div className="h-64" aria-busy="true" />;
   }
 
-  if (tab === "saved") {
-    return (
-      <Card>
-        <CardHeader title="Saved searches" />
-        <CardBody>
-          <EmptyState
-            title="Saved searches aren't available yet"
-            description="Filter sets in the Bills Explorer are shareable by URL today. Named, saved searches need an account backend."
-            actionLabel="Open Bills Explorer"
-            actionHref="/bills"
-          />
-        </CardBody>
-      </Card>
-    );
-  }
-
-  if (tab === "notifications") {
-    return (
-      <Card>
-        <CardHeader title="Notifications" />
-        <CardBody>
-          <EmptyState
-            title="Delivery isn't configured"
-            description="Email and push delivery require an account backend. Until then, the alert feed on this page is the live view of activity on what you watch."
-            actionLabel="View alerts"
-            actionHref="/watchlist?tab=alerts"
-          />
-        </CardBody>
-      </Card>
-    );
-  }
-
-  if (tab === "alerts") {
+  if (tab === "activity") {
     return (
       <Card>
         <CardHeader title={personalized ? "Activity on your watchlist" : "Recent across Congress"} icon={<Bell />} />
@@ -262,7 +230,7 @@ export function WatchlistView({
         <CardBody>
           <AlertFeed entries={feed.slice(0, 6)} personalized={personalized} />
         </CardBody>
-        <CardFooter label="View all alerts" href="/watchlist?tab=alerts" />
+        <CardFooter label="View all activity" href="/watchlist?tab=activity" />
       </Card>
     </div>
   );

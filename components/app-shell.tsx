@@ -2,8 +2,6 @@
 
 import {
   BarChart3,
-  Bell,
-  ChevronDown,
   ChevronsLeft,
   CircleUserRound,
   FileText,
@@ -33,9 +31,6 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>;
   /** Match only this exact path, rather than any path beneath it. */
   exact?: boolean;
-  /** A shortcut into a tab of another page -- never takes the active highlight. */
-  shortcut?: boolean;
-  dot?: boolean;
 };
 
 const PRIMARY_NAV: NavItem[] = [
@@ -52,15 +47,12 @@ const PRIMARY_NAV: NavItem[] = [
 ];
 
 /*
- * Alerts / Saved searches are tabs on /watchlist, reached by query string. Active state here is
- * pathname-only on purpose: reading useSearchParams from the root layout would force a Suspense
- * boundary around the whole shell. So the shortcuts link in but never light up -- Watchlist owns
- * the highlight for that route.
+ * There are no accounts, so there is no Profile, no Alerts badge and no avatar: those were a
+ * placeholder "Alex / Free account" identity with an unread dot that never cleared. The watchlist
+ * is browser-local and real, and its activity feed is a tab on the same page.
  */
 const SECONDARY_NAV: NavItem[] = [
   { href: "/watchlist", label: "Watchlist", icon: Star, exact: true },
-  { href: "/watchlist?tab=alerts", label: "Alerts", icon: Bell, shortcut: true, dot: true },
-  { href: "/profile", label: "Profile", icon: CircleUserRound, exact: true },
 ];
 
 const SYNC_TONE = {
@@ -100,9 +92,6 @@ function NavLink({
       {collapsed ? null : (
         <>
           <span className="truncate">{item.label}</span>
-          {item.dot ? (
-            <span className="ml-auto h-1.5 w-1.5 flex-none rounded-full bg-[var(--accent-2)]" />
-          ) : null}
         </>
       )}
     </Link>
@@ -121,7 +110,6 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(false);
 
   function isActive(item: NavItem) {
-    if (item.shortcut) return false;
     return item.exact ? pathname === item.href : pathname.startsWith(item.href);
   }
 
@@ -224,29 +212,6 @@ export function AppShell({
             {collapsed ? null : "Collapse"}
           </button>
 
-          <Link
-            href="/profile"
-            onClick={close}
-            className={cn(
-              "flex items-center gap-2.5 rounded-[var(--r-md)] p-2 transition hover:bg-white/4",
-              collapsed && "lg:justify-center lg:p-1.5",
-            )}
-          >
-            <span className="grid h-9 w-9 flex-none place-items-center rounded-full bg-[linear-gradient(150deg,#a78bfa,#6d28d9)] text-xs font-semibold text-white">
-              AL
-            </span>
-            {collapsed ? null : (
-              <>
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-medium text-[var(--ink)]">
-                    Alex
-                  </span>
-                  <span className="block text-[11px] text-[var(--faint)]">Free account</span>
-                </span>
-                <ChevronDown className="ml-auto h-4 w-4 flex-none text-[var(--faint)]" />
-              </>
-            )}
-          </Link>
         </div>
       </aside>
 
@@ -259,25 +224,11 @@ export function AppShell({
           <SearchBar />
 
           <Link
-            href="/watchlist?tab=alerts"
-            aria-label="Alerts"
-            className="relative grid h-9 w-9 flex-none place-items-center rounded-[var(--r-sm)] text-[var(--muted)] transition hover:bg-[var(--panel-2)] hover:text-[var(--ink)]"
-          >
-            <Bell className="h-4.5 w-4.5" />
-          </Link>
-          <Link
             href="/watchlist"
             className="hidden h-9 items-center gap-1.5 rounded-[var(--r-sm)] border border-[var(--line)] px-3.5 text-[13px] font-medium text-[var(--ink)] transition hover:border-[var(--line-2)] hover:bg-[var(--panel-2)] sm:inline-flex"
           >
             <Star className="h-3.5 w-3.5 text-[var(--muted)]" />
             Watchlist
-          </Link>
-          <Link
-            href="/profile"
-            aria-label="Profile"
-            className="grid h-9 w-9 flex-none place-items-center rounded-full bg-[linear-gradient(150deg,#a78bfa,#6d28d9)] text-xs font-semibold text-white"
-          >
-            AL
           </Link>
         </header>
 

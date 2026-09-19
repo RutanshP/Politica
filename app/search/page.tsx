@@ -47,7 +47,9 @@ export default async function SearchPage({
                 </div>
                 <p className="mt-3 text-lg font-semibold text-[var(--ink)]">{result.label}</p>
                 <p className="mt-1 text-sm font-medium text-[var(--accent-2)]">{result.title}</p>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{result.description}</p>
+                {result.description ? (
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{result.description}</p>
+                ) : null}
               </Link>
             ))}
           </div>

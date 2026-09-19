@@ -20,7 +20,7 @@ import {
   topicBreakdownByCommitteeId,
 } from "@/lib/supabase/bills";
 import { listStoredPoliticiansByIds } from "@/lib/supabase/politicians";
-import { deriveCommitteeSector, partyAbbrev } from "@/lib/utils";
+import { deriveCommitteeSector, partyAbbrev, realText } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
 export async function generateStaticParams() {
@@ -105,7 +105,10 @@ export default async function CommitteePage({
               <Tag>{sector}</Tag>
               <SourceBadge label={getCommitteeSourceLabel(source)} live={isLiveCommitteeSource(source)} />
             </div>
-            <p className="max-w-2xl text-sm leading-relaxed text-[var(--muted)]">{committee.description}</p>
+            {/* Most descriptions are "Synced from Congress.gov committee records for the House." */}
+            {realText(committee.description) ? (
+              <p className="max-w-2xl text-sm leading-relaxed text-[var(--muted)]">{committee.description}</p>
+            ) : null}
           </div>
         </div>
 

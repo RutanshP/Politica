@@ -1,9 +1,9 @@
-import { Bell, Mail, Search, Star } from "lucide-react";
+import { Activity, Star } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { SourceBadge } from "@/components/source-badge";
 import { WatchlistView, type ActivityEntry } from "@/components/watchlist/watchlist-view";
-import { Card, CardBody, CardHeader, CardNote } from "@/components/ui/card";
+import { Card, CardHeader, CardNote } from "@/components/ui/card";
 import { WithRail } from "@/components/ui/layout";
 import { Tabs } from "@/components/ui/tabs";
 import { getNewsData } from "@/lib/data/news";
@@ -14,20 +14,12 @@ import type { Bill } from "@/types/civic";
 
 export const revalidate = 21600;
 
-const TABS = ["watchlist", "alerts", "saved", "notifications"] as const;
-type WatchlistTab = (typeof TABS)[number];
-
-/** Alert rules and delivery are layout-only until there is an account backend to store them. */
-const RULE_SHELLS = [
-  { title: "Bill actions", detail: "Any action on a watched bill" },
-  { title: "Floor votes", detail: "Roll calls on watched bills" },
-  { title: "Committee hearings", detail: "Watched committees" },
-];
-
-const DELIVERY_SHELLS = [
-  { title: "Email digest", icon: Mail },
-  { title: "Push notifications", icon: Bell },
-];
+/*
+ * Two tabs, both real: what you have pinned, and the activity on it. Alert rules, saved searches
+ * and email/push delivery used to sit here as tabs and cards marked "layout only" -- each needs an
+ * account backend that does not exist, so they promised features the site cannot deliver.
+ */
+type WatchlistTab = "watchlist" | "activity";
 
 export default async function WatchlistPage({
   searchParams,
@@ -35,9 +27,8 @@ export default async function WatchlistPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab: rawTab } = await searchParams;
-  const tab: WatchlistTab = TABS.includes(rawTab as WatchlistTab)
-    ? (rawTab as WatchlistTab)
-    : "watchlist";
+  // "alerts" was the old name of the activity tab; old links still land on it.
+  const tab: WatchlistTab = rawTab === "activity" || rawTab === "alerts" ? "activity" : "watchlist";
 
   const [{ items: suggested, availability }, recentBills, { news }] = await Promise.all([
     getWatchlistData(),
@@ -75,19 +66,7 @@ export default async function WatchlistPage({
 
   const tabItems = [
     { label: "Watchlist", href: "/watchlist", icon: <Star />, active: tab === "watchlist" },
-    { label: "Alerts", href: "/watchlist?tab=alerts", icon: <Bell />, active: tab === "alerts" },
-    {
-      label: "Saved searches",
-      href: "/watchlist?tab=saved",
-      icon: <Search />,
-      active: tab === "saved",
-    },
-    {
-      label: "Notifications",
-      href: "/watchlist?tab=notifications",
-      icon: <Mail />,
-      active: tab === "notifications",
-    },
+    { label: "Activity", href: "/watchlist?tab=activity", icon: <Activity />, active: tab === "activity" },
   ];
 
   return (
@@ -112,47 +91,6 @@ export default async function WatchlistPage({
       <WithRail
         rail={
           <>
-            <Card>
-              <CardHeader title="Custom alert rules" />
-              <CardBody className="gap-2.5">
-                {RULE_SHELLS.map((rule) => (
-                  <div
-                    key={rule.title}
-                    className="rounded-[var(--r-sm)] border border-dashed border-[var(--line-2)] px-3 py-2.5"
-                  >
-                    <p className="text-[13px] text-[var(--muted)]">{rule.title}</p>
-                    <p className="text-xs text-[var(--faint)]">{rule.detail}</p>
-                  </div>
-                ))}
-              </CardBody>
-              <CardNote>
-                Layout only — the rule builder needs an account backend to store rules against.
-              </CardNote>
-            </Card>
-
-            <Card>
-              <CardHeader title="Delivery" />
-              <CardBody className="gap-2.5">
-                {DELIVERY_SHELLS.map((option) => {
-                  const Icon = option.icon;
-                  return (
-                    <div
-                      key={option.title}
-                      className="flex items-center gap-2.5 rounded-[var(--r-sm)] border border-dashed border-[var(--line-2)] px-3 py-2.5"
-                    >
-                      <Icon className="h-4 w-4 flex-none text-[var(--faint)]" />
-                      <span className="flex-1 text-[13px] text-[var(--muted)]">
-                        {option.title}
-                      </span>
-                      <span className="rounded-full bg-white/6 px-2 py-0.5 text-[11px] font-semibold text-[var(--faint)]">
-                        Not configured
-                      </span>
-                    </div>
-                  );
-                })}
-              </CardBody>
-            </Card>
-
             <Card>
               <CardHeader title="Where this is stored" />
               <CardNote>
