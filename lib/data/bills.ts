@@ -283,11 +283,6 @@ export const getDashboardBills = cache(async () => {
   }
 });
 
-export async function getBillRouteParams() {
-  const { bills } = await getBillsData();
-  return bills.map((bill) => ({ billId: bill.id }));
-}
-
 export function isLiveBillsSource(source: string) {
   return source === "supabase";
 }

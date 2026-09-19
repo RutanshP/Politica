@@ -2,6 +2,7 @@ import { CommitteesDirectory } from "@/components/committees-directory";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { SourceBadge } from "@/components/source-badge";
+import { toCommitteeListItems } from "@/lib/committee-list";
 import {
   getCommitteeSourceLabel,
   getCommitteesData,
@@ -26,7 +27,7 @@ export default async function CommitteesPage() {
         }
       />
       {committees.length > 0 ? (
-        <CommitteesDirectory committees={committees} />
+        <CommitteesDirectory committees={toCommitteeListItems(committees)} />
       ) : (
         <EmptyState
           title="No committee data available"

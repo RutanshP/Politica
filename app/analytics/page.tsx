@@ -52,7 +52,7 @@ export default async function AnalyticsPage() {
       </section>
       <SectionCard title="Most active members">
         <DataTable
-          columns={["Name", "State", "Bills introduced", "Votes with party"]}
+          columns={["Name", "State", "Bills sponsored (career)", "Votes with party"]}
           rows={mostActive.map((politician) => [
             politician.name,
             politician.state,

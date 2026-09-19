@@ -72,31 +72,6 @@ const FEDERAL_HOUSE_VACANCIES: Record<string, { vacantSince: string; previousRep
   },
 };
 
-function enhancePoliticianStats(politicians: Politician[], bills: Bill[]) {
-  const billsByPolitician = new Map<string, Bill[]>();
-  for (const bill of bills) {
-    const sponsorKey = bill.sponsorId || slugifySegment(bill.sponsorName);
-    const items = billsByPolitician.get(sponsorKey) || [];
-    items.push(bill);
-    billsByPolitician.set(sponsorKey, items);
-  }
-
-  return politicians.map((politician) => {
-    const sponsoredBills = billsByPolitician.get(politician.id)
-      || billsByPolitician.get(slugifySegment(politician.name))
-      || [];
-
-    return {
-      ...politician,
-      stats: {
-        ...politician.stats,
-        billsIntroduced: sponsoredBills.length || politician.stats.billsIntroduced,
-        billsPassed: sponsoredBills.filter((bill) => bill.status === "Passed Chamber" || bill.status === "Signed").length,
-      },
-    };
-  });
-}
-
 async function hydratePoliticianVoteStats(politician: Politician) {
   if (politician.stats.votesWithParty > 0 || politician.stats.votesAgainstParty > 0 || politician.stats.attendance > 0) {
     return politician;

@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const jiti = require("../support/jiti.cjs");
 
 const { fetchTopPoliticalArticles } = jiti("@/lib/adapters/newsapi");
-const { CORE_NEWS_QUERIES, buildNewsQueries } = jiti("@/lib/server/news-sync");
+const { CORE_NEWS_QUERIES, buildNewsQueries, mentions } = jiti("@/lib/server/news-sync");
 const { dedupeByHeadline, summarizeArticleBody } = jiti("@/lib/news-text");
 
 test("buildNewsQueries searches Congress plus the sponsors of the most recently active bills", () => {
@@ -17,16 +17,24 @@ test("buildNewsQueries searches Congress plus the sponsors of the most recently 
   ];
   // Sorted by activity, newest first.
   const bills = [
-    { number: "S.9", sponsorId: "C3" },
-    { number: "S.8", sponsorId: "C3" },
-    { number: "HR.7", sponsorId: "B2" },
-    { number: "HR.6", sponsorId: "A1" },
+    { number: "S.9", sponsor_id: "C3" },
+    { number: "S.8", sponsor_id: "C3" },
+    { number: "HR.7", sponsor_id: "B2" },
+    { number: "HR.6", sponsor_id: "A1" },
   ];
 
-  const queries = buildNewsQueries(bills, politicians, []);
+  const queries = buildNewsQueries(bills, politicians);
 
   assert.deepEqual(queries, [...CORE_NEWS_QUERIES, "Cal Gamma", "Beth Beta"]);
   assert.ok(queries.length <= 5, "stays under the rate limit that failed the 8-query runs");
+});
+
+test("mentions matches whole terms only, and never a blank one", () => {
+  assert.equal(mentions("House passes H.R.1 on a party-line vote", "H.R.1"), true);
+  assert.equal(mentions("House passes H.R.1234", "H.R.1"), false);
+  assert.equal(mentions("Any headline at all", ""), false);
+  assert.equal(mentions("Any headline at all", null), false);
+  assert.equal(mentions("Sen. Cal Gamma says...", "cal gamma"), true);
 });
 
 test("dedupeByHeadline drops syndicated copies whose URLs differ", () => {

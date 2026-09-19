@@ -7,6 +7,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Line,
   LineChart,
   Pie,
@@ -141,6 +142,17 @@ export function PartisanDonutChart({ data }: { data: Array<{ label: string; valu
             <Cell key={entry.label} fill={colors[index % colors.length]} />
           ))}
         </Pie>
+        {/* Without a legend the slices were unlabelled until hovered. */}
+        <Legend
+          verticalAlign="bottom"
+          iconType="circle"
+          iconSize={8}
+          wrapperStyle={{ fontSize: 12, color: "#8b95ad" }}
+          formatter={(label) => {
+            const value = data.find((entry) => entry.label === label)?.value;
+            return value === undefined ? label : `${label} · ${value.toLocaleString()}`;
+          }}
+        />
         <Tooltip {...TOOLTIP_PROPS} cursor={false} />
       </PieChart>
     </ResponsiveContainer>

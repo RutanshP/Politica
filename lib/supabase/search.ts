@@ -33,19 +33,63 @@ function escapeIlikeValue(value: string) {
  */
 export async function searchStoredSearchDocuments(query: string, limit: number) {
   const normalized = escapeIlikeValue(query.trim());
+  const read = (filter: string, rowLimit: number) =>
+    fetchSupabaseRows<SearchDocumentRow>(
+      "search_documents",
+      [filter, "order=label.asc", `limit=${rowLimit}`].filter(Boolean).join("&"),
+      { select: SEARCH_DOCUMENT_SELECT, tags: [SEARCH_CACHE_TAG] },
+    );
 
-  const filters = normalized
-    ? [`or=(label.ilike.*${normalized}*,title.ilike.*${normalized}*,description.ilike.*${normalized}*,meta.ilike.*${normalized}*)`]
-    : [];
+  if (!normalized) {
+    return (await read("", limit)).map(mapRowToSearchEntity);
+  }
 
-  const rows = await fetchSupabaseRows<SearchDocumentRow>(
-    "search_documents",
-    [...filters, "order=label.asc", `limit=${limit}`].join("&"),
-    { select: SEARCH_DOCUMENT_SELECT, tags: [SEARCH_CACHE_TAG] },
-  );
+  /*
+   * Name/title matches and body matches are read separately, then ranked.
+   *
+   * One query over all four columns, `order=label.asc&limit=24`, returned the 24 alphabetically
+   * first matches of any kind. Bill labels ("HR.1234", "S.52") sort ahead of people's names, so a
+   * search for a member could fill up with bills whose summaries merely mention them, and the
+   * member never appeared. The body-only read is bounded because it is only a backfill.
+   */
+  const [named, mentioned] = await Promise.all([
+    read(`or=(label.ilike.*${normalized}*,title.ilike.*${normalized}*)`, limit * 3),
+    read(`or=(description.ilike.*${normalized}*,meta.ilike.*${normalized}*)`, limit),
+  ]);
 
-  return rows.map(mapRowToSearchEntity);
+  const needle = normalized.toLowerCase();
+  const score = (row: SearchDocumentRow, inName: boolean) => {
+    const label = row.label.toLowerCase();
+    return (inName ? 0 : 100)
+      + (label === needle ? 0 : label.startsWith(needle) ? 1 : 2) * 10
+      + (SEARCH_TYPE_RANK[row.entity_type] ?? SEARCH_TYPE_RANK.bill);
+  };
+
+  const seen = new Set<string>();
+  return [
+    ...named.map((row) => ({ row, rank: score(row, true) })),
+    ...mentioned.map((row) => ({ row, rank: score(row, false) })),
+  ]
+    .sort((left, right) => left.rank - right.rank || left.row.label.localeCompare(right.row.label))
+    .filter(({ row }) => {
+      const key = `${row.entity_type}-${row.entity_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit)
+    .map(({ row }) => mapRowToSearchEntity(row));
 }
+
+// A handful of people, committees and issues are what a name search is usually after; bills are
+// the long tail.
+const SEARCH_TYPE_RANK: Record<string, number> = {
+  politician: 0,
+  committee: 1,
+  issue: 2,
+  bill: 3,
+  news: 4,
+};
 
 /**
  * One document by the id of the record it indexes -- a bill id, or a politician/committee/issue

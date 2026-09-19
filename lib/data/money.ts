@@ -1,3 +1,4 @@
+import { isRealEmployer } from "@/lib/graph/fec-graph-normalizer";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { FUNDING_GRAPH_CACHE_TAG } from "@/lib/supabase/cache-tags";
 import { fetchSupabaseRows } from "@/lib/supabase/rest";
@@ -159,13 +160,16 @@ export async function getMoneyDashboard(): Promise<MoneyDashboard> {
     (edge) => edge.source_entity_id,
     (edge) => memberByCommittee.get(edge.target_entity_id) ?? edge.target_entity_id,
   );
+  // Over-fetched, then filtered once labels are known: edges stored before isRealEmployer caught
+  // "NULL" and "INFORMATION REQUESTED PER BEST EFFORTS" linger until each member re-syncs.
+  const employerCandidates = employers.slice(0, TOP_N * 3);
   const ieTargets = rank(ieEdges, (edge) => edge.target_entity_id, (edge) => edge.source_entity_id);
   const clients = rank(retainedEdges, (edge) => edge.source_entity_id, (edge) => edge.target_entity_id);
   const firms = rank(retainedEdges, (edge) => edge.target_entity_id, (edge) => edge.source_entity_id);
 
   const shown = {
     fundraisers: fundraisers.slice(0, TOP_N),
-    employers: employers.slice(0, TOP_N),
+    employers: employerCandidates,
     ieTargets: ieTargets.slice(0, TOP_N),
     clients: clients.slice(0, TOP_N),
     firms: firms.slice(0, TOP_N),
@@ -202,7 +206,7 @@ export async function getMoneyDashboard(): Promise<MoneyDashboard> {
       lobbying: clients.reduce((sum, row) => sum + row.amount, 0),
     },
     topFundraisers: shown.fundraisers.map(labelled),
-    topEmployers: shown.employers.map(labelled),
+    topEmployers: shown.employers.map(labelled).filter((row) => isRealEmployer(row.label)).slice(0, TOP_N),
     outsideSpending: shown.ieTargets.map((row) => ({
       ...labelled(row),
       support: ieByTarget(row.id, "independent_spending_support"),

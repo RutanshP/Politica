@@ -48,9 +48,19 @@ export default async function HomePage() {
    * delta. `activitySeries` is a status distribution -- comparing its last two points would be
    * "Signed vs Passed", which is not a change over time.
    */
-  const introductions = analytics.introductionsSeries;
+  // Compare complete months. The series ends at the current month, and setting a half-finished
+  // month against a whole one showed a steep "drop" every month until its last days.
+  const currentMonthLabel = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    year: "2-digit",
+    timeZone: "UTC",
+  }).format(new Date());
+  const introductions = analytics.introductionsSeries.at(-1)?.label === currentMonthLabel
+    ? analytics.introductionsSeries.slice(0, -1)
+    : analytics.introductionsSeries;
   const introducedThisPeriod = introductions.at(-1)?.value ?? 0;
   const introductionsDelta = deltaFromSeries(introductions);
+  const introductionsMonth = introductions.at(-1)?.label;
   const clearedChamber =
     seriesValue(analytics.activitySeries, "Passed") + seriesValue(analytics.activitySeries, "Signed");
 
@@ -89,12 +99,12 @@ export default async function HomePage() {
           footnote="In the current stored bill set"
         />
         <StatTile
-          label="Introduced this period"
+          label="Introduced last month"
           value={introducedThisPeriod.toLocaleString()}
           icon={<Activity />}
           tone="sky"
           delta={introductionsDelta}
-          footnote="Latest month vs. the one before"
+          footnote={introductionsMonth ? `${introductionsMonth} vs. the month before` : "Latest full month vs. the one before"}
         />
         <StatTile
           label="Cleared a chamber"

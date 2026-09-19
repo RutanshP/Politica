@@ -963,62 +963,6 @@ function buildFederalPoliticianLookup(rows: PoliticianRow[]) {
   return { byId, byMatchKey };
 }
 
-async function collectFederalHouseVotes(congress: string) {
-  const startYear = getCongressStartYear(congress);
-  const years = [startYear, startYear + 1];
-  const votes = [];
-
-  for (const [index, year] of years.entries()) {
-    let nextRollCall = 1;
-    let consecutiveMisses = 0;
-
-    while (nextRollCall <= FEDERAL_VOTE_MAX_PER_SESSION && consecutiveMisses < FEDERAL_VOTE_MAX_CONSECUTIVE_MISSES) {
-      const batch = Array.from({ length: FEDERAL_VOTE_BATCH_SIZE }, (_, index) => nextRollCall + index);
-      const results = await Promise.all(batch.map((rollCallNumber) => fetchHouseRollCallVote(year, rollCallNumber)));
-
-      for (const result of results) {
-        if (result) {
-          votes.push(result);
-          consecutiveMisses = 0;
-        } else {
-          consecutiveMisses += 1;
-        }
-      }
-
-      nextRollCall += FEDERAL_VOTE_BATCH_SIZE;
-    }
-  }
-
-  return votes;
-}
-
-async function collectFederalSenateVotes(congress: string) {
-  const votes = [];
-
-  for (const session of [1, 2] as const) {
-    let nextVote = 1;
-    let consecutiveMisses = 0;
-
-    while (nextVote <= FEDERAL_VOTE_MAX_PER_SESSION && consecutiveMisses < FEDERAL_VOTE_MAX_CONSECUTIVE_MISSES) {
-      const batch = Array.from({ length: FEDERAL_VOTE_BATCH_SIZE }, (_, index) => nextVote + index);
-      const results = await Promise.all(batch.map((voteNumber) => fetchSenateRollCallVote(congress, session, voteNumber)));
-
-      for (const result of results) {
-        if (result) {
-          votes.push(result);
-          consecutiveMisses = 0;
-        } else {
-          consecutiveMisses += 1;
-        }
-      }
-
-      nextVote += FEDERAL_VOTE_BATCH_SIZE;
-    }
-  }
-
-  return votes;
-}
-
 function parseStoredHouseVoteId(voteId: string) {
   const match = voteId.match(/^house-(\d+)-(\d+)-(\d+)$/i);
   if (!match) return null;
@@ -1243,7 +1187,6 @@ async function refreshStoredFederalVotes(options?: {
     };
   }
 
-  const congress = getDefaultCongress();
   const storedPoliticianRows = await fetchSupabaseRows<PoliticianRow>(
     "politicians",
     "jurisdiction_type=eq.federal&order=name.asc",
@@ -2161,9 +2104,6 @@ export async function syncLegislationFromCongress(options?: {
           .map((row) => row.politician_id),
       },
     }));
-    const actionRows = uniqueByKey(mutableFinalizedBills.flatMap(({ bill }) =>
-      bill.actions.map((action, index) => mapBillActionToRow(bill.id, action, index)),
-    ), (row) => `${row.bill_id}:${row.sort_order}`);
     const versionRows = uniqueByKey(mutableFinalizedBills.flatMap(({ bill }) =>
       bill.versions.map((version, index) => mapBillVersionToRow(bill.id, version, index)),
     ), (row) => `${row.bill_id}:${row.version_id}`);

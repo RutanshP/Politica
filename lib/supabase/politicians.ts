@@ -361,13 +361,6 @@ function mergeDuplicatePoliticianRows(rows: PoliticianRow[]) {
       }
 
       if (genericRows.length === 0) {
-        const bestStatsGroupIndex = specificGroups
-          .map((group, index) => ({
-            index,
-            stats: Math.max(...group.map(getVoteStatScore), 0),
-            quality: comparePoliticianQuality(group[0], [...group].sort(comparePoliticianQuality)[0]),
-          }))
-          .sort((left, right) => right.stats - left.stats)[0]?.index ?? 0;
         const zeroStatGroupCount = specificGroups.filter((group) => Math.max(...group.map(getVoteStatScore), 0) === 0).length;
         const positiveStatGroupCount = specificGroups.filter((group) => Math.max(...group.map(getVoteStatScore), 0) > 0).length;
 

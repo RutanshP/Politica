@@ -152,6 +152,33 @@ function buildStoredBillsOrder(sortBy?: string, direction?: SortDirection) {
   return `order=last_action_on.${resolved}.nullslast`;
 }
 
+export type BillStatusRow = Pick<
+  BillRow,
+  "id" | "number" | "status" | "sponsor_id" | "introduced_at" | "last_action_at"
+>;
+
+/**
+ * Every current-Congress federal bill, but only the columns needed to count and rank them --
+ * most recent action first.
+ *
+ * listStoredBills() carries titles, summaries and stats: ~19k rows took 18 seconds and several
+ * megabytes per call, and the analytics summary and news sync were each paying that to read a
+ * status and a sponsor id.
+ */
+export async function listStoredBillStatusRows() {
+  const congressSession = `${getDefaultCongress()}th Congress`;
+  return fetchSupabaseRows<BillStatusRow>(
+    "bills",
+    `jurisdiction_type=eq.federal&session=eq.${encodeURIComponent(congressSession)}&order=last_action_on.desc.nullslast`,
+    {
+      tags: [BILLS_CACHE_TAG],
+      select: "id,number,status,sponsor_id,introduced_at,last_action_at",
+      paginateAll: true,
+      pageSize: 1000,
+    },
+  );
+}
+
 export async function listStoredBills(includeDetails = false) {
   const congressSession = `${getDefaultCongress()}th Congress`;
   const [federalBillRows, stateBillRows] = await Promise.all([

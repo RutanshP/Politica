@@ -4,7 +4,6 @@ import {
   displayName,
   fetchExecutiveRecords,
   type ExecutiveRecord,
-  type ExecutiveTerm,
 } from "@/lib/adapters/executive";
 import { upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import { normalizeStateCode, normalizeStateLabel, slugifySegment } from "@/lib/utils";

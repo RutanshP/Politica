@@ -260,6 +260,20 @@ export function mapBillVersionToRow(billId: string, version: Bill["versions"][nu
   };
 }
 
+/**
+ * True for a Constitutional Authority Statement: the member's one-paragraph citation of the
+ * clause that lets Congress legislate ("[Congressional Record Volume 171, Number 81 ...] Congress
+ * has the power to enact this legislation pursuant to ..."). It is not a summary of the bill.
+ *
+ * mergeCongressBillDetail used it as the summary whenever CRS had not written one yet -- which for
+ * a new bill is weeks to months -- so 7,159 stored bills (36%) presented it as "About this bill".
+ */
+export function isConstitutionalAuthorityStatement(text: string | null | undefined) {
+  const value = (text || "").trimStart();
+  return value.startsWith("[Congressional Record")
+    || /Congress has the power to enact this legislation/i.test(value);
+}
+
 export function mapRowToBill(
   row: BillRow,
   actions: BillActionRow[],
@@ -270,7 +284,8 @@ export function mapRowToBill(
     slug: row.slug || undefined,
     number: row.number,
     title: formatInlineText(row.title),
-    summary: formatSummaryText(row.summary),
+    // Read-time as well as sync-time, so the rows already stored with one read as "no summary yet".
+    summary: isConstitutionalAuthorityStatement(row.summary) ? "" : formatSummaryText(row.summary),
     jurisdiction: row.jurisdiction,
     country: row.country,
     state: row.state ? normalizeStateLabel(row.state) : undefined,

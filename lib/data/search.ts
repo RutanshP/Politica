@@ -3,6 +3,14 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { emptyResult, withData } from "@/lib/data/result";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
 
+const EXCERPT_LENGTH = 280;
+
+// Bill descriptions are full CRS summaries; 24 of them made one results page 441KB.
+function excerpt(text: string) {
+  if (!text || text.length <= EXCERPT_LENGTH) return text;
+  return `${text.slice(0, EXCERPT_LENGTH).replace(/\s+\S*$/, "")}…`;
+}
+
 export async function searchPolitica(query: string) {
   if (!isSupabaseConfigured()) {
     return {
@@ -15,10 +23,11 @@ export async function searchPolitica(query: string) {
 
   // Filtered and limited in Postgres. This previously downloaded every search_documents row and
   // ran String.includes() over the whole array to return at most 24 results.
-  const [results, latestRun] = await Promise.all([
+  const [documents, latestRun] = await Promise.all([
     searchStoredSearchDocuments(normalized, normalized ? 24 : 12).catch(() => []),
     getLatestSyncRun("search_rebuild").catch(() => undefined),
   ]);
+  const results = documents.map((result) => ({ ...result, description: excerpt(result.description) }));
 
   // Whether the index exists is a different question from whether this query matched, and unlike
   // the entity index -- which is read in full -- these results come back filtered, so an empty

@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { Pagination } from "@/components/pagination";
 import { SearchBar } from "@/components/search-bar";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
@@ -59,7 +58,6 @@ export default async function SearchPage({
           />
         )}
       </SectionCard>
-      <Pagination page={1} pageSize={results.length || 1} total={results.length} />
     </div>
   );
 }

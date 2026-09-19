@@ -18,6 +18,24 @@ export async function getWatchlistData() {
     getIssuesData(),
   ]);
 
+  /*
+   * Suggestions should follow what is moving. Taking the first stored rows meant alphabetical
+   * order -- Aaron Bean, Abraham Hamadeh, and a commission with 0 linked bills -- for everyone.
+   */
+  const recentSponsorIds = new Set(bills.map((bill) => bill.sponsorId));
+  const suggestedPoliticians = [
+    ...politiciansData.politicians.filter((politician) => recentSponsorIds.has(politician.id)),
+    ...[...politiciansData.politicians].sort(
+      (left, right) => right.stats.billsIntroduced - left.stats.billsIntroduced,
+    ),
+  ].filter((politician, index, list) => list.findIndex((other) => other.id === politician.id) === index);
+  const busiestCommittee = [...committeesData.committees]
+    .filter((committee) => !committee.isChamberRecord)
+    .sort((left, right) => right.activeBillIds.length - left.activeBillIds.length);
+  const busiestIssue = [...issuesData.issues].sort(
+    (left, right) => right.stats.activeBills - left.stats.activeBills,
+  );
+
   const items: WatchlistItem[] = [
     ...bills.map((bill) => ({
       id: `watch-${bill.id}`,
@@ -27,7 +45,7 @@ export async function getWatchlistData() {
       status: bill.status,
       href: billHref(bill.id),
     })),
-    ...politiciansData.politicians.slice(0, 2).map((politician) => ({
+    ...suggestedPoliticians.slice(0, 2).map((politician) => ({
       id: `watch-${politician.id}`,
       label: politician.name,
       type: "politician" as const,
@@ -35,7 +53,7 @@ export async function getWatchlistData() {
       status: `${politician.stats.billsIntroduced} bills introduced`,
       href: `/politicians/${politician.slug}`,
     })),
-    ...committeesData.committees.slice(0, 1).map((committee) => ({
+    ...busiestCommittee.slice(0, 1).map((committee) => ({
       id: `watch-${committee.id}`,
       label: committee.name,
       type: "committee" as const,
@@ -43,7 +61,7 @@ export async function getWatchlistData() {
       status: `${committee.activeBillIds.length} linked bills`,
       href: `/committees/${committee.slug}`,
     })),
-    ...issuesData.issues.slice(0, 1).map((issue) => ({
+    ...busiestIssue.slice(0, 1).map((issue) => ({
       id: `watch-${issue.id}`,
       label: issue.name,
       type: "issue" as const,

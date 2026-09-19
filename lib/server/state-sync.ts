@@ -24,7 +24,7 @@ import { applyBillSponsorStatDeltas, buildBillSponsorStatDeltas } from "@/lib/se
 import { reconcilePoliticianVoteStats } from "@/lib/server/politician-stat-backfill";
 import { applyVoteStatCountersToPoliticians, toVoteStatCounterMap } from "@/lib/server/vote-stats";
 import { buildSourceFingerprint, classifyFreshness, normalizeSourceUpdatedAt } from "@/lib/server/sync-freshness";
-import { normalizeChamber, normalizeOfficeTitle, normalizePersonLookup, normalizeStateLabel, slugifySegment } from "@/lib/utils";
+import { normalizeChamber, normalizeOfficeTitle, normalizeStateLabel, slugifySegment } from "@/lib/utils";
 import type {
   BillActionRow,
   BillRow,

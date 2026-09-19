@@ -1,5 +1,5 @@
 import { emptyResult, withData } from "@/lib/data/result";
-import { getBillsData } from "@/lib/data/bills";
+import { listStoredBillStatusRows } from "@/lib/supabase/bills";
 import { getCommitteesData } from "@/lib/data/committees";
 import { getPoliticiansData } from "@/lib/data/politicians";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -54,12 +54,11 @@ function countByStatus(bills: Array<{ status: string }>, status: string) {
 }
 
 export async function computeAnalyticsSummary() {
-  const [billsData, committeesData, politiciansData] = await Promise.all([
-    getBillsData(),
+  const [bills, committeesData, politiciansData] = await Promise.all([
+    listStoredBillStatusRows(),
     getCommitteesData(),
     getPoliticiansData(),
   ]);
-  const { bills } = billsData;
 
   const activitySeries = (["Introduced", "In Committee", "On Floor", "Passed Chamber", "Signed"] as const)
     .map((status) => ({
@@ -69,9 +68,9 @@ export async function computeAnalyticsSummary() {
 
   const introductionsSeries = buildMonthlySeries(
     bills.map((bill) =>
-      bill.introducedAt === "Unknown" || bill.introducedAt === "Not available"
-        ? bill.lastActionAt
-        : bill.introducedAt,
+      bill.introduced_at === "Unknown" || bill.introduced_at === "Not available"
+        ? bill.last_action_at
+        : bill.introduced_at,
     ),
   );
 

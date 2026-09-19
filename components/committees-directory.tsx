@@ -18,14 +18,8 @@ import {
   sortDirectionLabel,
   type SortDirection,
 } from "@/lib/sort-direction";
-import {
-  COMMITTEE_CHAMBER_UNSPECIFIED,
-  deriveCommitteeSector,
-  normalizeCommitteeField,
-  normalizeStateLabel,
-  sortLabelsAlphabetically,
-} from "@/lib/utils";
-import type { Committee } from "@/types/civic";
+import type { CommitteeListItem } from "@/lib/committee-list";
+import { COMMITTEE_CHAMBER_UNSPECIFIED, sortLabelsAlphabetically } from "@/lib/utils";
 
 const PAGE_SIZE = 20;
 
@@ -34,29 +28,7 @@ const ALL_SECTORS = "All sectors";
 const ANY_HEARING = "Any hearing status";
 const SELECT_STATE = "Select a state";
 
-function getHearingStatus(committee: Committee) {
-  return normalizeCommitteeField(committee.hearing, "No hearing scheduled") === "No hearing scheduled"
-    ? "No hearing"
-    : "Hearing scheduled";
-}
-
-export function CommitteesDirectory({ committees }: { committees: Committee[] }) {
-  const committeeRows = useMemo(
-    () =>
-      committees
-        // A legislature chamber is not a committee; see Committee.isChamberRecord.
-        .filter((committee) => !committee.isChamberRecord)
-        .map((committee) => ({
-          ...committee,
-          level: committee.jurisdictionType === "state" ? "State" : "Federal",
-          stateLabel: committee.state ? normalizeStateLabel(committee.state) : "",
-          sector: deriveCommitteeSector(committee),
-          hearingLabel: normalizeCommitteeField(committee.hearing, "No hearing scheduled"),
-          hearingStatus: getHearingStatus(committee),
-        })),
-    [committees],
-  );
-
+export function CommitteesDirectory({ committees: committeeRows }: { committees: CommitteeListItem[] }) {
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState("Federal");
   const [state, setState] = useState(SELECT_STATE);
@@ -132,8 +104,8 @@ export function CommitteesDirectory({ committees }: { committees: Committee[] })
       // Natural order per option; the factor reverses it when the reader has flipped direction.
       .sort((left, right) => {
         const factor = sortDirectionFactor(sortBy, direction);
-        if (sortBy === "Active bills") return factor * (right.activeBillIds.length - left.activeBillIds.length);
-        if (sortBy === "Members") return factor * (right.memberIds.length - left.memberIds.length);
+        if (sortBy === "Active bills") return factor * (right.activeBillCount - left.activeBillCount);
+        if (sortBy === "Members") return factor * (right.memberCount - left.memberCount);
         if (sortBy === "Sector") return factor * left.sector.localeCompare(right.sector);
         if (sortBy === "Chamber") return factor * left.chamber.localeCompare(right.chamber);
         return factor * left.name.localeCompare(right.name);
@@ -238,7 +210,10 @@ export function CommitteesDirectory({ committees }: { committees: Committee[] })
             columns={[
               "Committee",
               "Chamber",
-              isStateLevel ? "State" : "Jurisdiction",
+              // Federal jurisdiction text is not in the Congress.gov feed -- all 236 committees
+              // carried the same "not provided by the source" placeholder -- so there is no
+              // column for it; state rows still show which state.
+              ...(isStateLevel ? ["State"] : []),
               "Sector",
               { label: "Members", align: "right" },
               { label: "Active bills", align: "right" },
@@ -261,17 +236,21 @@ export function CommitteesDirectory({ committees }: { committees: Committee[] })
                   {committee.chamber}
                 </Badge>
               ),
-              <span key={`${committee.id}-where`} className="text-[var(--muted)]">
-                {isStateLevel ? committee.stateLabel : committee.jurisdiction}
-              </span>,
+              ...(isStateLevel
+                ? [
+                    <span key={`${committee.id}-where`} className="text-[var(--muted)]">
+                      {committee.stateLabel}
+                    </span>,
+                  ]
+                : []),
               <span key={`${committee.id}-sector`} className="text-[var(--muted)]">
                 {committee.sector}
               </span>,
               <span key={`${committee.id}-members`} className="num">
-                {committee.memberIds.length}
+                {committee.memberCount}
               </span>,
               <span key={`${committee.id}-bills`} className="num">
-                {committee.activeBillIds.length}
+                {committee.activeBillCount}
               </span>,
               <span key={`${committee.id}-hearing`} className="text-[var(--muted)]">
                 {committee.hearingLabel}

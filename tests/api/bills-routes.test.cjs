@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const jiti = require("../support/jiti.cjs");
 
-const billsRoute = jiti("@/app/api/bills/route");
+const { getBillsData } = jiti("@/lib/data/bills");
 const billDetailRoute = jiti("@/app/api/bills/[billId]/route");
 
 test("bill detail route returns stored summary, actions, and versions for a synced bill", async () => {
@@ -152,9 +152,7 @@ test("bill detail route returns stored summary, actions, and versions for a sync
   };
 
   try {
-    const listResponse = await billsRoute.GET();
-    const listBody = await listResponse.json();
-    assert.equal(listResponse.status, 200);
+    const listBody = await getBillsData();
     assert.equal(listBody.bills[0].summary, "Official summary for FAIR Act.");
 
     const detailResponse = await billDetailRoute.GET(
@@ -313,10 +311,7 @@ test("bill list route keeps current federal session rows and state rows while ex
   };
 
   try {
-    const listResponse = await billsRoute.GET();
-    const listBody = await listResponse.json();
-
-    assert.equal(listResponse.status, 200);
+    const listBody = await getBillsData();
     assert.deepEqual(
       listBody.bills.map((bill) => bill.id).sort(),
       ["ca-ab-1", "hr-493"],

@@ -359,9 +359,9 @@ export function mergeCongressBillDetail(
     ...seed,
     title: officialTitle,
     status,
-    summary:
-      detail.constitutionalAuthorityStatementText?.trim()
-      || seed.summary,
+    // Not constitutionalAuthorityStatementText: that is the clause Congress legislates under, not
+    // a summary. The CRS summary, when there is one, replaces this in the sync.
+    summary: seed.summary,
     introducedAt: formatDisplayDate(detail.introducedDate),
     latestAction: latestActionText,
     lastActionAt: formatDisplayDate(detail.latestAction?.actionDate || detail.updateDate),
