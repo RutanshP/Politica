@@ -56,15 +56,29 @@ function partyCode(party: string | null): NetworkParty {
 /** Title-cases the all-caps names committees file under, leaving acronyms like PAC alone. */
 export function tidyCommitteeName(name: string) {
   if (name !== name.toUpperCase()) return name;
-  const keepUpper = new Set(["PAC", "PACS", "USA", "US", "LLC", "LLP", "INC", "II", "III", "AFL-CIO", "NRA", "NEA", "AFT", "SEIU", "UAW", "IBEW", "AT&T", "UPS", "CVS", "BNSF"]);
+  const keepUpper = new Set(["PAC", "PACS", "USA", "US", "LLC", "LLP", "INC", "II", "III", "AFL-CIO", "NRA", "NEA", "AFT", "SEIU", "UAW", "IBEW", "AT&T", "UPS", "CVS", "BNSF", "COPE"]);
   const keepLower = new Set(["of", "the", "and", "for", "in", "on", "to", "a", "an", "at", "by"]);
+  // Short words that are English rather than initials, so anything else of three letters or fewer
+  // stays capitalised as the acronym it almost always is ("CWA", "AFT").
+  const shortWords = new Set([
+    "THE", "AND", "FOR", "NEW", "OUR", "ONE", "TWO", "SIX", "TEN", "WAR", "TAX", "AIR", "OIL", "GAS",
+    "CAR", "LAW", "ACT", "AID", "ART", "SEA", "SUN", "RED", "WAY", "YES", "ALL", "OUT", "BIG", "FUN",
+    "JOB", "PAY", "RUN", "WIN", "YOU", "HER", "HIS", "NOT", "BUT", "CAN", "MAN", "AGE", "END", "ERA",
+    "GUN", "KEY", "NET", "TOP", "USE", "VET", "MY", "WE", "NO", "GO", "UP", "IS", "IT", "BE", "OR", "AS",
+  ]);
   return name
     .toLowerCase()
     .split(/(\s+|[/(),-])/)
     .map((word, index) => {
       const upper = word.toUpperCase();
-      if (keepUpper.has(upper) || /^[A-Z]{2,4}PAC$/.test(upper)) return upper;
+      if (keepUpper.has(upper)) return upper;
+      // "BANKPAC", "JSTREETPAC": filed as one loud word, kept that way.
+      if (/^[A-Z&]{2,}PAC$/.test(upper)) return upper;
       if (index > 0 && keepLower.has(word)) return word;
+      // No vowels ("DCCC", "NRSC") or a short non-word reads as initials.
+      if (/^[A-Z&]{2,}$/.test(upper) && (!/[AEIOUY]/.test(upper) || (upper.length <= 3 && !shortWords.has(upper)))) {
+        return upper;
+      }
       return word.charAt(0).toUpperCase() + word.slice(1);
     })
     .join("")
@@ -127,7 +141,7 @@ export async function getCongressNetwork(cycle = NETWORK_CYCLE): Promise<Congres
       name: tidyCommitteeName(row.name),
       category: row.category,
       owner: row.sponsor_politician_id ? memberIndex.get(row.sponsor_politician_id) ?? null : null,
-      connectedOrg: row.connected_org,
+      connectedOrg: row.connected_org ? tidyCommitteeName(row.connected_org) : null,
     }));
   const committeeIndex = new Map(committees.map((committee, index) => [committee.id, index]));
 

@@ -33,9 +33,12 @@ function translucent(hex: string, alpha: number) {
   return `rgba(${channel(16)}, ${channel(8)}, ${channel(0)}, ${alpha})`;
 }
 
-const EDGE_REST_COLOR = translucent("#6f86b8", 0.06);
+// Faint enough that ~97k of them read as structure rather than a haze over the middle.
+const EDGE_REST_COLOR = translucent("#6f86b8", 0.03);
 const OWNS_EDGE_COLOR = translucent("#e2e8f0", 0.9);
 const PEERS_ON_CANVAS = 6;
+/** Past this many neighbours, forced labels pile up; sigma's own collision-aware labels take over. */
+const FORCED_LABEL_LIMIT = 28;
 /** Width of the details panel that overlays the canvas's right edge on wide screens. */
 const FOCUS_PANEL_PX = 380;
 
@@ -186,7 +189,7 @@ export function CongressNetwork({
           if (node === hoveredRef.current) return { ...data, zIndex: 4 };
           if (neighborsRef.current.has(node)) {
             // Label the members around a focused committee; a member's 300 PACs would be noise.
-            return { ...data, zIndex: 2, forceLabel: attributes.kind === "member" && neighborsRef.current.size <= 80 };
+            return { ...data, zIndex: 2, forceLabel: attributes.kind === "member" && neighborsRef.current.size <= FORCED_LABEL_LIMIT };
           }
           return { ...data, color: DIM_NODE_COLOR, label: "", zIndex: 0 };
         },

@@ -73,3 +73,11 @@ test("tidyCommitteeName title-cases FEC's all-caps names and keeps acronyms", ()
   assert.equal(tidyCommitteeName("AMERICAN BANKERS ASSOCIATION PAC (BANKPAC)"), "American Bankers Association PAC (BANKPAC)");
   assert.equal(tidyCommitteeName("Already Mixed Case"), "Already Mixed Case");
 });
+
+test("tidyCommitteeName keeps initials and PAC brands loud, and English words in title case", () => {
+  assert.equal(tidyCommitteeName("DCCC"), "DCCC");
+  assert.equal(tidyCommitteeName("JSTREETPAC"), "JSTREETPAC");
+  assert.equal(tidyCommitteeName("COMMUNICATIONS WORKERS OF AMERICA - CWA - COPE"), "Communications Workers of America - CWA - COPE");
+  assert.equal(tidyCommitteeName("THE BOEING COMPANY POLITICAL ACTION COMMITTEE"), "The Boeing Company Political Action Committee");
+  assert.equal(tidyCommitteeName("OIL AND GAS PAC"), "Oil and Gas PAC");
+});
