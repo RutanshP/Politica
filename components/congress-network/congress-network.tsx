@@ -105,9 +105,12 @@ export function CongressNetwork({
   const visibilityRef = useRef<Visibility | null>(null);
   const activeRef = useRef<string | null>(null);
   const neighborsRef = useRef<Set<string>>(new Set());
+  const hoveredRef = useRef<string | null>(null);
   const peersRef = useRef<Set<string>>(new Set());
 
-  const active = hovered ?? focus;
+  // Focus wins. Hover previews a node only while nothing is focused; once something is, sweeping
+  // the cursor across the canvas should label dots, not repaint the whole view under it.
+  const active = focus ?? hovered;
   const neighbors = useMemo(() => {
     const set = new Set<string>();
     if (!graph || !active || !visibility || !graph.hasNode(active)) return set;
@@ -120,10 +123,10 @@ export function CongressNetwork({
   // The members who share the most donors with a focused member, lit and labelled on the canvas
   // so the "who is this connected to" answer is visible without reading the panel.
   const peers = useMemo(() => {
-    if (!graph || !focus || hovered || !visibility || !graph.hasNode(focus)) return new Set<string>();
+    if (!graph || !focus || !visibility || !graph.hasNode(focus)) return new Set<string>();
     if (graph.getNodeAttribute(focus, "kind") !== "member") return new Set<string>();
     return new Set(membersSharingDonors(graph, focus, visibility, PEERS_ON_CANVAS).map((peer) => peer.key));
-  }, [graph, focus, hovered, visibility]);
+  }, [graph, focus, visibility]);
 
   // ---- data --------------------------------------------------------------------------------
   useEffect(() => {
@@ -179,6 +182,8 @@ export function CongressNetwork({
           if (!current) return data;
           if (node === current) return { ...data, zIndex: 3, forceLabel: true, size: data.size * 1.3 };
           if (peersRef.current.has(node)) return { ...data, zIndex: 3, forceLabel: true, highlighted: true };
+          // Whatever is under the cursor keeps its colour and label, so sigma can draw its hover card.
+          if (node === hoveredRef.current) return { ...data, zIndex: 4 };
           if (neighborsRef.current.has(node)) {
             // Label the members around a focused committee; a member's 300 PACs would be noise.
             return { ...data, zIndex: 2, forceLabel: attributes.kind === "member" && neighborsRef.current.size <= 80 };
@@ -227,10 +232,11 @@ export function CongressNetwork({
   useEffect(() => {
     visibilityRef.current = visibility;
     activeRef.current = active && graph?.hasNode(active) ? active : null;
+    hoveredRef.current = hovered;
     neighborsRef.current = neighbors;
     peersRef.current = peers;
     rendererRef.current?.refresh({ skipIndexation: true });
-  }, [visibility, active, neighbors, peers, graph]);
+  }, [visibility, active, hovered, neighbors, peers, graph]);
 
   // Frame the focused node and everything it touches, clear of the details panel.
   const frame = useCallback((keys: string[]) => {

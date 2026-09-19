@@ -68,23 +68,28 @@ export default async function PoliticianVotesPage({
         }
       />
       <PoliticianTabs slug={politician.slug} active="votes" />
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SectionCard title="Voting profile">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">With party</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.votesWithParty}%` : "N/A"}</p>
+      {/* A narrow sticky summary beside the vote list. The two used to share the row equally and
+          stretch to the same height, which left the three stats floating in an empty card as
+          tall as the whole list. */}
+      <section className="grid items-start gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="xl:sticky xl:top-20">
+          <SectionCard title="Voting profile">
+            <div className="grid grid-cols-3 gap-3 xl:grid-cols-1">
+              <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">With party</p>
+                <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.votesWithParty}%` : "N/A"}</p>
+              </div>
+              <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">Against party</p>
+                <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.votesAgainstParty}%` : "N/A"}</p>
+              </div>
+              <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">Attendance</p>
+                <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.attendance}%` : "N/A"}</p>
+              </div>
             </div>
-            <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">Against party</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.votesAgainstParty}%` : "N/A"}</p>
-            </div>
-            <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">Attendance</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">{hasVoteStats ? `${politician.stats.attendance}%` : "N/A"}</p>
-            </div>
-          </div>
-        </SectionCard>
+          </SectionCard>
+        </div>
         <SectionCard
           title="Recent policy votes"
           description={proceduralCount > 0

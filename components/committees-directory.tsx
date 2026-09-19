@@ -40,6 +40,12 @@ export function CommitteesDirectory({ committees: committeeRows }: { committees:
   const [page, setPage] = useState(1);
 
   const isStateLevel = level === "State";
+  /*
+   * No hearing calendar is synced -- all 236 committees carry the "not connected" placeholder, so
+   * the column read "No hearing scheduled" on every row and the filter could only ever empty the
+   * table. Both appear once any committee actually has a hearing.
+   */
+  const hasHearings = useMemo(() => committeeRows.some((row) => row.hearingStatus === "Hearing scheduled"), [committeeRows]);
   /* Mirrors the politicians directory: State is not a browsable set on its own, you pick one. */
   const needsState = isStateLevel && state === SELECT_STATE;
 
@@ -142,11 +148,9 @@ export function CommitteesDirectory({ committees: committeeRows }: { committees:
           ...(isStateLevel ? [{ label: "State", value: state, options: states }] : []),
           { label: "Chamber", value: chamber, options: chambers },
           { label: "Sector", value: sector, options: sectors },
-          {
-            label: "Hearings",
-            value: hearingStatus,
-            options: [ANY_HEARING, "Hearing scheduled", "No hearing"],
-          },
+          ...(hasHearings
+            ? [{ label: "Hearings", value: hearingStatus, options: [ANY_HEARING, "Hearing scheduled", "No hearing"] }]
+            : []),
           {
             label: "Sort by",
             value: sortBy,
@@ -217,7 +221,7 @@ export function CommitteesDirectory({ committees: committeeRows }: { committees:
               "Sector",
               { label: "Members", align: "right" },
               { label: "Active bills", align: "right" },
-              "Upcoming hearing",
+              ...(hasHearings ? ["Upcoming hearing"] : []),
             ]}
             rows={pageRows.map((committee) => [
               <Link
@@ -252,9 +256,13 @@ export function CommitteesDirectory({ committees: committeeRows }: { committees:
               <span key={`${committee.id}-bills`} className="num">
                 {committee.activeBillCount}
               </span>,
-              <span key={`${committee.id}-hearing`} className="text-[var(--muted)]">
-                {committee.hearingLabel}
-              </span>,
+              ...(hasHearings
+                ? [
+                    <span key={`${committee.id}-hearing`} className="text-[var(--muted)]">
+                      {committee.hearingLabel}
+                    </span>,
+                  ]
+                : []),
             ])}
           />
 

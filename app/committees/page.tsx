@@ -18,7 +18,7 @@ export default async function CommitteesPage() {
     <div>
       <PageHeader
         title="Committees"
-        description="Browse committees by level, chamber, sector, membership, and hearing activity."
+        description="Browse congressional committees by chamber, sector, membership, and the bills in front of them."
         actions={
           <SourceBadge
             label={getCommitteeSourceLabel(source)}
