@@ -56,3 +56,26 @@ test("realText drops the placeholders the syncs store for missing data, and keep
   assert.equal(realText("Judiciary Committee"), "Judiciary Committee");
   assert.equal(realText("  Attorney  "), "Attorney");
 });
+
+test("congressSessionLabel uses real ordinals", () => {
+  const { congressSessionLabel } = jiti("@/lib/utils");
+  assert.equal(congressSessionLabel(119), "119th Congress");
+  assert.equal(congressSessionLabel(101), "101st Congress");
+  assert.equal(congressSessionLabel("102"), "102nd Congress");
+  assert.equal(congressSessionLabel(103), "103rd Congress");
+  assert.equal(congressSessionLabel(111), "111th Congress");
+  assert.equal(congressSessionLabel(112), "112th Congress");
+  assert.equal(congressSessionLabel(121), "121st Congress");
+  assert.equal(congressSessionLabel(undefined), "Unknown Congress");
+});
+
+test("excerptText and congressGovBillUrl", () => {
+  const { excerptText, congressGovBillUrl } = jiti("@/lib/utils");
+  assert.equal(excerptText("short"), "short");
+  const long = "word ".repeat(100);
+  const cut = excerptText(long, 50);
+  assert.ok(cut.length <= 51 && cut.endsWith("…"));
+  assert.equal(congressGovBillUrl("hr-1", 119, "summary"), "https://www.congress.gov/bill/119th-congress/house-bill/1/summary");
+  assert.equal(congressGovBillUrl("sjres-7"), "https://www.congress.gov/bill/119th-congress/senate-joint-resolution/7");
+  assert.equal(congressGovBillUrl("hconres-119-118"), undefined);
+});

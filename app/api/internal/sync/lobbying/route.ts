@@ -7,17 +7,19 @@ import { rebuildLobbyingGraph, syncLobbyingFilings } from "@/lib/server/lobbying
 
 export const dynamic = "force-dynamic";
 
+// A slice of up to 60 pages runs about a minute and a half at the LDA's pace.
+export const maxDuration = 300;
+
 /**
  * Lobbying disclosure ingestion.
  *
- * Two modes, because the LDA API caps page_size at 25 and a year of quarterly filings is a few
- * thousand requests:
+ *   POST ?pages=60                       ingest reports posted since the stored cursor; loop while done=false
+ *   POST ?since=2025-01-01&pages=60      reset the cursor first
+ *   POST ?since=A&before=B&pages=60      one closed window, cursor untouched (parallel backfills)
+ *   POST ?mode=graph&years=2025,2026     rebuild the funding-graph lobbying edges from what is stored
  *
- *   POST ?year=2026&filingType=Q1&page=1&pages=40   ingest a slice, returns the next cursor
- *   POST ?mode=graph&years=2025,2026                rebuild graph entities/edges from what's stored
- *
- * Ingestion only writes filing rows. The graph totals are computed from those rows by the graph
- * mode, so re-running a slice cannot double count.
+ * Ingestion only writes report rows and the bills they cite. Which report counts for a quarter,
+ * and every total, is computed from those rows, so re-running a slice cannot double count.
  */
 export async function POST(request: Request) {
   if (!isAuthorizedSyncRequest(request)) {
@@ -42,23 +44,42 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: result.status === "failed" ? 500 : 200 });
   }
 
-  const year = Number.parseInt(url.searchParams.get("year") || "", 10);
-  if (!Number.isFinite(year)) {
-    return NextResponse.json({ error: "year is required" }, { status: 400 });
+  const since = url.searchParams.get("since")?.trim();
+  if (since && Number.isNaN(Date.parse(since))) {
+    return NextResponse.json({ error: "since must be a date" }, { status: 400 });
   }
-
-  const page = Number.parseInt(url.searchParams.get("page") || "1", 10);
+  const before = url.searchParams.get("before")?.trim();
+  if (before && Number.isNaN(Date.parse(before))) {
+    return NextResponse.json({ error: "before must be a date" }, { status: 400 });
+  }
   const pages = Number.parseInt(url.searchParams.get("pages") || "0", 10);
+
+  // A closed window is a backfill slice run side by side with others, so it skips the pipeline's
+  // one-run-at-a-time lock and its run log; the cursor-driven nightly run goes through both.
+  if (before) {
+    try {
+      const sync = await syncLobbyingFilings({
+        postedAfter: since || undefined,
+        postedBefore: before,
+        pageBudget: Number.isFinite(pages) && pages > 0 ? pages : undefined,
+      });
+      return NextResponse.json({ pipeline: "lobbying_backfill", status: "success", metadata: sync });
+    } catch (error) {
+      return NextResponse.json(
+        { pipeline: "lobbying_backfill", status: "failed", error: error instanceof Error ? error.message : String(error) },
+        { status: 500 },
+      );
+    }
+  }
 
   const result = await runPipeline("lobbying_filings_sync", async () => {
     const sync = await syncLobbyingFilings({
-      year,
-      filingType: url.searchParams.get("filingType") || undefined,
-      startPage: Number.isFinite(page) && page > 0 ? page : 1,
+      postedAfter: since || undefined,
       pageBudget: Number.isFinite(pages) && pages > 0 ? pages : undefined,
     });
-    return { recordCount: sync.filingsUpserted, metadata: sync };
+    return { recordCount: sync.reportsUpserted, metadata: sync };
   });
 
+  if (result.status === "success") revalidatePoliticaCaches();
   return NextResponse.json(result, { status: result.status === "failed" ? 500 : 200 });
 }

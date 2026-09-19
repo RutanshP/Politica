@@ -203,26 +203,31 @@ export default async function PoliticianProfilePage({
 
       {/* Stat tiles */}
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {/*
+          Scopes are stated because they differ: the career count comes from Congress.gov, the other
+          two from the bills stored for the current Congress. The third tile used to be "Amendments
+          offered", a counter nothing ever computed -- it read 0 for every member.
+        */}
         <StatTile
-          label="Bills introduced"
+          label="Bills sponsored, career"
           value={politician.stats.billsIntroduced.toLocaleString()}
           icon={<FileText />}
           tone="indigo"
-          footnote="Sponsored legislation on record"
+          footnote="Every Congress they have served in"
         />
         <StatTile
-          label="Bills passed"
+          label="Sponsored this Congress"
+          value={sponsoredBills.length.toLocaleString()}
+          icon={<Gavel />}
+          tone="amber"
+          footnote="Bills and resolutions in the 119th Congress"
+        />
+        <StatTile
+          label="Passed a chamber"
           value={politician.stats.billsPassed.toLocaleString()}
           icon={<CheckCircle2 />}
           tone="emerald"
-          footnote="Cleared a chamber or became law"
-        />
-        <StatTile
-          label="Amendments offered"
-          value={politician.stats.amendmentsOffered.toLocaleString()}
-          icon={<Gavel />}
-          tone="amber"
-          footnote="Floor and committee"
+          footnote="Of those, cleared the House or Senate or became law"
         />
         <StatTile
           label="Attendance"

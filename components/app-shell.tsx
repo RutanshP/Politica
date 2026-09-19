@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Briefcase,
   BarChart3,
   ChevronsLeft,
   CircleUserRound,
@@ -41,6 +42,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/elections", label: "Elections", icon: Vote },
   { href: "/money", label: "Money", icon: Wallet, exact: true },
   { href: "/money/graph", label: "Money network", icon: Network },
+  { href: "/money/lobbying", label: "Lobbying", icon: Briefcase },
   { href: "/issues", label: "Issues", icon: Scale },
   { href: "/news", label: "News", icon: Newspaper },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
@@ -186,7 +188,11 @@ export function AppShell({
 
         <div className="flex flex-none flex-col gap-2.5">
           {sync && !collapsed ? (
-            <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-white/2 px-3 py-2.5">
+            <Link
+              href="/status"
+              title="Data status"
+              className="rounded-[var(--r-md)] border border-[var(--line)] bg-white/2 px-3 py-2.5 transition hover:border-[var(--line-2)]"
+            >
               <div className="flex items-center gap-2">
                 <span
                   className={cn("h-1.5 w-1.5 flex-none rounded-full", SYNC_TONE[sync.tone])}
@@ -196,7 +202,7 @@ export function AppShell({
               {sync.detail ? (
                 <p className="mt-0.5 pl-3.5 text-[11px] text-[var(--faint)]">{sync.detail}</p>
               ) : null}
-            </div>
+            </Link>
           ) : null}
 
           <button

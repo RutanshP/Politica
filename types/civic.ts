@@ -10,7 +10,8 @@ export type EntityType =
   | "issue"
   | "vote"
   | "agency"
-  | "state";
+  | "state"
+  | "lobbying";
 
 export type DataAvailability =
   | "live"

@@ -1,5 +1,8 @@
 import "server-only";
 
+import { congressForYear, extractBillMentions, isQuarterlyReport } from "@/lib/lobbying/lda-text";
+import { organizationKey } from "@/lib/organization-names";
+
 /**
  * Lobbying Disclosure Act filings.
  *
@@ -18,9 +21,6 @@ const DEFAULT_BASE_URL = "https://lda.gov/api/v1";
 /** The API caps page_size at 25 regardless of what is requested. */
 export const LDA_PAGE_SIZE = 25;
 
-/** Quarterly reports carry the money. Registrations and "no activity" variants do not. */
-export const LDA_MONEY_FILING_TYPES = ["Q1", "Q2", "Q3", "Q4"] as const;
-
 export interface LdaFilingRecord {
   filing_uuid: string;
   filing_year: number;
@@ -32,6 +32,7 @@ export interface LdaFilingRecord {
   dt_posted?: string | null;
   registrant?: { id?: number | string | null; name?: string | null } | null;
   client?: { id?: number | string | null; name?: string | null } | null;
+  lobbying_activities?: Array<{ general_issue_code?: string | null; description?: string | null }> | null;
 }
 
 interface LdaPage<T> {
@@ -60,42 +61,37 @@ function buildHeaders() {
 
 /*
  * The throttle is a rate over a window, not a per-burst limit, so retrying alone is not enough:
- * several workers backing off in lockstep just collide again. Requests are paced through a single
- * chained promise, the same approach the OpenStates adapter uses.
+ * several workers backing off in lockstep just collide again. Requests are spaced by their *start*
+ * times through one shared schedule. Spacing them by completion instead (the first version) made
+ * the walk fully serial -- each page takes ~2s to answer, so a 190k-report backfill was ~7 hours.
+ * At the default 1000ms the rate is 60 a minute; at 700ms (85 a minute) the API began throttling.
  */
-const MIN_REQUEST_INTERVAL_MS = Number(process.env.POLITICA_LDA_MIN_INTERVAL_MS || 1200);
-let requestChain: Promise<unknown> = Promise.resolve();
+const MIN_REQUEST_INTERVAL_MS = Number(process.env.POLITICA_LDA_MIN_INTERVAL_MS || 1000);
+let nextSlot = 0;
 
-function paced<T>(work: () => Promise<T>): Promise<T> {
-  const result = requestChain.then(work, work);
-  requestChain = result
-    .then(
-      () => new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_INTERVAL_MS)),
-      () => new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_INTERVAL_MS)),
-    );
-  return result;
+async function paced<T>(work: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const slot = Math.max(now, nextSlot);
+  nextSlot = slot + MIN_REQUEST_INTERVAL_MS;
+  if (slot > now) await new Promise((resolve) => setTimeout(resolve, slot - now));
+  return work();
 }
 
-export async function fetchLdaFilingsPage(options: {
-  year: number;
-  filingType?: string;
-  page: number;
-}): Promise<LdaPage<LdaFilingRecord>> {
+/**
+ * One page of filings posted after a moment, oldest first. The API returns these in posting order,
+ * so new filings only ever append at the end: page N stays page N while a walk is in progress,
+ * which is what makes the posted-after cursor resumable where paging by year was not.
+ */
+export async function fetchLdaFilingsPage(options: { postedAfter: string; postedBefore?: string; page: number }): Promise<LdaPage<LdaFilingRecord>> {
   return paced(() => fetchLdaFilingsPageUncontrolled(options));
 }
 
-async function fetchLdaFilingsPageUncontrolled(options: {
-  year: number;
-  filingType?: string;
-  page: number;
-}): Promise<LdaPage<LdaFilingRecord>> {
+async function fetchLdaFilingsPageUncontrolled(options: { postedAfter: string; postedBefore?: string; page: number }): Promise<LdaPage<LdaFilingRecord>> {
   const url = new URL(`${getBaseUrl()}/filings/`);
-  url.searchParams.set("filing_year", String(options.year));
+  url.searchParams.set("filing_dt_posted_after", options.postedAfter);
+  if (options.postedBefore) url.searchParams.set("filing_dt_posted_before", options.postedBefore);
   url.searchParams.set("page", String(options.page));
   url.searchParams.set("page_size", String(LDA_PAGE_SIZE));
-  if (options.filingType) {
-    url.searchParams.set("filing_type", options.filingType);
-  }
 
   const response = await fetch(url, { headers: buildHeaders(), cache: "no-store" });
 
@@ -164,53 +160,69 @@ export interface NormalizedLdaFiling {
   registrant_name: string | null;
   client_id: string | null;
   client_name: string | null;
+  client_key: string;
   is_in_house: boolean;
   income: number | null;
   expenses: number | null;
   amount: number | null;
   posted_at: string | null;
-  filing_url: string | null;
+  issue_codes: string[];
 }
 
-export function normalizeLdaFiling(record: LdaFilingRecord): NormalizedLdaFiling | null {
-  if (!record?.filing_uuid) return null;
+export interface NormalizedLdaReport {
+  filing: NormalizedLdaFiling;
+  /** Bill ids cited in the report's activity descriptions, before checking they are stored. */
+  billMentions: string[];
+}
 
-  const registrantId = toId(record.registrant?.id);
-  const clientId = toId(record.client?.id);
+/**
+ * One quarterly report, normalized. Registrations and anything outside a quarter return null --
+ * they carry no money or activity.
+ */
+export function normalizeLdaFiling(record: LdaFilingRecord): NormalizedLdaReport | null {
+  if (!record?.filing_uuid || !isQuarterlyReport(record.filing_type, record.filing_period)) return null;
+
   const income = toAmount(record.income);
   const expenses = toAmount(record.expenses);
-
-  /*
-   * A lobbying firm reports the income a client paid it. An organization lobbying for itself
-   * files as its own registrant and reports expenses instead, leaving income null -- so taking
-   * income alone would drop every in-house filer's money entirely.
-   *
-   * In-house is detected by name, not id: registrants and clients live in separate id spaces
-   * (LEGO Systems files as registrant 401107919 and client 57269 -- plainly itself, yet the ids
-   * differ), so comparing ids would mark nothing as in-house.
-   */
   const registrantName = record.registrant?.name?.trim() || null;
   const clientName = record.client?.name?.trim() || null;
-  const isInHouse = Boolean(
-    registrantName
-      && clientName
-      && registrantName.toLowerCase() === clientName.toLowerCase(),
-  );
+  const clientKey = organizationKey(clientName);
+
+  /*
+   * A lobbying firm reports the income a client paid it; an organization lobbying for itself
+   * reports its own expenses instead. So an expenses-only report is in-house whatever the names
+   * say, and matching names catch the rest (the "no activity" variants report neither figure).
+   * Ids cannot be compared: registrants and clients live in separate id spaces -- LEGO Systems
+   * files as registrant 401107919 and client 57269.
+   */
+  const isInHouse = (expenses !== null && income === null)
+    || Boolean(clientKey && organizationKey(registrantName) === clientKey);
+
+  const activities = record.lobbying_activities ?? [];
+  const congress = congressForYear(record.filing_year);
+  const billMentions = new Set<string>();
+  for (const activity of activities) {
+    for (const billId of extractBillMentions(activity.description, congress)) billMentions.add(billId);
+  }
 
   return {
-    filing_uuid: record.filing_uuid,
-    filing_year: record.filing_year,
-    filing_type: record.filing_type || null,
-    filing_period: record.filing_period || null,
-    registrant_id: registrantId,
-    registrant_name: registrantName,
-    client_id: clientId,
-    client_name: clientName,
-    is_in_house: isInHouse,
-    income,
-    expenses,
-    amount: income ?? expenses,
-    posted_at: record.dt_posted || null,
-    filing_url: record.filing_document_url || null,
+    filing: {
+      filing_uuid: record.filing_uuid,
+      filing_year: record.filing_year,
+      filing_type: record.filing_type || null,
+      filing_period: record.filing_period || null,
+      registrant_id: toId(record.registrant?.id),
+      registrant_name: registrantName,
+      client_id: toId(record.client?.id),
+      client_name: clientName,
+      client_key: clientKey,
+      is_in_house: isInHouse,
+      income,
+      expenses,
+      amount: isInHouse ? expenses ?? income : income ?? expenses,
+      posted_at: record.dt_posted || null,
+      issue_codes: [...new Set(activities.map((activity) => activity.general_issue_code).filter((code): code is string => Boolean(code)))],
+    },
+    billMentions: [...billMentions],
   };
 }

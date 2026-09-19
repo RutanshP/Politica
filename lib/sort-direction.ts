@@ -17,6 +17,7 @@ export type SortDirection = "asc" | "desc";
 const NATURALLY_DESCENDING = new Set([
   "Attendance",
   "Bills introduced",
+  "Bills passed",
   "Party alignment",
   "Recent activity",
   "Candidates",

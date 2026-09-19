@@ -109,7 +109,7 @@ export async function getCommitteeRouteParams() {
 
 export function getCommitteeSourceLabel(source: string) {
   if (source === "supabase") return "Stored committee data";
-  if (source === "unconfigured") return "Supabase is not configured";
+  if (source === "unconfigured") return "Data source not configured";
   return "Stored committee data unavailable";
 }
 

@@ -1,3 +1,4 @@
+import { tidyOrganizationName } from "@/lib/organization-names";
 import { layoutCongressNetwork } from "@/lib/graph/congress-network-layout";
 import {
   type CongressNetwork,
@@ -53,37 +54,8 @@ function partyCode(party: string | null): NetworkParty {
   return "I";
 }
 
-/** Title-cases the all-caps names committees file under, leaving acronyms like PAC alone. */
-export function tidyCommitteeName(name: string) {
-  if (name !== name.toUpperCase()) return name;
-  const keepUpper = new Set(["PAC", "PACS", "USA", "US", "LLC", "LLP", "INC", "II", "III", "AFL-CIO", "NRA", "NEA", "AFT", "SEIU", "UAW", "IBEW", "AT&T", "UPS", "CVS", "BNSF", "COPE"]);
-  const keepLower = new Set(["of", "the", "and", "for", "in", "on", "to", "a", "an", "at", "by"]);
-  // Short words that are English rather than initials, so anything else of three letters or fewer
-  // stays capitalised as the acronym it almost always is ("CWA", "AFT").
-  const shortWords = new Set([
-    "THE", "AND", "FOR", "NEW", "OUR", "ONE", "TWO", "SIX", "TEN", "WAR", "TAX", "AIR", "OIL", "GAS",
-    "CAR", "LAW", "ACT", "AID", "ART", "SEA", "SUN", "RED", "WAY", "YES", "ALL", "OUT", "BIG", "FUN",
-    "JOB", "PAY", "RUN", "WIN", "YOU", "HER", "HIS", "NOT", "BUT", "CAN", "MAN", "AGE", "END", "ERA",
-    "GUN", "KEY", "NET", "TOP", "USE", "VET", "MY", "WE", "NO", "GO", "UP", "IS", "IT", "BE", "OR", "AS",
-  ]);
-  return name
-    .toLowerCase()
-    .split(/(\s+|[/(),-])/)
-    .map((word, index) => {
-      const upper = word.toUpperCase();
-      if (keepUpper.has(upper)) return upper;
-      // "BANKPAC", "JSTREETPAC": filed as one loud word, kept that way.
-      if (/^[A-Z&]{2,}PAC$/.test(upper)) return upper;
-      if (index > 0 && keepLower.has(word)) return word;
-      // No vowels ("DCCC", "NRSC") or a short non-word reads as initials.
-      if (/^[A-Z&]{2,}$/.test(upper) && (!/[AEIOUY]/.test(upper) || (upper.length <= 3 && !shortWords.has(upper)))) {
-        return upper;
-      }
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    })
-    .join("")
-    .replace(/\bPac\b/g, "PAC");
-}
+/** Kept under its original name for the network and dashboard callers. */
+export const tidyCommitteeName = tidyOrganizationName;
 
 export async function getCongressNetwork(cycle = NETWORK_CYCLE): Promise<CongressNetwork | null> {
   if (!isSupabaseConfigured()) return null;

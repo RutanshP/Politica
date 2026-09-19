@@ -1,5 +1,6 @@
 import { NETWORK_CYCLE, tidyCommitteeName } from "@/lib/data/congress-network";
 import { isRealEmployer } from "@/lib/graph/fec-graph-normalizer";
+import { tidyOrganizationName } from "@/lib/organization-names";
 import type { PacCategory } from "@/lib/graph/pac-classification";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { FUNDING_GRAPH_CACHE_TAG } from "@/lib/supabase/cache-tags";
@@ -17,8 +18,7 @@ import { fetchSupabaseRows, fetchSupabaseRpcRows } from "@/lib/supabase/rest";
  *     Named PACs come from the separate PAC sync (pac_contributions) -- see getTopPacs.
  *   - Employer figures are itemized individual contributions grouped by the employer each donor
  *     reported -- not money from the company itself.
- *   - Lobbying is LDA-reported spend, and only for clients that also appear as donor employers
- *     (see lobbying_graph_rollup), so it is a subset of all lobbying, not the whole of it.
+ *   - Lobbying lives on its own page (lib/data/lobbying.ts); this dashboard only summarizes it.
  */
 
 export interface MoneyRankRow {
@@ -39,13 +39,10 @@ export interface MoneyDashboard {
     raisedByMembers: number;
     membersWithFilings: number;
     outsideSpending: number;
-    lobbying: number;
   };
   topFundraisers: MoneyRankRow[];
   topEmployers: MoneyRankRow[];
   outsideSpending: Array<MoneyRankRow & { support: number; oppose: number }>;
-  lobbyingClients: MoneyRankRow[];
-  lobbyingFirms: MoneyRankRow[];
 }
 
 interface EdgeRow {
@@ -107,12 +104,10 @@ function rank(
 const EMPTY: MoneyDashboard = {
   configured: false,
   cycle: null,
-  totals: { raisedByMembers: 0, membersWithFilings: 0, outsideSpending: 0, lobbying: 0 },
+  totals: { raisedByMembers: 0, membersWithFilings: 0, outsideSpending: 0 },
   topFundraisers: [],
   topEmployers: [],
   outsideSpending: [],
-  lobbyingClients: [],
-  lobbyingFirms: [],
 };
 
 export interface TopPacRow {
@@ -176,7 +171,7 @@ export async function getMemberReceipts(politicianId: string) {
 export async function getMoneyDashboard(): Promise<MoneyDashboard> {
   if (!isSupabaseConfigured()) return EMPTY;
 
-  const [snapshots, fecEdges, retainedEdges, affiliations] = await Promise.all([
+  const [snapshots, fecEdges, affiliations] = await Promise.all([
     fetchSupabaseRows<SnapshotRow>("candidate_finance_snapshots", "order=id.asc", {
       ...READ,
       select: "politician_id,election_cycle,receipts",
@@ -186,10 +181,6 @@ export async function getMoneyDashboard(): Promise<MoneyDashboard> {
       "relationship_type=in.(employee_contributions,independent_spending_support,independent_spending_oppose)&order=id.asc",
       { ...READ, select: EDGE_SELECT },
     ),
-    fetchSupabaseRows<EdgeRow>("graph_edges", "relationship_type=eq.retained&order=id.asc", {
-      ...READ,
-      select: EDGE_SELECT,
-    }),
     // Employer money lands on a member's campaign committee; this maps committee -> member.
     fetchSupabaseRows<EdgeRow>("graph_edges", "relationship_type=eq.affiliated_with&order=id.asc", {
       ...READ,
@@ -220,15 +211,11 @@ export async function getMoneyDashboard(): Promise<MoneyDashboard> {
   // "NULL" and "INFORMATION REQUESTED PER BEST EFFORTS" linger until each member re-syncs.
   const employerCandidates = employers.slice(0, TOP_N * 3);
   const ieTargets = rank(ieEdges, (edge) => edge.target_entity_id, (edge) => edge.source_entity_id);
-  const clients = rank(retainedEdges, (edge) => edge.source_entity_id, (edge) => edge.target_entity_id);
-  const firms = rank(retainedEdges, (edge) => edge.target_entity_id, (edge) => edge.source_entity_id);
 
   const shown = {
     fundraisers: fundraisers.slice(0, TOP_N),
     employers: employerCandidates,
     ieTargets: ieTargets.slice(0, TOP_N),
-    clients: clients.slice(0, TOP_N),
-    firms: firms.slice(0, TOP_N),
   };
 
   // Labels only for the rows actually displayed, not the whole graph.
@@ -246,7 +233,8 @@ export async function getMoneyDashboard(): Promise<MoneyDashboard> {
     const entity = entityById.get(row.id);
     return {
       ...row,
-      label: entity?.label ?? row.id,
+      // Employers arrive as donors typed them, usually in capitals ("BLACKSTONE").
+      label: entity ? (entity.entity_type === "employer" ? tidyOrganizationName(entity.label) : entity.label) : row.id,
       href: politicianHref(entity),
       networkHref: networkHref(entity),
       detail: entity?.subtitle ?? undefined,
@@ -265,7 +253,6 @@ export async function getMoneyDashboard(): Promise<MoneyDashboard> {
       raisedByMembers: fundraisers.reduce((sum, row) => sum + row.amount, 0),
       membersWithFilings: fundraisers.length,
       outsideSpending: ieTargets.reduce((sum, row) => sum + row.amount, 0),
-      lobbying: clients.reduce((sum, row) => sum + row.amount, 0),
     },
     topFundraisers: shown.fundraisers.map(labelled),
     topEmployers: shown.employers.map(labelled).filter((row) => isRealEmployer(row.label)).slice(0, TOP_N),
@@ -274,7 +261,5 @@ export async function getMoneyDashboard(): Promise<MoneyDashboard> {
       support: ieByTarget(row.id, "independent_spending_support"),
       oppose: ieByTarget(row.id, "independent_spending_oppose"),
     })),
-    lobbyingClients: shown.clients.map(labelled),
-    lobbyingFirms: shown.firms.map(labelled),
   };
 }

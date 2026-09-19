@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, FileText, Landmark, Newspaper, Scale, Star, Vote, X } from "lucide-react";
+import { Bell, FileText, Landmark, Newspaper, Scale, Star, Vote, X, Briefcase } from "lucide-react";
 import Link from "next/link";
 
 import { EmptyState } from "@/components/empty-state";
@@ -33,6 +33,7 @@ const TYPE_ICON: Record<string, { Icon: React.ComponentType<{ className?: string
     committee: { Icon: Landmark, tone: "emerald" },
     issue: { Icon: Scale, tone: "amber" },
     vote: { Icon: Vote, tone: "sky" },
+    lobbying: { Icon: Briefcase, tone: "amber" },
   };
 
 const KIND_ICON: Record<ActivityEntry["kind"], { Icon: React.ComponentType<{ className?: string }>; tone: Tone }> =

@@ -1,3 +1,5 @@
+import { formatMoney } from "@/components/funding/funding-graph-theme";
+import { clientHref, listLobbyingClientsForIndex } from "@/lib/data/lobbying";
 import { computeAnalyticsSummary } from "@/lib/data/analytics";
 import { billHref, slugifySegment } from "@/lib/utils";
 import { listStoredBills } from "@/lib/supabase/bills";
@@ -98,6 +100,8 @@ const NO_RAW_PAYLOAD = null;
 
 export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
   const { bills, politicians, committees, issues, news } = inputs ?? await loadRebuildInputs();
+  // Optional: search still rebuilds if the lobbying tables are unreachable.
+  const lobbyingClients = await listLobbyingClientsForIndex().catch(() => []);
 
   // One timestamp for the whole run: replaceStoredSearchDocuments prunes the previous index by
   // synced_at, and a uniform stamp makes that cutoff exact.
@@ -171,6 +175,24 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
       meta: item.publishedAt,
       source_system: "rebuild",
       source_id: item.id,
+      synced_at: syncedAt,
+      raw_payload: NO_RAW_PAYLOAD,
+    })),
+    ...lobbyingClients.map((client) => ({
+      id: `lobbying-${client.clientKey}`,
+      entity_id: client.clientKey,
+      entity_type: "lobbying",
+      label: client.name,
+      title: "Lobbying client",
+      description: "",
+      href: clientHref(client.clientKey),
+      meta: [
+        client.spend > 0 ? `${formatMoney(client.spend)} reported` : null,
+        client.firms > 0 ? `${client.firms} firm${client.firms === 1 ? "" : "s"}` : "In-house",
+        client.bills > 0 ? `${client.bills} bill${client.bills === 1 ? "" : "s"} named` : null,
+      ].filter(Boolean).join(" | "),
+      source_system: "rebuild",
+      source_id: client.clientKey,
       synced_at: syncedAt,
       raw_payload: NO_RAW_PAYLOAD,
     })),

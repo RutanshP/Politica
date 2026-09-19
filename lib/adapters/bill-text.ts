@@ -270,12 +270,22 @@ export async function fetchBillTextDocument(xmlUrl: string): Promise<BillTextDoc
   }
 }
 
-interface BillTextVersionLike {
+export interface BillTextVersionLike {
   id?: string;
   label: string;
   date?: string;
   sourceUrl?: string;
   formats?: Array<{ type?: string; url?: string }>;
+}
+
+/**
+ * The official printed PDF for a version (govinfo), or undefined. Nearly every stored version has
+ * one; it is the document to save, print or cite, where the XML is only for rendering.
+ */
+export function billPdfUrl(version: BillTextVersionLike | undefined) {
+  return (version?.formats || [])
+    .map((format) => format.url)
+    .find((url): url is string => Boolean(url) && url!.toLowerCase().endsWith(".pdf"));
 }
 
 /** The bill-DTD "Formatted XML" url for a single version, or undefined. */

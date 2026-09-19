@@ -119,7 +119,7 @@ export async function getIssueViewData(slug: string) {
 
 export function getIssueSourceLabel(source: string) {
   if (source === "supabase") return "Stored issue clusters";
-  if (source === "unconfigured") return "Supabase is not configured";
+  if (source === "unconfigured") return "Data source not configured";
   return "Stored issue data unavailable";
 }
 

@@ -193,7 +193,7 @@ export function PoliticiansDirectory({
               "Party",
               "State",
               "Attendance",
-              { label: "Bills", align: "right" },
+              { label: "Bills (career)", align: "right" },
               { label: "Watch", align: "right", width: "w-16" },
             ]}
             rows={politicians.map((politician) => {

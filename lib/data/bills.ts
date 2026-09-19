@@ -289,7 +289,7 @@ export function isLiveBillsSource(source: string) {
 
 export function getBillsSourceLabel(source: string) {
   if (source === "supabase") return "Stored legislative data";
-  if (source === "unconfigured") return "Supabase is not configured";
+  if (source === "unconfigured") return "Data source not configured";
   return "Stored bill data unavailable";
 }
 

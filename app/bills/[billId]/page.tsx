@@ -17,6 +17,8 @@ import { notFound } from "next/navigation";
 import { BackLink } from "@/components/back-link";
 import { BillProgressStepper } from "@/components/bill-progress";
 import { BillTabs } from "@/components/bill-tabs";
+import { CollapsibleText } from "@/components/collapsible-text";
+import { BillLobbyingCard } from "@/components/lobbying/bill-lobbying-card";
 import { SourceBadge } from "@/components/source-badge";
 import { VoteArc } from "@/components/vote-arc";
 import { WatchButton } from "@/components/watch-button";
@@ -36,13 +38,15 @@ import {
   getBillsSourceLabel,
   isLiveBillsSource,
 } from "@/lib/data/bills";
+import { getBillLobbying } from "@/lib/data/lobbying";
 import { getNewsData } from "@/lib/data/news";
 import { getVotesDataForBill } from "@/lib/data/votes";
 import { listStoredBillsByIds } from "@/lib/supabase/bills";
 import { getStoredCommitteeById } from "@/lib/supabase/committees";
 import { getStoredPoliticianById } from "@/lib/supabase/politicians";
 import { isSubstantiveVote } from "@/lib/vote-classification";
-import { billHref, formatSummaryText, realText } from "@/lib/utils";
+import { getDefaultCongress } from "@/lib/adapters/congress";
+import { billHref, congressGovBillUrl, congressSessionLabel, formatSummaryText, realText } from "@/lib/utils";
 
 export const revalidate = 21600;
 
@@ -60,11 +64,14 @@ export default async function BillDetailPage({
   ]);
 
   if (!bill) notFound();
+  // Stubs for a sponsor's career list: title and last action only, and the bill is long dead.
+  const pastCongress = bill.session !== congressSessionLabel(getDefaultCongress());
   const live = isLiveBillsSource(source);
-  const [sponsor, committee, relatedBills] = await Promise.all([
+  const [sponsor, committee, relatedBills, lobbying] = await Promise.all([
     bill.sponsorId ? getStoredPoliticianById(bill.sponsorId).catch(() => undefined) : undefined,
     bill.committeeId ? getStoredCommitteeById(bill.committeeId).catch(() => undefined) : undefined,
     listStoredBillsByIds(bill.relatedBillIds).catch(() => []),
+    getBillLobbying(bill.id),
   ]);
   const relatedNews = news.filter((item) => item.relatedIds.includes(bill.id));
 
@@ -210,14 +217,14 @@ export default async function BillDetailPage({
         />
         <StatTile
           label="Cosponsors"
-          value={bill.stats.cosponsors.toLocaleString()}
+          value={pastCongress ? "—" : bill.stats.cosponsors.toLocaleString()}
           icon={<Users />}
           tone="indigo"
           footnote="Members signed on after the sponsor"
         />
         <StatTile
           label="Amendments"
-          value={bill.stats.amendments.toLocaleString()}
+          value={pastCongress ? "—" : bill.stats.amendments.toLocaleString()}
           icon={<Layers />}
           tone="amber"
           footnote="Offered against this measure"
@@ -247,12 +254,25 @@ export default async function BillDetailPage({
             <Card>
               <CardHeader title="About this bill" icon={<FileText />} />
               <CardBody>
-                <p className="whitespace-pre-line text-[13px] leading-relaxed text-[var(--muted)]">
-                  {summary || "No stored summary is available for this bill."}
-                </p>
+                {summary ? (
+                  <CollapsibleText text={summary} moreHref={congressGovBillUrl(bill.id, 119, "summary")} />
+                ) : (
+                  <p className="text-[13px] leading-relaxed text-[var(--muted)]">No stored summary is available for this bill.</p>
+                )}
               </CardBody>
             </Card>
 
+            {pastCongress ? (
+              <Card>
+                <CardHeader title="From an earlier Congress" />
+                <CardBody>
+                  <p className="text-[13px] leading-relaxed text-[var(--muted)]">
+                    This bill was introduced in the {bill.session}, which has ended. A bill that is not enacted by the
+                    end of its Congress dies; only a summary record of it is stored here, as part of its sponsor&apos;s career.
+                  </p>
+                </CardBody>
+              </Card>
+            ) : (
             <Card>
               <CardHeader title="Odds of becoming law" />
               <CardBody>
@@ -273,6 +293,7 @@ export default async function BillDetailPage({
                 law, and about a third of those that clear a chamber. Not a forecast for this bill.
               </CardNote>
             </Card>
+            )}
 
             <Card id="related">
               <CardHeader title="Related bills" count={relatedBills.length || undefined} />
@@ -431,6 +452,8 @@ export default async function BillDetailPage({
             </CardBody>
           </Card>
         </div>
+
+        <BillLobbyingCard lobbying={lobbying} />
       </WithRail>
     </div>
   );

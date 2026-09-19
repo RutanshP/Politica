@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, FileDown } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { BillTextDocument, BillTextNode } from "@/lib/adapters/bill-text";
@@ -45,10 +45,13 @@ export function BillTextViewer({
   document,
   versionLabel,
   sourceUrl,
+  pdfUrl,
 }: {
   document: BillTextDocument;
   versionLabel?: string;
   sourceUrl?: string;
+  /** The official govinfo PDF of this version. */
+  pdfUrl?: string;
 }) {
   const startExpanded = document.charCount <= COLLAPSE_THRESHOLD;
   const [expanded, setExpanded] = useState<Set<string>>(
@@ -110,6 +113,16 @@ export function BillTextViewer({
             className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent-2)] hover:text-[#a5adff]"
           >
             <ExternalLink className="h-3.5 w-3.5" /> Official source{versionLabel ? ` · ${versionLabel}` : ""}
+          </a>
+        ) : null}
+        {pdfUrl ? (
+          <a
+            href={pdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-fit items-center gap-1.5 rounded-full border border-[var(--line-2)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--accent-2)] hover:text-[var(--accent-2)]"
+          >
+            <FileDown className="h-3.5 w-3.5" /> PDF of this version
           </a>
         ) : null}
       </aside>

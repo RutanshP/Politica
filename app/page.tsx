@@ -61,10 +61,14 @@ export default async function HomePage() {
     .slice(0, 5);
   const issueMax = rankedIssues[0]?.stats.activeBills ?? 0;
 
+  // Recently passed first, topped up with trending bills. The two lists overlap -- a bill that
+  // just passed is usually also trending -- so each bill is shown once.
   const activity = [
-    ...feed.recentlyPassed.slice(0, 2).map((bill) => ({ bill, kind: "passed" as const })),
-    ...feed.trendingBills.slice(0, 2).map((bill) => ({ bill, kind: "action" as const })),
-  ];
+    ...feed.recentlyPassed.map((bill) => ({ bill, kind: "passed" as const })),
+    ...feed.trendingBills.map((bill) => ({ bill, kind: "action" as const })),
+  ]
+    .filter((item, index, all) => all.findIndex((other) => other.bill.id === item.bill.id) === index)
+    .slice(0, 4);
 
   return (
     <div>

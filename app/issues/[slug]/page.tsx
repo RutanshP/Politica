@@ -5,13 +5,14 @@ import { DataTable } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
-import { Tabs } from "@/components/tabs";
+import { LobbiedBillsCard } from "@/components/lobbying/lobbied-bills-card";
 import {
   getIssueRouteParams,
   getIssueSourceLabel,
   getIssueViewData,
   isLiveIssueSource,
 } from "@/lib/data/issues";
+import { getMostLobbiedBills } from "@/lib/data/lobbying";
 import { billHref } from "@/lib/utils";
 
 export async function generateStaticParams() {
@@ -28,6 +29,7 @@ export default async function IssuePage({
   const { slug } = await params;
   const { issue, source, issueBills, issueCommittees, topPoliticians } = await getIssueViewData(slug);
   if (!issue) notFound();
+  const lobbiedBills = await getMostLobbiedBills({ issueId: issue.id, limit: 8 });
 
   const statCards = [
     ["Active bills", issue.stats.activeBills],
@@ -48,15 +50,6 @@ export default async function IssuePage({
             live={isLiveIssueSource(source)}
           />
         }
-      />
-      <Tabs
-        items={[
-          { label: "Overview", href: `/issues/${issue.slug}`, active: true },
-          { label: "Bills", href: `/issues/${issue.slug}` },
-          { label: "Votes", href: `/issues/${issue.slug}` },
-          { label: "Politicians", href: `/issues/${issue.slug}` },
-          { label: "News", href: "/news" },
-        ]}
       />
       <section className="grid gap-6 xl:grid-cols-4">
         {statCards.map(([label, value]) => (
@@ -95,6 +88,11 @@ export default async function IssuePage({
           />
         </SectionCard>
       </section>
+      <LobbiedBillsCard
+        title={`Most-lobbied ${issue.name.toLowerCase()} bills`}
+        rows={lobbiedBills}
+        note="Ranked by how many organizations named the bill in their Lobbying Disclosure Act reports this Congress."
+      />
       <SectionCard title="Related committees">
         <div className="grid gap-4 md:grid-cols-2">
           {issueCommittees.map((committee) => (

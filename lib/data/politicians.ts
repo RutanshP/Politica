@@ -371,7 +371,7 @@ export async function getPoliticiansData() {
   }
 }
 
-export const POLITICIAN_SORT_OPTIONS = ["Name", "Attendance", "Bills introduced", "Party alignment", "Recent activity"];
+export const POLITICIAN_SORT_OPTIONS = ["Name", "Attendance", "Bills introduced", "Bills passed", "Party alignment"];
 const FEDERAL_CHAMBERS = ["All chambers", "US House", "US Senate", "US President"];
 const STATE_CHAMBERS = ["All chambers", "Governor"];
 export const SELECT_A_STATE = "Select a state";
@@ -488,7 +488,9 @@ export async function getPoliticiansDirectoryData(searchParams: PoliticiansDirec
         if (filters.sortBy === "Attendance") return factor * (right.stats.attendance - left.stats.attendance);
         if (filters.sortBy === "Bills introduced") return factor * (right.stats.billsIntroduced - left.stats.billsIntroduced);
         if (filters.sortBy === "Party alignment") return factor * (right.stats.votesWithParty - left.stats.votesWithParty);
-        if (filters.sortBy === "Recent activity") return factor * (right.stats.amendmentsOffered - left.stats.amendmentsOffered);
+        // Replaced "Recent activity", which sorted on amendmentsOffered -- a counter nothing computes, so
+        // it was 0 for everyone and the option did nothing.
+        if (filters.sortBy === "Bills passed") return factor * (right.stats.billsPassed - left.stats.billsPassed);
         return factor * left.name.localeCompare(right.name, "en-US", { sensitivity: "base" });
       });
 
@@ -635,8 +637,8 @@ export async function getCommitteeMembershipsForPolitician(slug: string) {
 }
 
 export function getPoliticianSourceLabel(source: string) {
-  if (source === "supabase") return "Stored Supabase politicians";
-  if (source === "unconfigured") return "Supabase is not configured";
+  if (source === "supabase") return "Congress.gov member data";
+  if (source === "unconfigured") return "Data source not configured";
   return "Stored politician data unavailable";
 }
 

@@ -49,6 +49,25 @@ export function mentions(text: string, term: string | null | undefined) {
   return new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(term.trim())}($|[^A-Za-z0-9])`, "i").test(text);
 }
 
+const CONGRESS_TERMS = /\b(Congress(?:ional|man|woman)?|Senate|Senators?|House (?:Republicans|Democrats|GOP|Speaker|floor|vote|passes|passed|committee)|Speaker (?:of the House|Johnson)|lawmakers?|Capitol Hill|filibuster|appropriations|shutdown|legislation)\b|\b(?:Rep|Sen)\.\s/i;
+const NOT_NEWS = /promo code|bonus code|best crypto|crypto to buy|betting odds|sportsbook|horoscope|UPSC/i;
+
+/**
+ * Whether an article is about the US Congress: its headline or lede names Congress or its work, or
+ * it names a tracked member or bill. The keyword queries alone let through anything that matched a
+ * common word -- a Senate anywhere, a "house" in a real-estate story.
+ */
+export function isAboutCongress(
+  article: { title?: string | null; body?: string | null },
+  trackedTerms: Array<string | null | undefined> = [],
+) {
+  const title = article.title ?? "";
+  if (!title || NOT_NEWS.test(title)) return false;
+  if (trackedTerms.some((term) => mentions(title, term))) return true;
+  const lede = `${title} ${(article.body ?? "").slice(0, 600)}`;
+  return CONGRESS_TERMS.test(lede);
+}
+
 export async function syncNewsFromApi() {
   if (!isNewsApiConfigured()) {
     throw new Error("News API is not configured");
@@ -63,6 +82,8 @@ export async function syncNewsFromApi() {
   ]);
 
   const queries = buildNewsQueries(bills, politicians);
+  // Members only by full name: a bare surname ("Scott", "Young") matches far too much.
+  const trackedNames = politicians.map((politician) => politician.name);
 
   if (queries.length === 0) {
     return {
@@ -76,7 +97,8 @@ export async function syncNewsFromApi() {
   const articles = dedupeByHeadline(
     dedupeNewsArticles(
       (await Promise.all(queries.map((query) => fetchTopPoliticalArticles(query))))
-        .flat(),
+        .flat()
+        .filter((article) => isAboutCongress(article, trackedNames)),
     ).sort((left, right) =>
       String(right.dateTime || right.date || "").localeCompare(String(left.dateTime || left.date || "")),
     ),

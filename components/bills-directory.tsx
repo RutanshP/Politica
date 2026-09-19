@@ -249,14 +249,15 @@ export function BillsDirectory({
                   <IconTile tone={topicVisual(bill.topic).tone}>
                     <TopicIcon topic={bill.topic} />
                   </IconTile>
-                  <span className="min-w-0">
+                  {/* A real width for the title: it was squeezed to three words while the action text below ran to twenty lines. */}
+                  <span className="min-w-[14rem] max-w-[22rem]">
                     <Link
                       href={billHref(bill.id)}
                       className="block text-[var(--accent-2)] hover:underline"
                     >
                       <CellTitle>{bill.number}</CellTitle>
                     </Link>
-                    <CellSub className="line-clamp-1">{bill.title}</CellSub>
+                    <span className="line-clamp-2 text-xs text-[var(--muted)]" title={bill.title}>{bill.title}</span>
                   </span>
                 </div>,
                 <span key={`${bill.id}-chamber`} className="text-[var(--muted)]">
@@ -281,8 +282,8 @@ export function BillsDirectory({
                     {realText(bill.committeeName) || "—"}
                   </span>
                 ),
-                <span key={`${bill.id}-action`}>
-                  <span className="block text-xs">{bill.latestAction}</span>
+                <span key={`${bill.id}-action`} className="block max-w-[16rem]">
+                  <span className="line-clamp-2 text-xs" title={bill.latestAction}>{bill.latestAction}</span>
                   <CellSub className="num">{bill.lastActionAt}</CellSub>
                 </span>,
                 <span key={`${bill.id}-watch`} className="flex justify-end">

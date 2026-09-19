@@ -1,5 +1,6 @@
 import { chanceOfBecomingLaw } from "@/lib/bill-odds";
 import type { Bill, BillAction, BillStatus, BillVersion } from "@/types/civic";
+import { congressSessionLabel } from "@/lib/utils";
 import type {
   CongressBillActionPayload,
   CongressBillDetailPayload,
@@ -262,7 +263,7 @@ export function normalizeCongressBillListItem(bill: CongressBillListItem): Bill 
     latestAction: bill.latestAction?.text || "Latest action unavailable",
     lastActionAt: formatDisplayDate(bill.latestAction?.actionDate || bill.updateDate),
     introducedAt: formatDisplayDate(undefined),
-    session: `${bill.congress || "Unknown"}th Congress`,
+    session: congressSessionLabel(bill.congress),
     chanceOfPassing: chanceOfBecomingLaw(status),
     stats: {
       amendments: 0,
@@ -373,7 +374,7 @@ export function mergeCongressBillDetail(
     topic: topicFromPolicyArea(detail.policyArea) || seed.topic,
     chanceOfPassing: chanceOfBecomingLaw(status),
     stats: {
-      amendments: 0,
+      amendments: detail.amendments?.count ?? 0,
       // `sponsors` only ever holds the sponsor, so `sponsors.length - 1` made this 0 on every bill.
       cosponsors: detail.cosponsors?.count ?? 0,
       votes: actions.filter((action) => action.type === "floor").length,

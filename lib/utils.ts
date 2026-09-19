@@ -423,6 +423,48 @@ export function realText(value?: string | null) {
   return isPlaceholderText(value) ? "" : (value ?? "").trim();
 }
 
+/**
+ * The start of a long text, cut at a word boundary. CRS summaries run from one sentence to 174,000
+ * characters (H.R. 1), so anything shown in a header or sidebar needs a bound.
+ */
+export function excerptText(value: string | null | undefined, max = 280) {
+  const text = (value ?? "").replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).replace(/\s+\S*$/, "")}…`;
+}
+
+/**
+ * "119th Congress", "101st Congress", "102nd Congress". Also the stored bills.session value the
+ * directory filters on, so every writer and reader must build it here -- it was `${n}th` in six
+ * places, which stored "102th" and would have made the 121st Congress "121th".
+ */
+export function congressSessionLabel(congress: number | string | null | undefined) {
+  const n = Number(congress);
+  if (!Number.isFinite(n) || n <= 0) return "Unknown Congress";
+  const mod100 = n % 100;
+  const suffix = mod100 >= 11 && mod100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
+  return `${n}${suffix} Congress`;
+}
+
+const CONGRESS_GOV_BILL_TYPES: Record<string, string> = {
+  hr: "house-bill",
+  s: "senate-bill",
+  hres: "house-resolution",
+  sres: "senate-resolution",
+  hjres: "house-joint-resolution",
+  sjres: "senate-joint-resolution",
+  hconres: "house-concurrent-resolution",
+  sconres: "senate-concurrent-resolution",
+};
+
+/** The bill's page on congress.gov ("hr-1" -> .../119th-congress/house-bill/1), or undefined. */
+export function congressGovBillUrl(billId: string, congress = 119, tab = "") {
+  const match = /^([a-z]+)-(\d+)$/.exec(billId);
+  const type = match ? CONGRESS_GOV_BILL_TYPES[match[1]] : undefined;
+  const ordinal = congressSessionLabel(congress).split(" ")[0].toLowerCase();
+  return type && match ? `https://www.congress.gov/bill/${ordinal}-congress/${type}/${match[2]}${tab ? `/${tab}` : ""}` : undefined;
+}
+
 export function normalizeCommitteeField(value: string, fallback: string) {
   return realText(value) || fallback;
 }

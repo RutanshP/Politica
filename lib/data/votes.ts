@@ -104,7 +104,7 @@ export function getVoteSourceLabel(source: string) {
   if (source === "partial") return "Bill stored, vote records incomplete";
 
   return source === "unconfigured"
-    ? "Supabase is not configured"
+    ? "Data source not configured"
     : "Vote data unavailable";
 }
 

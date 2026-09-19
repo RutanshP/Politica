@@ -13,10 +13,7 @@ import {
   getDefaultCongress,
   isCongressBillsConfigured,
 } from "@/lib/adapters/congress";
-import {
-  type CongressLegislatorsCommitteeMember,
-  fetchCongressLegislatorsCommitteeMembership,
-} from "@/lib/adapters/congress-legislators";
+import { fetchCongressLegislatorsCommitteeMembership } from "@/lib/adapters/congress-legislators";
 import {
   type FederalVoteRecord,
   fetchHouseRollCallVote,
@@ -45,7 +42,7 @@ import {
   upsertStoredBills,
 } from "@/lib/supabase/bills";
 import { replaceStoredCommitteeMemberships, upsertStoredCommittees } from "@/lib/supabase/committees";
-import { deleteSupabaseRows, fetchSupabaseRows, updateSupabaseRows } from "@/lib/supabase/rest";
+import { deleteSupabaseRows, fetchSupabaseRows, invokeSupabaseRpc, updateSupabaseRows } from "@/lib/supabase/rest";
 import {
   appendStoredVotes,
   fetchPoliticianVoteStatCounters,
@@ -59,7 +56,7 @@ import { applyBillSponsorStatDeltas, buildBillSponsorStatDeltas } from "@/lib/se
 import { reconcilePoliticianVoteStats } from "@/lib/server/politician-stat-backfill";
 import { applyVoteStatCountersToPoliticians, toVoteStatCounterMap } from "@/lib/server/vote-stats";
 import { buildSourceFingerprint, classifyFreshness, normalizeSourceUpdatedAt } from "@/lib/server/sync-freshness";
-import { normalizePersonLookup, slugifySegment } from "@/lib/utils";
+import { normalizePersonLookup, slugifySegment, congressSessionLabel } from "@/lib/utils";
 import type { Bill, Committee } from "@/types/civic";
 import type { CongressBillListItem, CongressCommitteeListItem } from "@/types/congress";
 import type { BillActionRow, BillRow, BillVersionRow, CommitteeMemberRow, PoliticianRow, VotePositionRow, VoteRow } from "@/types/supabase";
@@ -1473,7 +1470,7 @@ function buildLeadershipNameMatchedRows(
 async function buildFederalCommitteeMembershipRows(
   committees: Committee[],
   politicians: PoliticianRow[],
-): Promise<CommitteeMemberRow[]> {
+): Promise<CommitteeMemberRow[] | null> {
   const politicianIdSet = new Set(politicians.map((politician) => politician.id));
   const normalizedPoliticians = politicians.map((politician) => ({
     id: politician.id,
@@ -1481,9 +1478,10 @@ async function buildFederalCommitteeMembershipRows(
     normalized: politician.name.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim(),
   }));
 
-  const membershipBySystemCode = await fetchCongressLegislatorsCommitteeMembership().catch(
-    () => new Map<string, CongressLegislatorsCommitteeMember[]>(),
-  );
+  // Null, not an empty map, when the roster cannot be fetched: an empty map made every committee
+  // look memberless, and the caller then replaced every stored roster with nothing.
+  const membershipBySystemCode = await fetchCongressLegislatorsCommitteeMembership().catch(() => null);
+  if (!membershipBySystemCode) return null;
 
   const rows: CommitteeMemberRow[] = [];
 
@@ -1596,9 +1594,18 @@ export async function syncFederalMemberSponsoredBillHistory(options?: {
           ],
         }));
 
-      const candidateIds = candidateListItems.map(
-        (item) => `${String(item.type || "").toLowerCase()}-${String(item.number || "").toLowerCase()}`,
-      );
+      /*
+       * Bills from past Congresses get the Congress in their id ("s-5614-118"). They used to share
+       * the current-Congress id format, so a 118th-Congress stub took the id a 119th-Congress bill
+       * of the same number would need -- and lobbying reports citing the new bill linked to the
+       * old one. See supabase/sql/037.
+       */
+      const currentCongress = Number(getDefaultCongress());
+      const historyId = (item: CongressBillListItem) => {
+        const base = `${String(item.type || "").toLowerCase()}-${String(item.number || "").toLowerCase()}`;
+        return Number(item.congress) === currentCongress ? base : `${base}-${item.congress}`;
+      };
+      const candidateIds = candidateListItems.map(historyId);
 
       const existingIds = new Set<string>();
       const idChunkSize = 100;
@@ -1616,7 +1623,8 @@ export async function syncFederalMemberSponsoredBillHistory(options?: {
         .filter((item, index) => !existingIds.has(candidateIds[index]))
         .map((item) => {
           const bill = normalizeCongressBillListItem(item);
-          return mapBillToRow(bill);
+          const id = historyId(item);
+          return mapBillToRow({ ...bill, id, slug: id });
         });
 
       if (newBillRows.length > 0) {
@@ -1662,7 +1670,7 @@ export async function syncLegislationFromCongress(options?: {
     }
 
     const congress = getDefaultCongress();
-    const congressSession = `${congress}th Congress`;
+    const congressSession = congressSessionLabel(congress);
     const mode = options?.mode || "incremental";
     const syncCommittees = options?.syncCommittees ?? LEGISLATION_SYNC_COMMITTEES;
     const syncVotes = options?.syncVotes ?? LEGISLATION_SYNC_VOTES;
@@ -1868,8 +1876,9 @@ export async function syncLegislationFromCongress(options?: {
       );
     }
 
+    let committeeDetailFailures = 0;
     const committees = syncCommittees
-      ? await mapWithConcurrency(
+      ? (await mapWithConcurrency(
         (await Promise.all([
           fetchCongressCommittees({ congress, chamber: "senate", limit: LEGISLATION_MAX_COMMITTEES }),
           fetchCongressCommittees({ congress, chamber: "house", limit: LEGISLATION_MAX_COMMITTEES }),
@@ -1895,13 +1904,17 @@ export async function syncLegislationFromCongress(options?: {
               rawCommittee: detail.committee || committee,
             };
           } catch {
-            return {
-              committee: normalizeCommitteeRecord(committee, undefined, []),
-              rawCommittee: committee,
-            };
+            /*
+             * Left out of this run rather than written back empty. Writing
+             * normalizeCommitteeRecord(committee, undefined, []) replaced the stored bill list --
+             * and, through the membership rebuild below, the roster -- with nothing: on 2026-09-19
+             * one run emptied seven Senate committees, Judiciary and Commerce among them.
+             */
+            committeeDetailFailures += 1;
+            return null;
           }
         },
-      )
+      )).filter((entry): entry is NonNullable<typeof entry> => entry !== null)
       : [];
 
     const committeeByBillId = new Map<string, Committee>();
@@ -2089,10 +2102,15 @@ export async function syncLegislationFromCongress(options?: {
       [...storedPoliticianRows, ...billStatUpdatedRows],
       (row) => row.id,
     );
-    const committeeMembershipRows = await buildFederalCommitteeMembershipRows(
-      committees.map((entry) => entry.committee),
-      allFederalPoliticianRows,
-    );
+    const builtMembershipRows = syncCommittees
+      ? await buildFederalCommitteeMembershipRows(
+        committees.map((entry) => entry.committee),
+        allFederalPoliticianRows,
+      )
+      : [];
+    // Without the roster there is nothing trustworthy to write for committees this run.
+    const committeeRosterMissing = builtMembershipRows === null;
+    const committeeMembershipRows = builtMembershipRows ?? [];
 
     const committeesWithMembers = committees.map((entry) => ({
       ...entry,
@@ -2186,7 +2204,7 @@ export async function syncLegislationFromCongress(options?: {
       throw new Error(`Bill versions write failed: ${getErrorMessage(error)}`);
     }
 
-    if (syncCommittees) {
+    if (syncCommittees && !committeeRosterMissing && committeeRows.length > 0) {
       try {
         await upsertStoredCommittees(committeeRows);
       } catch (error) {
@@ -2248,10 +2266,21 @@ export async function syncLegislationFromCongress(options?: {
       await deleteBillArtifacts(staleBillsDeleted);
     }
 
+    /*
+     * billsPassed, recomputed from the bills just written. The +1/-1 deltas applied above drift
+     * (126 of 559 members were wrong when this was added); this makes the stored value exact. See
+     * supabase/sql/036.
+     */
+    if (billRows.length > 0) {
+      await invokeSupabaseRpc<number>("reconcile_politician_bill_stats", {}, { cache: "no-store" }).catch(() => undefined);
+    }
+
     return {
       billsSynced: billRows.length,
       detailedBillsSynced,
-      committeesSynced: committeeRows.length,
+      committeesSynced: committeeRosterMissing ? 0 : committeeRows.length,
+      committeeDetailFailures,
+      committeeRosterMissing,
       votesSynced: voteRows.length,
       committeesEnabled: syncCommittees,
       votesEnabled: syncVotes,

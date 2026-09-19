@@ -43,8 +43,17 @@ export async function fetchTopPoliticalArticles(query: string) {
     keyword: query,
     keywordOper: "or",
     lang: "eng",
+    /*
+     * US outlets, news only. Without these, "U.S. Senate" and "House of Representatives" matched
+     * Nigeria's Senate and House and India's Congress party, and blog/press-release items brought
+     * in betting promo codes -- about half of a typical feed was not about the US Congress at all.
+     */
+    sourceLocationUri: "http://en.wikipedia.org/wiki/United_States",
+    dataType: "news",
+    isDuplicateFilter: "skipDuplicates",
     articlesSortBy: "date",
-    maxItems: 10,
+    // More candidates than the feed keeps, because isAboutCongress drops some of them.
+    maxItems: 25,
   });
 
   return payload.articles?.results ?? [];

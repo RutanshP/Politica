@@ -1,49 +1,93 @@
 import "server-only";
 
 import {
-  LDA_MONEY_FILING_TYPES,
   LDA_PAGE_SIZE,
   LdaThrottledError,
   fetchLdaFilingsPage,
   isLdaConfigured,
   normalizeLdaFiling,
 } from "@/lib/adapters/lda";
+import { congressForYear } from "@/lib/lobbying/lda-text";
 import { purgeLobbyingGraph, upsertGraphEdges, upsertGraphEntities } from "@/lib/supabase/funding-graph";
 import { fetchSupabaseRows, invokeSupabaseRpc, upsertSupabaseRowsInChunks } from "@/lib/supabase/rest";
 import { slugifySegment } from "@/lib/utils";
 import type { GraphEdgeRow, GraphEntityRow } from "@/types/funding-graph";
 
 /*
- * The API caps page_size at 25 and answers in roughly a second and a half, so a full year of
- * quarterly filings is a few thousand requests. The sync is therefore resumable: a caller asks
- * for a slice of pages and gets back the cursor to continue from, so a cron can advance it
- * without any single invocation running for an hour.
+ * Lobbying reports are walked in posting order from a stored cursor (lobbying_sync_state). The API
+ * caps page_size at 25 and answers in about a second, so a busy filing deadline is a few hundred
+ * pages; each call takes a bounded slice and advances the cursor, and a caller loops until done.
+ * Paging by filing year instead was not resumable -- new filings shifted every later page.
  */
-const DEFAULT_PAGE_BUDGET = 40;
-const REQUEST_CONCURRENCY = 2;
+const DEFAULT_PAGE_BUDGET = 60;
+const SYNC_STATE_ID = "default";
 
 export interface LobbyingSyncResult {
-  year: number;
-  filingType: string;
-  startPage: number;
+  postedAfter: string;
   pagesFetched: number;
-  filingsUpserted: number;
   totalPages: number;
-  totalFilings: number;
-  /** Null when this filing type is fully ingested for the year. */
-  nextPage: number | null;
-  nextFilingType: string | null;
+  reportsUpserted: number;
+  billMentions: number;
+  skippedOtherCongress: number;
+  currentRowsChanged: number;
+  /** Where the next call resumes; equal to postedAfter when nothing new was posted. */
+  nextPostedAfter: string;
+  done: boolean;
   at: string;
 }
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T) => Promise<R>,
-): Promise<R[]> {
+async function fetchPageWithRetry(postedAfter: string, page: number, postedBefore?: string, attempts = 10) {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetchLdaFilingsPage({ postedAfter, postedBefore, page });
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        // A throttle tells us exactly how long to wait; anything else gets a growing backoff.
+        const wait = error instanceof LdaThrottledError ? error.retryAfterMs : 500 * attempt;
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
+    }
+  }
+
+  throw new Error(
+    `LDA page ${page} (posted after ${postedAfter}) failed after ${attempts} attempts: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
+
+/** The first day of the Congress in session: reports from before it cite bills this app does not store. */
+function currentCongressStart(now = new Date()) {
+  const year = now.getUTCFullYear();
+  const firstYear = congressForYear(year) === congressForYear(year - 1) ? year - 1 : year;
+  return { firstYear, congress: congressForYear(year) };
+}
+
+async function readCursor() {
+  const rows = await fetchSupabaseRows<{ posted_after: string }>(
+    "lobbying_sync_state",
+    `id=eq.${SYNC_STATE_ID}`,
+    { cache: "no-store", select: "posted_after", paginateTiebreaker: null },
+  ).catch(() => []);
+  return rows[0]?.posted_after ?? null;
+}
+
+async function listStoredBillIds() {
+  const rows = await fetchSupabaseRows<{ id: string }>("bills", "order=id.asc", {
+    cache: "no-store",
+    paginateAll: true,
+    paginateTiebreaker: null,
+    select: "id",
+  });
+  return new Set(rows.map((row) => row.id));
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let cursor = 0;
-
   await Promise.all(
     Array.from({ length: Math.min(limit, items.length) }, async () => {
       while (cursor < items.length) {
@@ -53,113 +97,114 @@ async function mapWithConcurrency<T, R>(
       }
     }),
   );
-
   return results;
 }
 
-async function fetchPageWithRetry(year: number, filingType: string, page: number, attempts = 6) {
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      return await fetchLdaFilingsPage({ year, filingType, page });
-    } catch (error) {
-      lastError = error;
-      if (attempt < attempts) {
-        // A throttle tells us exactly how long to wait; anything else gets a growing backoff.
-        const wait = error instanceof LdaThrottledError
-          ? error.retryAfterMs
-          : 500 * attempt;
-        await new Promise((resolve) => setTimeout(resolve, wait));
-      }
-    }
-  }
-
-  throw new Error(
-    `LDA page ${page} (${year} ${filingType}) failed after ${attempts} attempts: ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
-  );
-}
-
 /**
- * Ingests one slice of quarterly lobbying filings.
+ * Ingests one slice of lobbying reports posted after the stored cursor (or `postedAfter`, which
+ * also resets it). Reports are keyed on filing_uuid, so a re-run is a no-op rather than a double
+ * count, and which report counts for a quarter is settled afterwards by lobbying_refresh_current.
  *
- * Filings are stored as rows keyed on filing_uuid, so re-running a page is a no-op rather than a
- * double count -- the graph totals are computed from these rows afterwards, never incremented
- * during ingestion.
+ * With `postedBefore` the slice is a closed window and the stored cursor is neither read nor
+ * written -- that is how a backfill runs several windows side by side.
  */
-export async function syncLobbyingFilings(options: {
-  year: number;
-  filingType?: string;
-  startPage?: number;
+export async function syncLobbyingFilings(options?: {
+  postedAfter?: string;
+  postedBefore?: string;
   pageBudget?: number;
 }): Promise<LobbyingSyncResult> {
   if (!isLdaConfigured()) {
     throw new Error("POLITICA_LDA_API_KEY is not configured");
   }
 
-  const filingType = options.filingType || LDA_MONEY_FILING_TYPES[0];
-  const startPage = Math.max(1, options.startPage || 1);
-  const pageBudget = Math.max(1, options.pageBudget || DEFAULT_PAGE_BUDGET);
+  const windowed = Boolean(options?.postedBefore);
+  const { firstYear, congress } = currentCongressStart();
+  const postedAfter = options?.postedAfter
+    || (windowed ? null : await readCursor())
+    || `${firstYear}-01-01T00:00:00Z`;
+  const postedBefore = options?.postedBefore;
+  const pageBudget = Math.max(1, options?.pageBudget || DEFAULT_PAGE_BUDGET);
+  const billIds = await listStoredBillIds();
 
-  // Retried like every other page: an unretried head request meant a single throttle failed the
-  // whole slice, and the driver then retried the slice from scratch in a loop.
-  const head = await fetchPageWithRetry(options.year, filingType, startPage);
-  const totalFilings = head.count;
-  const totalPages = Math.max(1, Math.ceil(totalFilings / LDA_PAGE_SIZE));
-
-  const pages = [startPage];
-  for (let page = startPage + 1; page < startPage + pageBudget && page <= totalPages; page += 1) {
-    pages.push(page);
-  }
-
-  /*
-   * Retry rather than swallow. An earlier version caught page failures and substituted an empty
-   * result, so a slice that lost 76 of 100 pages still reported success and advanced the cursor
-   * past the gap -- silent data loss that only showed up as a suspiciously low upsert count.
-   */
-  const pageResults = await mapWithConcurrency(pages.slice(1), REQUEST_CONCURRENCY, (page) =>
-    fetchPageWithRetry(options.year, filingType, page),
+  // The first page gives the total; the rest of the slice is fetched a few at a time, which the
+  // adapter's start-time pacing keeps within the API's rate.
+  const first = await fetchPageWithRetry(postedAfter, 1, postedBefore);
+  const totalPages = Math.max(1, Math.ceil(first.count / LDA_PAGE_SIZE));
+  const lastPage = Math.min(totalPages, pageBudget);
+  const rest = await mapWithConcurrency(
+    Array.from({ length: Math.max(0, lastPage - 1) }, (_, index) => index + 2),
+    4,
+    (page) => fetchPageWithRetry(postedAfter, page, postedBefore),
   );
+  const records = [first, ...rest].flatMap((page) => page.results);
 
-  const normalized = [head, ...pageResults]
-    .flatMap((page) => page.results)
+  let latestPosted: string | null = null;
+  let skippedOtherCongress = 0;
+  for (const record of records) {
+    if (record.dt_posted && (!latestPosted || Date.parse(record.dt_posted) > Date.parse(latestPosted))) {
+      latestPosted = record.dt_posted;
+    }
+  }
+  const reports = records
     .map(normalizeLdaFiling)
-    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+    .filter((report): report is NonNullable<typeof report> => Boolean(report))
+    .filter((report) => {
+      const keep = congressForYear(report.filing.filing_year) === congress;
+      if (!keep) skippedOtherCongress += 1;
+      return keep;
+    });
 
-  /*
-   * Deduplicated before writing. LDA pages are not a stable snapshot -- filings shift between
-   * pages as new ones are posted, so one slice can return the same filing_uuid twice. Postgres
-   * rejects that outright ("ON CONFLICT DO UPDATE command cannot affect row a second time"), and
-   * the whole batch failed with a 500, which is what kept stalling the ingest.
-   */
-  const byUuid = new Map(normalized.map((row) => [row.filing_uuid, row]));
-  const rows = [...byUuid.values()];
-
-  if (rows.length > 0) {
-    await upsertSupabaseRowsInChunks("lobbying_filings", rows, "filing_uuid", 250);
+  await upsertSupabaseRowsInChunks("lobbying_filings", reports.map((report) => report.filing), "filing_uuid", 500);
+  const mentions = reports.flatMap((report) =>
+    report.billMentions
+      .filter((billId) => billIds.has(billId))
+      .map((billId) => ({ bill_id: billId, filing_uuid: report.filing.filing_uuid })),
+  );
+  if (mentions.length > 0) {
+    await upsertSupabaseRowsInChunks("lobbying_bill_mentions", mentions, "bill_id,filing_uuid", 1000);
   }
 
-  const lastPage = pages[pages.length - 1];
-  const morePages = lastPage < totalPages;
-  const typeIndex = LDA_MONEY_FILING_TYPES.indexOf(
-    filingType as (typeof LDA_MONEY_FILING_TYPES)[number],
-  );
-  const nextFilingType = morePages
-    ? filingType
-    : LDA_MONEY_FILING_TYPES[typeIndex + 1] ?? null;
+  const done = lastPage >= totalPages;
+  /*
+   * Resume from the newest report seen, less a minute: reports posted in the same second as the
+   * last one processed may sit on the next page, and re-reading a few is harmless.
+   */
+  const nextPostedAfter = latestPosted
+    ? new Date(Date.parse(latestPosted) - 60_000).toISOString()
+    : postedAfter;
+
+  /*
+   * Only the firm/client/quarter groups this slice touched are re-ranked; a whole year timed out.
+   * Backfill windows skip it: running side by side they touch the same groups and deadlock, so the
+   * backfill re-ranks everything once when all windows are done (lobbying_refresh_current).
+   */
+  let currentRowsChanged = 0;
+  for (let index = 0; !windowed && index < reports.length; index += 500) {
+    currentRowsChanged += await invokeSupabaseRpc<number>(
+      "lobbying_refresh_current_for",
+      { p_filing_uuids: reports.slice(index, index + 500).map((report) => report.filing.filing_uuid) },
+      { cache: "no-store" },
+    );
+  }
+
+  if (!windowed) {
+    await upsertSupabaseRowsInChunks(
+      "lobbying_sync_state",
+      [{ id: SYNC_STATE_ID, posted_after: nextPostedAfter, updated_at: new Date().toISOString() }],
+      "id",
+    );
+  }
 
   return {
-    year: options.year,
-    filingType,
-    startPage,
-    pagesFetched: pages.length,
-    filingsUpserted: rows.length,
+    postedAfter,
+    pagesFetched: lastPage,
     totalPages,
-    totalFilings,
-    nextPage: morePages ? lastPage + 1 : nextFilingType ? 1 : null,
-    nextFilingType,
+    reportsUpserted: reports.length,
+    billMentions: mentions.length,
+    skippedOtherCongress,
+    currentRowsChanged,
+    nextPostedAfter,
+    done,
     at: new Date().toISOString(),
   };
 }

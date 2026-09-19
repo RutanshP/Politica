@@ -89,3 +89,14 @@ test("fetchTopPoliticalArticles parses Event Registry article results", async ()
     global.fetch = originalFetch;
   }
 });
+
+test("isAboutCongress keeps Congress coverage and drops what only matched a common word", () => {
+  const { isAboutCongress } = jiti("@/lib/server/news-sync");
+  assert.equal(isAboutCongress({ title: "House passes stopgap funding bill hours before shutdown" }), true);
+  assert.equal(isAboutCongress({ title: "Senators split over tariff powers", body: "" }), true);
+  assert.equal(isAboutCongress({ title: "Trump goes all in for Paxton", body: "Ken Paxton for U.S. Senate in the November election." }), true);
+  assert.equal(isAboutCongress({ title: "Kalshi Promo Code ELITE: Get $25 Bonus", body: "Senate race markets..." }), false);
+  assert.equal(isAboutCongress({ title: "UPSC KEY: Plug-in Hybrid EV", body: "Senate" }), false);
+  assert.equal(isAboutCongress({ title: "Meet the 16-year-old pianist who raised $70,000", body: "For Everett, the piano has become..." }), false);
+  assert.equal(isAboutCongress({ title: "Cal Gamma tours flood damage", body: "" }, ["Cal Gamma"]), true);
+});

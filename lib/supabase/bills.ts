@@ -1,5 +1,6 @@
 import { getDefaultCongress } from "@/lib/adapters/congress";
 import { mapRowToBill, sortBillsByActivity } from "@/lib/normalizers/legislation";
+import { congressSessionLabel } from "@/lib/utils";
 import { resolveSortDirection, type SortDirection } from "@/lib/sort-direction";
 import { BILLS_CACHE_TAG, COMMITTEES_CACHE_TAG } from "@/lib/supabase/cache-tags";
 import {
@@ -90,7 +91,7 @@ export const VOTE_PLACEHOLDER_SPONSOR_ID = "federal-vote-pending";
 // bills) -- the directory is federal-only until that pipeline exists. See bill_directory_facets
 // for the matching scope on the dropdown facets.
 function buildStoredBillsPageFilterQuery(filters: Omit<StoredBillsPageQuery, "page" | "pageSize" | "sortBy">) {
-  const congressSession = `${getDefaultCongress()}th Congress`;
+  const congressSession = congressSessionLabel(getDefaultCongress());
   const conditions = [
     `jurisdiction_type.eq.federal`,
     `session.eq.${congressSession}`,
@@ -166,7 +167,7 @@ export type BillStatusRow = Pick<
  * status and a sponsor id.
  */
 export async function listStoredBillStatusRows() {
-  const congressSession = `${getDefaultCongress()}th Congress`;
+  const congressSession = congressSessionLabel(getDefaultCongress());
   return fetchSupabaseRows<BillStatusRow>(
     "bills",
     `jurisdiction_type=eq.federal&session=eq.${encodeURIComponent(congressSession)}&order=last_action_on.desc.nullslast`,
@@ -180,7 +181,7 @@ export async function listStoredBillStatusRows() {
 }
 
 export async function listStoredBills(includeDetails = false) {
-  const congressSession = `${getDefaultCongress()}th Congress`;
+  const congressSession = congressSessionLabel(getDefaultCongress());
   const [federalBillRows, stateBillRows] = await Promise.all([
     fetchSupabaseRows<BillRow>("bills", `jurisdiction_type=eq.federal&session=eq.${encodeURIComponent(congressSession)}`, {
       tags: [BILLS_CACHE_TAG],
@@ -238,9 +239,13 @@ export async function getStoredBillsPage(query: StoredBillsPageQuery) {
       select: BILL_LIST_SELECT,
       limit: pageSize,
       offset,
-      // An exact count re-counts every matching row on each page view; the pager only needs
-      // enough precision to draw page links.
-      count: "planned",
+      /*
+       * Exact. A planned count is the planner's estimate: unfiltered it read 19,063 against 18,860
+       * real bills, and on a narrow filter it can be off by far more -- page links past the last
+       * page, and a result count that is simply wrong. Counting ~19k indexed rows is a few
+       * milliseconds, and the page is cached by tag, so it is not paid per view.
+       */
+      count: "exact",
       tags: [BILLS_CACHE_TAG],
     },
   );
@@ -267,7 +272,7 @@ export interface BillDirectoryFacetRow {
  * result is cached.
  */
 export async function listStoredBillDirectoryFacets() {
-  const congressSession = `${getDefaultCongress()}th Congress`;
+  const congressSession = congressSessionLabel(getDefaultCongress());
   return fetchSupabaseRpcRows<BillDirectoryFacetRow>(
     "bill_directory_facets",
     { p_session: congressSession },
@@ -347,7 +352,7 @@ const BILL_CARD_SELECT = [
  * three times. These are ORDER BY ... LIMIT queries against the last_action_on index.
  */
 export async function listRecentStoredBills(limit: number, statuses?: string[]) {
-  const congressSession = `${getDefaultCongress()}th Congress`;
+  const congressSession = congressSessionLabel(getDefaultCongress());
   const conditions = [
     `or(jurisdiction_type.eq.state,and(jurisdiction_type.eq.federal,session.eq.${congressSession}))`,
     `sponsor_id.neq.${VOTE_PLACEHOLDER_SPONSOR_ID}`,

@@ -8,6 +8,14 @@ import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { StatCard } from "@/components/stat-card";
 import { formatMoney } from "@/components/funding/funding-graph-theme";
+import { LobbiedBillsCard } from "@/components/lobbying/lobbied-bills-card";
+import {
+  clientHref,
+  getLobbyingOverview,
+  getMostLobbiedBills,
+  getTopLobbyingClients,
+  latestLobbyingYear,
+} from "@/lib/data/lobbying";
 import { getMoneyDashboard, getTopPacs, type MoneyRankRow, type TopPacRow } from "@/lib/data/money";
 import { PAC_CATEGORY_LABEL } from "@/lib/graph/pac-classification";
 
@@ -78,7 +86,14 @@ function RankTable({
 const plural = (count: number, noun: string) => `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;
 
 export default async function MoneyDashboardPage() {
-  const [money, topPacs] = await Promise.all([getMoneyDashboard(), getTopPacs(10)]);
+  const lobbyingYear = await latestLobbyingYear();
+  const [money, topPacs, lobbying, lobbyingClients, lobbiedBills] = await Promise.all([
+    getMoneyDashboard(),
+    getTopPacs(10),
+    getLobbyingOverview(lobbyingYear),
+    getTopLobbyingClients(lobbyingYear, 8),
+    getMostLobbiedBills({ years: [lobbyingYear], limit: 6 }),
+  ]);
   const cycleLabel = money.cycle ? `${money.cycle - 1}–${String(money.cycle).slice(2)} cycle` : "current cycle";
   const live = money.configured && money.totals.membersWithFilings > 0;
 
@@ -87,7 +102,7 @@ export default async function MoneyDashboardPage() {
       <PageHeader
         eyebrow="Money"
         title="Funding dashboard"
-        description={`Campaign fundraising, donor employers, outside spending and lobbying for sitting members of Congress, ${cycleLabel}.`}
+        description={`Campaign fundraising, PAC money, donor employers and outside spending for sitting members of Congress, ${cycleLabel}, and who is lobbying them.`}
         actions={<SourceBadge label={live ? "FEC and LDA filings" : "Funding data not synced yet"} live={live} />}
       />
 
@@ -103,9 +118,9 @@ export default async function MoneyDashboardPage() {
           detail="Independent expenditures for or against sitting members."
         />
         <StatCard
-          label="Lobbying by donor organizations"
-          value={formatMoney(money.totals.lobbying) || "$0"}
-          detail="LDA-reported spend by organizations whose employees also give to members."
+          label={`Reported lobbying, ${lobbyingYear}`}
+          value={formatMoney(lobbying.spend) || "$0"}
+          detail={`${lobbying.clients.toLocaleString()} organizations lobbying Congress, from Lobbying Disclosure Act reports.`}
         />
         <StatCard
           label="Members with filings"
@@ -181,34 +196,41 @@ export default async function MoneyDashboardPage() {
             empty="No independent expenditures are stored for this cycle."
           />
         </SectionCard>
-        <SectionCard title="Lobbying">
-          <div className="space-y-5">
-            <RankTable
-              rows={money.lobbyingClients}
-              columns={["Client", { label: "Firms", align: "right" }, { label: "Spent", align: "right" }]}
-              cells={(row) => [row.count.toLocaleString(), formatMoney(row.amount)]}
-              empty="Run the lobbying sync to populate LDA filings."
+        <SectionCard title={`Who lobbies the most, ${lobbyingYear}`}>
+          {lobbyingClients.length > 0 ? (
+            <DataTable
+              columns={["Organization", { label: "Firms", align: "right" }, { label: "Spent", align: "right" }]}
+              rows={lobbyingClients.map((client) => [
+                <Link key={client.clientKey} href={clientHref(client.clientKey)} className="font-medium text-[var(--ink)] hover:text-[var(--accent)]">
+                  {client.name}
+                </Link>,
+                client.inHouse && client.firms === 0 ? "In-house" : client.firms.toLocaleString(),
+                formatMoney(client.spend),
+              ])}
             />
-            <RankTable
-              rows={money.lobbyingFirms}
-              columns={["Firm", { label: "Clients", align: "right" }, { label: "Paid", align: "right" }]}
-              cells={(row) => [row.count.toLocaleString(), formatMoney(row.amount)]}
-              empty="No lobbying firms are connected yet."
-            />
-          </div>
+          ) : (
+            <EmptyState title="Nothing stored yet" description="Run the lobbying sync to load Lobbying Disclosure Act reports." />
+          )}
           <p className="mt-3 text-xs text-[var(--faint)]">
-            Only organizations that also appear as donor employers are included, so this is a subset of all federal lobbying.
+            Each quarter counted once per organization, amendments replacing originals.{" "}
+            <Link href="/money/lobbying" className="font-medium text-[var(--accent-2)]">All lobbying →</Link>
           </p>
         </SectionCard>
       </section>
 
+      <LobbiedBillsCard
+        title={`Most-lobbied bills, ${lobbyingYear}`}
+        rows={lobbiedBills}
+        note="Ranked by how many organizations named the bill in their lobbying reports."
+      />
+
       <SectionCard title="Explore the network">
         <div className="flex flex-col gap-3 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-[var(--muted)]">
-            Follow any member, employer or firm through the funding graph.
+            See every PAC and member of Congress in one network, and follow the money from either side.
           </p>
           <Link href="/money/graph" className="shrink-0 rounded-full bg-[var(--accent)] px-4 py-2 text-center text-sm font-semibold text-white">
-            Open graph
+            Open the money network
           </Link>
         </div>
       </SectionCard>

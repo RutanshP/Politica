@@ -11,7 +11,7 @@ import { MemberVoteTable } from "@/components/member-vote-table";
 import { PageHeader } from "@/components/page-header";
 import { SourceBadge } from "@/components/source-badge";
 import { VoteBarChart } from "@/components/trend-charts";
-import { fetchBillTextDocument, resolveBillTextSource } from "@/lib/adapters/bill-text";
+import { billPdfUrl, fetchBillTextDocument, resolveBillTextSource } from "@/lib/adapters/bill-text";
 import {
   baseTextForVersion,
   buildBillVersionEntries,
@@ -20,7 +20,7 @@ import {
 } from "@/lib/bill-versions";
 import { getBillData, getBillsSourceLabel, isLiveBillsSource } from "@/lib/data/bills";
 import { getVotesDataForBill } from "@/lib/data/votes";
-import { cn } from "@/lib/utils";
+import { cn, excerptText, formatSummaryText, realText } from "@/lib/utils";
 
 export const revalidate = 21600;
 
@@ -67,7 +67,7 @@ export default async function BillVersionPage({
       <PageHeader
         eyebrow="Bill"
         title={`${bill.number} — ${bill.title}`}
-        description={bill.summary}
+        description={excerptText(realText(formatSummaryText(bill.summary)), 240)}
         actions={<SourceBadge label={getBillsSourceLabel(source)} live={isLiveBillsSource(source)} />}
       />
 
@@ -198,11 +198,18 @@ export default async function BillVersionPage({
                       document={textDocument}
                       versionLabel={baseText?.label}
                       sourceUrl={baseText?.sourceUrl}
+                      pdfUrl={billPdfUrl(baseVersion)}
                     />
                   ) : (
                     <EmptyState
                       title="No readable text for this version"
-                      description="congress.gov did not return a machine-readable document. The official source is linked in the version details."
+                      description={
+                        billPdfUrl(baseVersion)
+                          ? "congress.gov did not return a machine-readable document, but the official printed PDF is available."
+                          : "congress.gov did not return a machine-readable document. The official source is linked in the version details."
+                      }
+                      actionLabel={billPdfUrl(baseVersion) ? "Open the PDF" : undefined}
+                      actionHref={billPdfUrl(baseVersion)}
                     />
                   )}
                 </div>

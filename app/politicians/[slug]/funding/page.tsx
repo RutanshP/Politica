@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { CongressNetwork } from "@/components/congress-network/congress-network";
 import { EmptyState } from "@/components/empty-state";
 import { FundingStatTiles } from "@/components/funding/funding-stat-tiles";
+import { LobbiedBillsCard } from "@/components/lobbying/lobbied-bills-card";
 import { PageHeader } from "@/components/page-header";
 import { PoliticianTabs } from "@/components/politician-tabs";
 import { SourceBadge } from "@/components/source-badge";
@@ -13,6 +14,7 @@ import {
   getPoliticianSourceLabel,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
+import { getMostLobbiedBills } from "@/lib/data/lobbying";
 import { DEFAULT_FUNDING_GRAPH_FILTERS } from "@/types/funding-graph";
 
 export const revalidate = 21600;
@@ -35,7 +37,10 @@ export default async function PoliticianFundingPage({
   const parsed = parseFundingGraphQuery(urlParams);
   const filters = parsed.ok ? parsed.filters : DEFAULT_FUNDING_GRAPH_FILTERS;
 
-  const graph = await buildPoliticianFundingGraph(slug, filters);
+  const [graph, lobbiedBills] = await Promise.all([
+    buildPoliticianFundingGraph(slug, filters),
+    politician.jurisdictionType === "state" ? [] : getMostLobbiedBills({ sponsorId: politician.id, limit: 8 }),
+  ]);
   if (!graph) notFound();
 
   const cycleLabel = filters.cycle
@@ -72,6 +77,11 @@ export default async function PoliticianFundingPage({
       ) : (
         <CongressNetwork initialFocus={`m:${politician.id}`} variant="embedded" />
       )}
+      <LobbiedBillsCard
+        title="Lobbying on bills they sponsored"
+        rows={lobbiedBills}
+        note="Organizations that named each bill in their Lobbying Disclosure Act reports this Congress. Lobbying on a bill is not money to its sponsor."
+      />
     </div>
   );
 }

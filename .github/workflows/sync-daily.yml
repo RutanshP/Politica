@@ -31,6 +31,10 @@ on:
         description: "Symbols to price this run. Bounded by the provider's ~8/min rate limit."
         required: false
         default: ""
+      lobbying_chunks:
+        description: "Lobbying slices this run (40 pages of 25 reports each). Raise after an outage."
+        required: false
+        default: ""
 
 concurrency:
   group: politica-sync
@@ -96,6 +100,12 @@ jobs:
       # Symbols to price per night. The free tiers allow ~8 lookups a minute, so 25 is about three
       # minutes inside the route's 300s budget.
       STOCK_PRICE_SYMBOLS: ${{ github.event.inputs.stock_price_symbols || '25' }}
+      # Lobbying Disclosure Act reports posted since the last run, walked in posting order from a
+      # stored cursor. A quiet night is one slice; the four quarterly deadlines (Jan/Apr/Jul/Oct 20)
+      # bring several thousand reports a day, which is what the extra slices are for. The API allows
+      # about 60 requests a minute, so a 40-page slice is ~45s.
+      LOBBYING_CHUNKS: ${{ github.event.inputs.lobbying_chunks || '12' }}
+      LOBBYING_PAGES: "40"
     steps:
       - name: Check secrets
         run: |
@@ -194,6 +204,15 @@ jobs:
             i=$((i + 1))
           done
 
+          echo "== Lobbying reports (up to $LOBBYING_CHUNKS x $LOBBYING_PAGES pages) =="
+          # Stops as soon as a slice reports done:true -- the cursor has caught up with lda.gov.
+          i=1
+          while [ "$i" -le "$LOBBYING_CHUNKS" ]; do
+            post "/api/internal/sync/lobbying?pages=$LOBBYING_PAGES"
+            grep -q '"done":true' /tmp/resp 2>/dev/null && break
+            i=$((i + 1))
+          done
+
           echo "== News =="
           post "/api/internal/sync/news"
 
@@ -213,8 +232,28 @@ jobs:
           if [ "$(date -u +%u)" = "7" ]; then
             echo "== Rebuild derived data (weekly) =="
             post "/api/internal/rebuild"
+            # Lobbying edges in the per-member funding graph, re-derived from the stored reports.
+            post "/api/internal/sync/lobbying?mode=graph"
           else
             echo "== Skipping derived-data rebuild (only runs Sundays) =="
           fi
 
           echo "Daily sync complete."
+
+      # Fails the run -- and GitHub emails the repo owner -- when a pipeline has not succeeded
+      # within its window, or "succeeded" without doing its job (PDFs that would not extract, a
+      # lobbying cursor falling behind). Every sync step above tolerates errors so one bad chunk
+      # cannot stop the rest; this is where a real breakage becomes visible.
+      - name: Check sync health
+        run: |
+          set -uo pipefail
+          APP_URL="${APP_URL%/}"
+          code=$(curl -sS -L --max-time 60 -o /tmp/health -w "%{http_code}"             -H "Authorization: Bearer $SYNC_SECRET" "$APP_URL/api/internal/sync-health" || echo "000")
+          cat /tmp/health; echo
+          test "$code" = "200" || { echo "::error::sync-health returned $code"; exit 1; }
+          node -e '
+            const report = JSON.parse(require("fs").readFileSync("/tmp/health", "utf8"));
+            for (const w of report.warnings) console.log("::warning::" + w.pipeline + ": " + w.detail);
+            for (const i of report.issues) console.log("::error::" + i.pipeline + " (" + i.kind + "): " + i.detail);
+            process.exit(report.ok ? 0 : 1);
+          '
