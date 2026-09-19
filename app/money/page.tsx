@@ -1,3 +1,4 @@
+import { Network } from "lucide-react";
 import Link from "next/link";
 
 import { DataTable } from "@/components/data-table";
@@ -7,17 +8,52 @@ import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { StatCard } from "@/components/stat-card";
 import { formatMoney } from "@/components/funding/funding-graph-theme";
-import { getMoneyDashboard, type MoneyRankRow } from "@/lib/data/money";
+import { getMoneyDashboard, getTopPacs, type MoneyRankRow, type TopPacRow } from "@/lib/data/money";
+import { PAC_CATEGORY_LABEL } from "@/lib/graph/pac-classification";
 
 export const revalidate = 21600;
 
-function NameCell({ row }: { row: MoneyRankRow }) {
-  return row.href ? (
-    <Link href={row.href} className="font-medium text-[var(--ink)] hover:text-[var(--accent)]">
-      {row.label}
+function NetworkLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      title={`${label} in the money network`}
+      aria-label={`Show ${label} in the money network`}
+      className="inline-grid h-6 w-6 flex-none place-items-center rounded-[var(--r-sm)] text-[var(--faint)] transition hover:bg-[var(--panel-3)] hover:text-[var(--accent-2)]"
+    >
+      <Network className="h-3.5 w-3.5" />
     </Link>
-  ) : (
-    <span className="font-medium text-[var(--ink)]">{row.label}</span>
+  );
+}
+
+function NameCell({ row }: { row: MoneyRankRow }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {row.href ? (
+        <Link href={row.href} className="font-medium text-[var(--ink)] hover:text-[var(--accent)]">
+          {row.label}
+        </Link>
+      ) : (
+        <span className="font-medium text-[var(--ink)]">{row.label}</span>
+      )}
+      {row.networkHref ? <NetworkLink href={row.networkHref} label={row.label} /> : null}
+    </span>
+  );
+}
+
+function PartySplit({ pac }: { pac: TopPacRow }) {
+  const other = Math.max(0, 1 - pac.democraticShare - pac.republicanShare);
+  return (
+    <span className="flex items-center justify-end gap-2">
+      <span className="flex h-1.5 w-20 overflow-hidden rounded-full bg-[var(--panel-3)]" aria-hidden="true">
+        <span style={{ width: `${pac.democraticShare * 100}%` }} className="bg-[var(--party-d)]" />
+        <span style={{ width: `${other * 100}%` }} className="bg-[var(--party-i)]" />
+        <span style={{ width: `${pac.republicanShare * 100}%` }} className="bg-[var(--party-r)]" />
+      </span>
+      <span className="num w-16 text-right text-xs text-[var(--muted)]">
+        {Math.round(pac.democraticShare * 100)}% D
+      </span>
+    </span>
   );
 }
 
@@ -42,7 +78,7 @@ function RankTable({
 const plural = (count: number, noun: string) => `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;
 
 export default async function MoneyDashboardPage() {
-  const money = await getMoneyDashboard();
+  const [money, topPacs] = await Promise.all([getMoneyDashboard(), getTopPacs(10)]);
   const cycleLabel = money.cycle ? `${money.cycle - 1}–${String(money.cycle).slice(2)} cycle` : "current cycle";
   const live = money.configured && money.totals.membersWithFilings > 0;
 
@@ -77,6 +113,39 @@ export default async function MoneyDashboardPage() {
           detail="Sitting members matched to an FEC candidate record this cycle."
         />
       </section>
+
+      {topPacs.length > 0 ? (
+        <SectionCard title="PACs giving the most to Congress">
+          <DataTable
+            columns={[
+              "Committee",
+              "Type",
+              { label: "Members", align: "right" },
+              { label: "Given", align: "right" },
+              { label: "Party split", align: "right" },
+            ]}
+            rows={topPacs.map((pac) => [
+              <span key={`${pac.committeeId}-name`} className="flex items-center gap-1.5">
+                <Link
+                  href={`/money/graph?focus=${encodeURIComponent(`c:${pac.committeeId}`)}`}
+                  className="font-medium text-[var(--ink)] hover:text-[var(--accent)]"
+                >
+                  {pac.name}
+                </Link>
+              </span>,
+              <span key={`${pac.committeeId}-type`} className="text-[var(--muted)]">
+                {PAC_CATEGORY_LABEL[pac.category]}
+              </span>,
+              pac.members.toLocaleString(),
+              formatMoney(pac.total),
+              <PartySplit key={`${pac.committeeId}-split`} pac={pac} />,
+            ])}
+          />
+          <p className="mt-3 text-xs text-[var(--faint)]">
+            Direct contributions to members&apos; campaigns this cycle, from FEC filings. Click a committee to see everyone it funds in the money network.
+          </p>
+        </SectionCard>
+      ) : null}
 
       <section className="grid gap-6 xl:grid-cols-2">
         <SectionCard title="Top fundraisers">

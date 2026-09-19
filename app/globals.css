@@ -20,8 +20,13 @@
   --line-2: rgba(255, 255, 255, 0.12);
 
   --ink: #e8edf7;
-  --muted: #8b95ad;
-  --faint: #5c6780;
+  /*
+   * Both clear WCAG AA (4.5:1) for small text on every surface, --panel-3 included. --faint was
+   * #5c6780 at ~3:1, and it carries most of the 10-11px uppercase labels, where contrast matters
+   * most. --muted moved up with it so the two stay distinct.
+   */
+  --muted: #9aa4bb;
+  --faint: #808ca6;
 
   --accent: #6366f1;
   --accent-2: #818cf8;

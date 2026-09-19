@@ -40,7 +40,7 @@ export function SortDirectionToggle({
           : "border-[var(--line)] bg-[var(--panel)] hover:border-[var(--line-2)]",
       )}
     >
-      <span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
         Order
       </span>
       <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--ink)]">

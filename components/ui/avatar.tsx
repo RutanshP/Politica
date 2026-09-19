@@ -26,7 +26,7 @@ const PARTY_GRADIENT = {
 } as const;
 
 const SIZES = {
-  xs: "h-7 w-7 text-[10.5px]",
+  xs: "h-7 w-7 text-[11px]",
   sm: "h-8 w-8 text-[11px]",
   md: "h-9 w-9 text-xs",
   lg: "h-11 w-11 text-sm",

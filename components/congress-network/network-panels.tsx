@@ -50,7 +50,7 @@ function Chip({ active, onClick, children, title }: { active: boolean; onClick: 
 }
 
 function SectionLabel({ children }: { children: ReactNode }) {
-  return <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--faint)]">{children}</p>;
+  return <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--faint)]">{children}</p>;
 }
 
 // ---- search --------------------------------------------------------------------------------
@@ -339,7 +339,7 @@ function ConnectionList({
             >
               <Dot color={row.color} className="h-2 w-2" />
               <span className="min-w-0 flex-1 truncate">{row.label}</span>
-              {row.detail ? <span className="hidden flex-none text-[10.5px] text-[var(--faint)] sm:inline">{row.detail}</span> : null}
+              {row.detail ? <span className="hidden flex-none text-[11px] text-[var(--faint)] sm:inline">{row.detail}</span> : null}
               <span className="num w-14 flex-none text-right text-[12px] text-[var(--muted)]">{valueOf(index)}</span>
             </button>
           </li>

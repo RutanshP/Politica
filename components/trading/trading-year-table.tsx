@@ -76,7 +76,7 @@ export function TradingYearTable({ years }: { years: TradingYear[] }) {
                         <Badge tone={alphaTone(year.avgAlpha)}>{formatAlpha(year.avgAlpha)}</Badge>
                         <span
                           className={cn(
-                            "text-[10.5px]",
+                            "text-[11px]",
                             year.scoredTradeCount < year.tradeCount ? "text-[var(--warning)]" : "text-[var(--faint)]",
                           )}
                         >

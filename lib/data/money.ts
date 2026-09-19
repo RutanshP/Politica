@@ -1,7 +1,9 @@
+import { NETWORK_CYCLE, tidyCommitteeName } from "@/lib/data/congress-network";
 import { isRealEmployer } from "@/lib/graph/fec-graph-normalizer";
+import type { PacCategory } from "@/lib/graph/pac-classification";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { FUNDING_GRAPH_CACHE_TAG } from "@/lib/supabase/cache-tags";
-import { fetchSupabaseRows } from "@/lib/supabase/rest";
+import { fetchSupabaseRows, fetchSupabaseRpcRows } from "@/lib/supabase/rest";
 
 /*
  * The /money dashboard, read from the funding graph the FEC and LDA syncs keep current.
@@ -11,8 +13,8 @@ import { fetchSupabaseRows } from "@/lib/supabase/rest";
  * while graph_edges held $2B across 8,000+ relationships.
  *
  * What the stored data can and cannot say, which shapes the sections below:
- *   - FEC totals arrive per candidate. "PACs & party committees" is one rolled-up figure per
- *     member, not named PACs, so there is no honest "top PACs" list to show.
+ *   - FEC totals arrive per candidate, with "PACs & party committees" rolled into one figure.
+ *     Named PACs come from the separate PAC sync (pac_contributions) -- see getTopPacs.
  *   - Employer figures are itemized individual contributions grouped by the employer each donor
  *     reported -- not money from the company itself.
  *   - Lobbying is LDA-reported spend, and only for clients that also appear as donor employers
@@ -23,6 +25,8 @@ export interface MoneyRankRow {
   id: string;
   label: string;
   href?: string;
+  /** The Congress money network, focused on this row -- members only; the network has no employers. */
+  networkHref?: string;
   amount: number;
   count: number;
   detail?: string;
@@ -74,6 +78,12 @@ function politicianHref(entity: EntityRow | undefined) {
   return entity?.entity_type === "politician" && entity.slug ? `/politicians/${entity.slug}` : undefined;
 }
 
+/** Graph entity ids are "pol-<bioguide>"; the network keys members as "m:<bioguide>". */
+function networkHref(entity: EntityRow | undefined) {
+  if (entity?.entity_type !== "politician") return undefined;
+  return `/money/graph?focus=${encodeURIComponent(`m:${entity.id.replace(/^pol-/, "")}`)}`;
+}
+
 /** Sums `amount` per key and counts the distinct counterparties behind each sum. */
 function rank(
   edges: EdgeRow[],
@@ -104,6 +114,52 @@ const EMPTY: MoneyDashboard = {
   lobbyingClients: [],
   lobbyingFirms: [],
 };
+
+export interface TopPacRow {
+  committeeId: string;
+  name: string;
+  category: PacCategory;
+  total: number;
+  members: number;
+  democraticShare: number;
+  republicanShare: number;
+}
+
+interface TopPacDbRow {
+  committee_id: string;
+  name: string;
+  category: PacCategory;
+  total: number | string;
+  members: number | string;
+  dem_total: number | string;
+  rep_total: number | string;
+}
+
+/**
+ * The committees that gave the most to sitting members this cycle, from the named PAC gifts the
+ * PAC sync stores. The dashboard could not show this before: the FEC totals it had rolled every
+ * PAC into one "PACs & party committees" figure per member.
+ */
+export async function getTopPacs(limit = 10): Promise<TopPacRow[]> {
+  if (!isSupabaseConfigured()) return [];
+  const rows = await fetchSupabaseRpcRows<TopPacDbRow>(
+    "top_pac_committees",
+    { p_cycle: String(NETWORK_CYCLE), p_limit: String(limit) },
+    { tags: [FUNDING_GRAPH_CACHE_TAG] },
+  ).catch(() => []);
+  return rows.map((row) => {
+    const total = Number(row.total) || 0;
+    return {
+      committeeId: row.committee_id,
+      name: tidyCommitteeName(row.name),
+      category: row.category,
+      total,
+      members: Number(row.members) || 0,
+      democraticShare: total ? Number(row.dem_total) / total : 0,
+      republicanShare: total ? Number(row.rep_total) / total : 0,
+    };
+  });
+}
 
 /** A member's most recent FEC receipts total, or null when no filing is stored for them. */
 export async function getMemberReceipts(politicianId: string) {
@@ -188,7 +244,13 @@ export async function getMoneyDashboard(): Promise<MoneyDashboard> {
   const entityById = new Map(entities.map((entity) => [entity.id, entity]));
   const labelled = (row: { id: string; amount: number; count: number }): MoneyRankRow => {
     const entity = entityById.get(row.id);
-    return { ...row, label: entity?.label ?? row.id, href: politicianHref(entity), detail: entity?.subtitle ?? undefined };
+    return {
+      ...row,
+      label: entity?.label ?? row.id,
+      href: politicianHref(entity),
+      networkHref: networkHref(entity),
+      detail: entity?.subtitle ?? undefined,
+    };
   };
 
   const ieByTarget = (target: string, type: string) =>

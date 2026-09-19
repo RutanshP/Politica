@@ -81,7 +81,7 @@ export function TradeTable({ trades }: { trades: TradeRecord[] }) {
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="num text-[var(--ink)]">{dayLabel(trade.transactionDate)}</div>
                       {lag !== null ? (
-                        <div className="mt-0.5 text-[10.5px] text-[var(--faint)]">disclosed {lag}d later</div>
+                        <div className="mt-0.5 text-[11px] text-[var(--faint)]">disclosed {lag}d later</div>
                       ) : null}
                     </td>
                     <td className="px-4 py-3">
@@ -92,7 +92,7 @@ export function TradeTable({ trades }: { trades: TradeRecord[] }) {
                         <span className="line-clamp-2 text-[13px] text-[var(--muted)]">{trade.assetName}</span>
                       </div>
                       {trade.comment ? (
-                        <div className="mt-1 text-[10.5px] text-[var(--faint)]">{trade.comment}</div>
+                        <div className="mt-1 text-[11px] text-[var(--faint)]">{trade.comment}</div>
                       ) : null}
                     </td>
                     <td className="px-4 py-3">
@@ -122,7 +122,7 @@ export function TradeTable({ trades }: { trades: TradeRecord[] }) {
                             {trade.alpha > 0 ? "+" : ""}
                             {trade.alpha.toFixed(1)}pp
                           </span>
-                          <span className="num text-[10.5px] text-[var(--faint)]">
+                          <span className="num text-[11px] text-[var(--faint)]">
                             {trade.tradeReturn !== null ? `${trade.tradeReturn > 0 ? "+" : ""}${trade.tradeReturn.toFixed(1)}%` : ""}
                             {trade.benchmarkReturn !== null ? ` vs ${trade.benchmarkReturn > 0 ? "+" : ""}${trade.benchmarkReturn.toFixed(1)}%` : ""}
                           </span>

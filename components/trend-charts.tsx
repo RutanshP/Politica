@@ -27,7 +27,7 @@ import type { Tone } from "@/components/ui/tones";
  * reading against --panel rather than each one drifting.
  */
 const GRID = "rgba(255,255,255,0.07)";
-const AXIS_TICK = { fill: "#8b95ad", fontSize: 11 };
+const AXIS_TICK = { fill: "#9aa4bb", fontSize: 11 };
 
 const TOOLTIP_PROPS = {
   contentStyle: {
@@ -38,7 +38,7 @@ const TOOLTIP_PROPS = {
     color: "#e8edf7",
     boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
   },
-  labelStyle: { color: "#8b95ad", marginBottom: 2 },
+  labelStyle: { color: "#9aa4bb", marginBottom: 2 },
   itemStyle: { color: "#e8edf7" },
   cursor: { fill: "rgba(255,255,255,0.04)" },
 } as const;
@@ -147,7 +147,7 @@ export function PartisanDonutChart({ data }: { data: Array<{ label: string; valu
           verticalAlign="bottom"
           iconType="circle"
           iconSize={8}
-          wrapperStyle={{ fontSize: 12, color: "#8b95ad" }}
+          wrapperStyle={{ fontSize: 12, color: "#9aa4bb" }}
           formatter={(label) => {
             const value = data.find((entry) => entry.label === label)?.value;
             return value === undefined ? label : `${label} · ${value.toLocaleString()}`;
