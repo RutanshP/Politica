@@ -269,7 +269,8 @@ export function mapBillVersionToRow(billId: string, version: Bill["versions"][nu
  * a new bill is weeks to months -- so 7,159 stored bills (36%) presented it as "About this bill".
  */
 export function isConstitutionalAuthorityStatement(text: string | null | undefined) {
-  const value = (text || "").trimStart();
+  // Some arrive wrapped in <pre> with hard line breaks mid-sentence, so test the cleaned text.
+  const value = formatSummaryText(text).replace(/\s+/g, " ");
   return value.startsWith("[Congressional Record")
     || /Congress has the power to enact this legislation/i.test(value);
 }

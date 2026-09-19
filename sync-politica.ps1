@@ -12,8 +12,10 @@ param(
   [switch]$SyncCommittees
 )
 
+# The secret comes from .env.local. A placeholder was hardcoded here, so every run 401'd.
+. "$PSScriptRoot\scripts\windows\common.ps1"
 $headers = @{
-  Authorization = "Bearer abcbcdcde"
+  Authorization = "Bearer $(Get-PoliticaSyncSecret)"
 }
 
 $base = "http://127.0.0.1:3000"

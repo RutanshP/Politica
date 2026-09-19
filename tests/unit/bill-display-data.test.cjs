@@ -21,6 +21,10 @@ test("isConstitutionalAuthorityStatement recognizes the boilerplate, not real su
     isConstitutionalAuthorityStatement("This bill requires states to provide such information as the Department of Justice may require."),
     false,
   );
+  assert.equal(
+    isConstitutionalAuthorityStatement("<pre>\n[Congressional Record Volume 172, Number 129]\n[House]\nCongress has the power\nto enact this legislation</pre>"),
+    true,
+  );
   assert.equal(isConstitutionalAuthorityStatement(null), false);
 });
 

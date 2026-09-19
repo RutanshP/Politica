@@ -47,3 +47,7 @@ yarn-error.log*
 next-env.d.ts
 logs/
 scripts/.federal-detail-cursor
+
+# logs from local sync scripts and dev servers
+*.log
+/logs/
