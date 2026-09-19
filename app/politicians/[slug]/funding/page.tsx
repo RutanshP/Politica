@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { FundingNetworkExplorer } from "@/components/funding/funding-network-explorer";
+import { CongressNetwork } from "@/components/congress-network/congress-network";
 import { FundingStatTiles } from "@/components/funding/funding-stat-tiles";
 import { PageHeader } from "@/components/page-header";
 import { PoliticianTabs } from "@/components/politician-tabs";
@@ -48,7 +48,7 @@ export default async function PoliticianFundingPage({
       <PageHeader
         eyebrow="Funding network"
         title={politician.name}
-        description={`${politician.title} · ${politician.party} · ${politician.district || politician.state}. Documented funding, organizational, lobbying, and legislative relationships around this member.`}
+        description={`${politician.title} · ${politician.party} · ${politician.district || politician.state}. Campaign totals, and every PAC that funded this member this cycle — click any dot to follow the money.`}
         actions={
           <SourceBadge
             label={getPoliticianSourceLabel(source)}
@@ -58,7 +58,12 @@ export default async function PoliticianFundingPage({
       />
       <PoliticianTabs slug={politician.slug} active="funding" />
       <FundingStatTiles totals={graph.totals} cycleLabel={cycleLabel} />
-      <FundingNetworkExplorer slug={slug} initialGraph={graph} initialFilters={filters} />
+      {/*
+        The same network as /money/graph, opened on this member: their PAC donors fan out around
+        them and the members they share the most donors with are lit. Clicking anything moves the
+        focus, so the tab is a starting point into the whole network rather than a dead end.
+      */}
+      <CongressNetwork initialFocus={`m:${politician.id}`} variant="embedded" />
     </div>
   );
 }

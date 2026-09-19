@@ -50,6 +50,8 @@ jobs:
       # staleness — matches the previous nightly design; the initial full
       # backfill is already done.
       FEC_CHUNKS: "8"
+      PAC_CHUNKS: "6"
+      PAC_LIMIT: "10"
       # How many bill pages to walk per run, most-recently-updated first. Congress
       # touches hundreds of bills a day, so a single limit=25 page never reaches
       # brand-new introductions (they sit below all the existing bills getting new
@@ -179,6 +181,16 @@ jobs:
           i=1
           while [ "$i" -le "$FEC_CHUNKS" ]; do
             post "/api/internal/sync/fec-funding-graph?limit=$FEC_LIMIT"
+            i=$((i + 1))
+          done
+
+          # Named PAC gifts per member, for the Congress money network. ~3 FEC calls a member at
+          # the key's ~1.1s pacing, so limit=10 stays inside the function timeout like the FEC
+          # chunks above. 6 x 10 = 60 members a night, every member refreshed about every 9 days.
+          echo "== PAC contributions ($PAC_CHUNKS x limit=$PAC_LIMIT) =="
+          i=1
+          while [ "$i" -le "$PAC_CHUNKS" ]; do
+            post "/api/internal/sync/pac-contributions?limit=$PAC_LIMIT"
             i=$((i + 1))
           done
 

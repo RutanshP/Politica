@@ -14,7 +14,6 @@ const {
   mapEntityToNode,
   mapEdgeRowToEdge,
 } = jiti("@/lib/graph/funding-graph-utils");
-const { layoutFundingGraph } = jiti("@/lib/graph/funding-graph-layout");
 const { computeTotalsFromEdges } = jiti("@/lib/graph/build-politician-funding-graph");
 const { parseFundingGraphQuery, serializeFundingGraphFilters } = jiti("@/lib/graph/funding-graph-params");
 
@@ -191,31 +190,6 @@ test("mapEdgeRowToEdge carries amounts, cycle, and aggregate flag", () => {
   assert.equal(edge.data.electionCycle, 2024);
   assert.equal(edge.data.isAggregate, true);
   assert.equal(edge.data.sourceCount, 7);
-});
-
-test("layoutFundingGraph puts money left, politician center, legislative right", () => {
-  const nodes = [
-    node("center", "politician"),
-    node("cmte", "candidateCommittee"),
-    node("donor", "donorAggregate"),
-    node("company", "company"),
-    node("bill", "bill"),
-  ];
-  const edges = [
-    graphEdge("e1", "donor", "cmte", { amount: 1000 }),
-    graphEdge("e2", "cmte", "center", { relationshipType: "affiliated_with" }),
-    graphEdge("e3", "company", "donor", { relationshipType: "affiliated_with" }),
-    graphEdge("e4", "center", "bill", { relationshipType: "sponsored" }),
-  ];
-  const positioned = layoutFundingGraph("center", nodes, edges);
-  const byId = new Map(positioned.map((item) => [item.id, item.position]));
-  assert.ok(byId.get("donor").x < byId.get("center").x, "money is left of center");
-  assert.ok(byId.get("company").x < byId.get("donor").x, "second-degree money is further left");
-  assert.ok(byId.get("bill").x > byId.get("center").x, "legislation is right of center");
-  assert.equal(byId.get("cmte").x, byId.get("center").x, "candidate committee shares center column");
-  // Selection must not affect layout: same inputs -> same positions.
-  const again = layoutFundingGraph("center", nodes, edges);
-  assert.deepEqual(positioned, again);
 });
 
 test("computeTotalsFromEdges splits individual, PAC, small-dollar subset, and IE totals", () => {

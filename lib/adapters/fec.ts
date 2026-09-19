@@ -97,14 +97,19 @@ async function fecRateGate() {
 
 async function fetchFecJsonFresh<T>(
   pathname: string,
-  params?: Record<string, string | number | undefined>,
+  params?: Record<string, string | number | string[] | undefined>,
 ) {
   const url = new URL(`${FEC_API_BASE}${pathname}`);
   url.searchParams.set("api_key", getFecApiKey());
   url.searchParams.set("per_page", String(params?.per_page ?? 20));
 
   for (const [key, value] of Object.entries(params ?? {})) {
-    if (value !== undefined && key !== "per_page") {
+    if (value === undefined || key === "per_page") continue;
+    // Arrays repeat the parameter (`committee_id=A&committee_id=B`), which is how the FEC API
+    // takes a batch of ids.
+    if (Array.isArray(value)) {
+      for (const item of value) url.searchParams.append(key, item);
+    } else {
       url.searchParams.set(key, String(value));
     }
   }
@@ -215,6 +220,64 @@ export async function fetchFecScheduleEByCandidate(candidateId: string, cycle: n
     "/schedules/schedule_e/by_candidate/",
     { candidate_id: candidateId, cycle, per_page: 10 },
   );
+  return payload.results ?? [];
+}
+
+export interface FecCommitteeGiftRow {
+  committee_id?: string;
+  committee_name?: string;
+  recipient_id?: string;
+  total?: number;
+  count?: number;
+  memo_total?: number;
+}
+
+const FEC_AGGREGATE_PAGE_SIZE = 100;
+
+/**
+ * Every committee that paid a candidate's committee in a cycle, totalled per payer.
+ *
+ * This is Schedule B from the *payer's* side -- PACs, party committees, leadership PACs and
+ * other campaigns reporting what they gave -- aggregated by FEC per (payer, recipient). One call
+ * per 100 payers; a senator runs to a few hundred.
+ */
+export async function fetchFecCommitteeGiftsToRecipient(recipientCommitteeId: string, cycle: number) {
+  const rows: FecCommitteeGiftRow[] = [];
+  for (let page = 1; ; page += 1) {
+    const payload = await fetchFecJsonFresh<{
+      results?: FecCommitteeGiftRow[];
+      pagination?: { pages?: number };
+    }>("/schedules/schedule_b/by_recipient_id/", {
+      recipient_id: recipientCommitteeId,
+      cycle,
+      per_page: FEC_AGGREGATE_PAGE_SIZE,
+      sort: "-total",
+      page,
+    });
+    rows.push(...(payload.results ?? []));
+    if (page >= (payload.pagination?.pages ?? 1)) return rows;
+  }
+}
+
+export interface FecCommitteeDetailRow {
+  committee_id: string;
+  name?: string;
+  committee_type?: string;
+  designation?: string;
+  organization_type?: string | null;
+  party?: string | null;
+  affiliated_committee_name?: string | null;
+  sponsor_candidate_ids?: string[] | null;
+  candidate_ids?: string[] | null;
+}
+
+/** Committee records for up to 100 ids in one call. */
+export async function fetchFecCommitteesByIds(committeeIds: string[]) {
+  if (committeeIds.length === 0) return [];
+  const payload = await fetchFecJsonFresh<{ results?: FecCommitteeDetailRow[] }>("/committees/", {
+    committee_id: committeeIds.slice(0, FEC_AGGREGATE_PAGE_SIZE),
+    per_page: FEC_AGGREGATE_PAGE_SIZE,
+  });
   return payload.results ?? [];
 }
 

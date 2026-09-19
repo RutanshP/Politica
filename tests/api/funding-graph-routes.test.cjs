@@ -4,8 +4,6 @@ const assert = require("node:assert/strict");
 const jiti = require("../support/jiti.cjs");
 
 const fundingGraphRoute = jiti("@/app/api/politicians/[slug]/funding-graph/route");
-const neighborsRoute = jiti("@/app/api/graph/entities/[entityId]/neighbors/route");
-const recordsRoute = jiti("@/app/api/graph/edges/[edgeId]/records/route");
 
 const POLITICIAN_ROW = {
   id: "P1",
@@ -232,40 +230,6 @@ test("funding-graph route hides legislative side when showLegislative=false", as
     assert.ok(!nodeIds.includes("cmte-cmte-9"));
     assert.ok(!nodeIds.includes("bill-hr-1"));
     assert.ok(nodeIds.includes("pac-1"), "money side remains");
-  } finally {
-    restore();
-  }
-});
-
-test("neighbors route returns depth-1 expansion excluding already-visible ids", async () => {
-  const restore = installFetchMock();
-  try {
-    const response = await neighborsRoute.GET(
-      new Request("http://localhost/api/graph/entities/pac-1/neighbors?exclude=pol-P1"),
-      { params: Promise.resolve({ entityId: "pac-1" }) },
-    );
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.entity.id, "pac-1");
-    // The only neighbor (pol-P1) is excluded, so no new neighbors arrive.
-    assert.deepEqual(body.neighbors, []);
-  } finally {
-    restore();
-  }
-});
-
-test("edge records route paginates underlying source records", async () => {
-  const restore = installFetchMock();
-  try {
-    const response = await recordsRoute.GET(
-      new Request("http://localhost/api/graph/edges/e-1/records?page=1&pageSize=10"),
-      { params: Promise.resolve({ edgeId: "e-1" }) },
-    );
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.edge.id, "e-1");
-    assert.equal(body.records.length, 2);
-    assert.equal(body.page, 1);
   } finally {
     restore();
   }

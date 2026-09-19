@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "@xyflow/react/dist/style.css";
 
 /*
  * Politica runs a single dark theme. There is deliberately no light palette and no toggle --
