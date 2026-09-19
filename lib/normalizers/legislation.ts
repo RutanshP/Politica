@@ -1,3 +1,4 @@
+import { chanceOfBecomingLaw } from "@/lib/bill-odds";
 import type { Bill, Committee } from "@/types/civic";
 import type { BillActionRow, BillRow, BillVersionRow, CommitteeRow } from "@/types/supabase";
 import {
@@ -284,7 +285,7 @@ export function mapRowToBill(
     lastActionAt: row.last_action_at,
     introducedAt: row.introduced_at,
     session: row.session,
-    chanceOfPassing: row.chance_of_passing,
+    chanceOfPassing: chanceOfBecomingLaw(row.status),
     stats: row.stats,
     actions: dedupeBillActions(
       actions

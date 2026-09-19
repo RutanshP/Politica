@@ -8,14 +8,14 @@ import { EmptyState } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
 import type { Issue } from "@/types/civic";
 
-type SortKey = "name" | "activeBills" | "recentVotes" | "bipartisanSupport";
+type SortKey = "name" | "activeBills" | "recentVotes" | "enacted";
 type SortDir = "asc" | "desc";
 
 const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
   { key: "name", label: "Issue" },
   { key: "activeBills", label: "Active bills", numeric: true },
   { key: "recentVotes", label: "Recent votes", numeric: true },
-  { key: "bipartisanSupport", label: "Bipartisan support", numeric: true },
+  { key: "enacted", label: "Became law", numeric: true },
 ];
 
 /**
@@ -137,7 +137,7 @@ export function IssuesDirectory({ issues }: { issues: Issue[] }) {
                     {issue.stats.recentVotes}
                   </td>
                   <td className="px-3.5 py-3 text-right align-middle tabular-nums text-[var(--ink)]">
-                    {issue.stats.bipartisanSupport}%
+                    {issue.stats.enacted}
                   </td>
                 </tr>
               ))}

@@ -48,6 +48,21 @@ export async function purgeDemoFixture() {
 }
 
 /**
+ * Drops one member's FEC edges for one cycle that the current run did not rewrite.
+ *
+ * The sync only upserted, so an employer that fell out of a member's top list -- or a placeholder
+ * like "NULL" that the employer filter now rejects -- kept its edge indefinitely. Every FEC edge id
+ * ends in `-{bioguideId}-{cycle}` (see buildFecGraphRows), which scopes this to exactly the member
+ * and cycle just synced; `synced_at` older than the run start is what the run did not touch.
+ */
+export async function pruneStaleFecEdges(politicianId: string, cycle: number, runStartedAt: string) {
+  await deleteSupabaseRows(
+    "graph_edges",
+    `source_system=eq.fec_sync&id=like.*-${politicianId}-${cycle}&synced_at=lt.${runStartedAt}`,
+  );
+}
+
+/**
  * Clears everything the lobbying rebuild owns before it writes a fresh set, so a rebuild is a true
  * replace rather than an accumulate. Only lda_sync-owned rows are firm nodes and retained edges --
  * bridged clients reuse FEC employer nodes, which the FEC sync owns and this must not touch. Edges

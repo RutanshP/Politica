@@ -4,9 +4,9 @@ import { ChartCard } from "@/components/chart-card";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { PoliticianTabs } from "@/components/politician-tabs";
-import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
-import { PartisanDonutChart, TrendLineChart } from "@/components/trend-charts";
+import { StatCard } from "@/components/stat-card";
+import { PartisanDonutChart, VoteBarChart } from "@/components/trend-charts";
 import {
   getPoliticianAnalyticsSeries,
   getPoliticianData,
@@ -14,9 +14,10 @@ import {
   getSponsoredBillsForPolitician,
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
-import { hasVotePerformanceStats } from "@/lib/utils";
 
 export const revalidate = 21600;
+
+const percent = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : "—");
 
 export default async function PoliticianAnalyticsPage({
   params,
@@ -29,20 +30,15 @@ export default async function PoliticianAnalyticsPage({
 
   const sponsoredBills = await getSponsoredBillsForPolitician(slug);
   const derived = getPoliticianAnalyticsSeries(politician, sponsoredBills);
-  const hasVoteStats = hasVotePerformanceStats(politician.stats);
-  const metricCards = [
-    ["Missed votes", derived.missedVotes.toString()],
-    ["Leadership votes", derived.leadershipVotes.toString()],
-    ["Swing votes", derived.swingVotes.toString()],
-    ["Consecutive votes", derived.consecutiveVotes.toString()],
-  ] as const;
+  const { votes } = derived;
+  const partyLine = votes.withParty + votes.againstParty;
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Voting analytics"
         title={politician.name}
-        description="Alignment, distribution, bipartisan behavior, missed votes, and swing-vote snapshots."
+        description="Recorded roll calls, party-line voting, and the legislation this member has sponsored."
         actions={
           <SourceBadge
             label={getPoliticianSourceLabel(source)}
@@ -51,45 +47,62 @@ export default async function PoliticianAnalyticsPage({
         }
       />
       <PoliticianTabs slug={politician.slug} active="analytics" />
-      {!hasVoteStats && sponsoredBills.length === 0 ? (
+
+      {votes.total === 0 && sponsoredBills.length === 0 ? (
         <EmptyState
-          title="Analytics are partially filled because upstream vote and sponsorship detail is limited"
-          description="This member profile is synced, but the current stored dataset does not yet include enough vote-position or sponsored-bill history to populate the full analytics view."
+          title="No voting or sponsorship record stored"
+          description="Roll-call positions and sponsored bills appear here once they are synced for this member. Governors cast no congressional votes."
         />
-      ) : null}
-      <section className="grid gap-6 xl:grid-cols-3">
-        <ChartCard title="Vote alignment over time">
-          <TrendLineChart data={derived.alignmentSeries} />
-        </ChartCard>
-        <ChartCard title="Vote distribution">
-          <PartisanDonutChart data={derived.distribution} />
-        </ChartCard>
-        <SectionCard title="Bipartisan index">
-          <div className="space-y-4">
-            <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                Index
-              </p>
-              <p className="mt-2 font-display text-5xl font-semibold text-emerald-600">
-                +{derived.bipartisanIndex}
-              </p>
-              <p className="mt-2 text-sm text-[var(--muted)]">
-                Derived from the stored sponsored-bill footprint plus current member fields.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {metricCards.map(([label, value]) => (
-                <div key={label} className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                    {label}
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold">{value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </SectionCard>
-      </section>
+      ) : (
+        <>
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Roll calls on record"
+              value={votes.total.toLocaleString()}
+              detail="Recorded votes held while this member was seated."
+            />
+            <StatCard
+              label="Votes cast"
+              value={votes.cast.toLocaleString()}
+              detail={`${percent(votes.cast, votes.total)} attendance.`}
+            />
+            <StatCard
+              label="Missed"
+              value={votes.missed.toLocaleString()}
+              detail="Roll calls with no recorded vote from this member."
+            />
+            <StatCard
+              label="Voted with party"
+              value={percent(votes.withParty, partyLine)}
+              detail={`${votes.withParty.toLocaleString()} of ${partyLine.toLocaleString()} votes where the party majority took a side.`}
+            />
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-3">
+            <ChartCard title="Party-line votes">
+              {derived.distribution.length > 0 ? (
+                <PartisanDonutChart data={derived.distribution} />
+              ) : (
+                <p className="text-sm text-[var(--muted)]">No party-line votes recorded.</p>
+              )}
+            </ChartCard>
+            <ChartCard title="Sponsored bills by topic">
+              {derived.topicSeries.length > 0 ? (
+                <VoteBarChart data={derived.topicSeries} />
+              ) : (
+                <p className="text-sm text-[var(--muted)]">No sponsored bills stored.</p>
+              )}
+            </ChartCard>
+            <ChartCard title="How far their bills got">
+              {derived.statusSeries.length > 0 ? (
+                <VoteBarChart data={derived.statusSeries} />
+              ) : (
+                <p className="text-sm text-[var(--muted)]">No sponsored bills stored.</p>
+              )}
+            </ChartCard>
+          </section>
+        </>
+      )}
     </div>
   );
 }

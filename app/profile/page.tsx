@@ -22,7 +22,7 @@ export default async function ProfilePage() {
       <section className="grid gap-4 md:grid-cols-3">
         <StatCard label="Tracked entities" value={items.length} detail="Bills, politicians, committees, and issues currently shown in the app-level watchlist." />
         <StatCard label="Active bills" value={summary.activeBills} detail="Bills currently available in stored datasets." />
-        <StatCard label="Watchlist hits" value={summary.watchlistHits} detail="Cross-entity activity derived from the current stored data." />
+        <StatCard label="Became law" value={summary.enacted} detail="Bills this Congress that were signed into law." />
       </section>
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard title="Workspace summary">

@@ -237,7 +237,8 @@ export interface Issue {
   stats: {
     activeBills: number;
     recentVotes: number;
-    bipartisanSupport: number;
+    /** Bills in this issue signed into law. Replaced a "bipartisan support" figure that was not. */
+    enacted: number;
   };
   topBillIds: string[];
   committeeIds: string[];

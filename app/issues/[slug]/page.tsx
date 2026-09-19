@@ -32,7 +32,7 @@ export default async function IssuePage({
   const statCards = [
     ["Active bills", issue.stats.activeBills],
     ["Recent votes", issue.stats.recentVotes],
-    ["Bipartisan support", `${issue.stats.bipartisanSupport}%`],
+    ["Became law", issue.stats.enacted],
     ["Related committees", issue.committeeIds.length],
   ] as const;
 

@@ -29,7 +29,7 @@ export default async function IssuesPage() {
       />
       <SectionCard
         title="Issue directory"
-        description="Search by name or description, and sort by active bills, recent votes, or bipartisan support. Every issue links out to its connected bills, committees, and politicians."
+        description="Search by name or description, and sort by active bills, recent votes, or bills that became law. Every issue links out to its connected bills, committees, and politicians."
       >
         {issues.length > 0 ? (
           <IssuesDirectory issues={issues} />

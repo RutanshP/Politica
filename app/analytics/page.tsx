@@ -13,11 +13,18 @@ export default async function AnalyticsPage() {
   ]);
 
   const statCards = [
-    ["Active bills", summary.activeBills],
-    ["Bills with floor votes", summary.upcomingVotes],
-    ["Tracked committees", summary.committees],
-    ["Watchlist hits", summary.watchlistHits],
+    ["Bills this Congress", summary.activeBills],
+    ["On the floor or past a chamber", summary.upcomingVotes],
+    ["Became law", summary.enacted],
+    ["Committees", summary.committees],
   ] as const;
+
+  // Ranked by sponsorship, sitting federal members only. The table used to list every stored
+  // politician in alphabetical order under a "Most active" heading.
+  const mostActive = politicians
+    .filter((politician) => politician.jurisdictionType !== "state" && politician.stats.billsIntroduced > 0)
+    .sort((left, right) => right.stats.billsIntroduced - left.stats.billsIntroduced)
+    .slice(0, 15);
 
   return (
     <div className="space-y-6">
@@ -30,27 +37,29 @@ export default async function AnalyticsPage() {
         {statCards.map(([label, value]) => (
           <SectionCard key={label} title={label}>
             <p className="font-display text-4xl font-semibold text-[var(--ink)]">
-              {value}
+              {value.toLocaleString()}
             </p>
           </SectionCard>
         ))}
       </section>
       <section className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
-        <ChartCard title="Bills introduced over time">
+        <ChartCard title="Bills introduced per month">
           <TrendLineChart data={summary.introductionsSeries} />
         </ChartCard>
-        <ChartCard title="Partisan breakdown of member behavior">
+        <ChartCard title="Party-line voting, average member (%)">
           <PartisanDonutChart data={summary.partisanSeries} />
         </ChartCard>
       </section>
       <SectionCard title="Most active members">
         <DataTable
           columns={["Name", "State", "Bills introduced", "Votes with party"]}
-          rows={politicians.map((politician) => [
+          rows={mostActive.map((politician) => [
             politician.name,
             politician.state,
             politician.stats.billsIntroduced,
-            `${politician.stats.votesWithParty}%`,
+            politician.stats.votesWithParty + politician.stats.votesAgainstParty > 0
+              ? `${politician.stats.votesWithParty}%`
+              : "No votes",
           ])}
         />
       </SectionCard>

@@ -669,34 +669,53 @@ export function isLivePoliticianSource(source: string) {
   return source === "supabase";
 }
 
+const SPONSORED_STATUS_ORDER = ["Introduced", "In Committee", "On Floor", "Passed Chamber", "Sent to President", "Signed"];
+
+/**
+ * The member analytics tab, built only from what is stored.
+ *
+ * This used to invent most of what it showed: a 2020-2024 "alignment over time" line that was the
+ * current percentage nudged by -4..+2, "missed votes" as (100 - attendance) * 8, "leadership" and
+ * "swing" votes as sponsored-bill count * 14 and * 9, and a "bipartisan index" formula. None of it
+ * was data, and a civic-data site cannot show made-up figures next to real ones.
+ */
 export function getPoliticianAnalyticsSeries(
   politician: Politician,
   sponsoredBills: Bill[],
 ) {
-  const sponsorshipBase = Math.max(sponsoredBills.length, 1);
+  const { stats } = politician;
+  const total = stats.totalVotes ?? 0;
+  const cast = stats.castVotes ?? 0;
+  const withParty = stats.withPartyCount ?? 0;
+  const againstParty = stats.againstPartyCount ?? 0;
+
+  const byTopic = new Map<string, number>();
+  const byStatus = new Map<string, number>();
+  for (const bill of sponsoredBills) {
+    byTopic.set(bill.topic, (byTopic.get(bill.topic) || 0) + 1);
+    byStatus.set(bill.status, (byStatus.get(bill.status) || 0) + 1);
+  }
 
   return {
-    alignmentSeries: [
-      { label: "2020", value: Math.max(politician.stats.votesWithParty - 4, 0) },
-      { label: "2021", value: Math.max(politician.stats.votesWithParty - 2, 0) },
-      { label: "2022", value: politician.stats.votesWithParty },
-      { label: "2023", value: Math.min(politician.stats.votesWithParty + 1, 100) },
-      { label: "2024", value: Math.min(politician.stats.votesWithParty + 2, 100) },
-    ],
-    distribution: [
-      { label: "With party", value: politician.stats.votesWithParty || 0 },
-      {
-        label: "Cross-party",
-        value: politician.stats.votesAgainstParty || 0,
-      },
-    ],
-    bipartisanIndex: Math.min(
-      100,
-      25 + sponsorshipBase * 6 + Math.floor((politician.stats.votesAgainstParty || 0) / 2),
-    ),
-    missedVotes: Math.max(0, 100 - politician.stats.attendance) * 8,
-    leadershipVotes: sponsoredBills.length * 14,
-    swingVotes: sponsoredBills.length * 9,
-    consecutiveVotes: Math.max(100, politician.stats.attendance * 11),
+    votes: {
+      total,
+      cast,
+      missed: Math.max(total - cast, 0),
+      withParty,
+      againstParty,
+    },
+    distribution: withParty + againstParty > 0
+      ? [
+          { label: "With party", value: withParty },
+          { label: "Against party", value: againstParty },
+        ]
+      : [],
+    topicSeries: [...byTopic.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 6)
+      .map(([label, value]) => ({ label, value })),
+    statusSeries: SPONSORED_STATUS_ORDER
+      .map((status) => ({ label: status, value: byStatus.get(status) || 0 }))
+      .filter((point) => point.value > 0),
   };
 }

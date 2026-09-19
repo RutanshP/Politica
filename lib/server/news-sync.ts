@@ -5,16 +5,34 @@ import { listStoredBills } from "@/lib/supabase/bills";
 import { listStoredIssues } from "@/lib/supabase/issues";
 import { listStoredPoliticians } from "@/lib/supabase/politicians";
 import { replaceStoredNews } from "@/lib/supabase/news";
+import { dedupeByHeadline, summarizeArticleBody } from "@/lib/news-text";
 import { slugifySegment } from "@/lib/utils";
 import type { Bill, Issue, Politician } from "@/types/civic";
 import type { NewsEntityLinkRow, NewsItemRow } from "@/types/supabase";
 
-export function buildNewsQueries(bills: Bill[], politicians: Politician[], issues: Issue[]) {
-  return [
-    ...bills.slice(0, 3).map((bill) => bill.number),
-    ...politicians.slice(0, 3).map((politician) => politician.name),
-    ...issues.slice(0, 2).map((issue) => issue.name),
-  ].filter(Boolean);
+/** Always searched: coverage of Congress itself, whatever else is moving. */
+export const CORE_NEWS_QUERIES = ["U.S. Congress", "U.S. Senate", "House of Representatives"];
+const SPONSOR_QUERIES = 2;
+
+/**
+ * Keyword searches for one sync run -- five at most. Event Registry rate-limits the key, and the
+ * old eight-query run was failing on 429 about half the time.
+ *
+ * The old queries were the first three bills, politicians and issues *as stored*, and politicians
+ * are stored alphabetically: every run searched for Aaron Bean, Abraham Hamadeh and Adam Gray, so
+ * the feed filled with Florida local news. Bill numbers ("S.5429") were no better as keywords. The
+ * core queries keep the feed on Congress; the rest follow whoever sponsored the bills that moved
+ * most recently, which rotates as Congress does. Bills arrive sorted by activity.
+ */
+export function buildNewsQueries(bills: Bill[], politicians: Politician[], _issues: Issue[] = []) {
+  const nameById = new Map(politicians.map((politician) => [politician.id, politician.name]));
+  const sponsors: string[] = [];
+  for (const bill of bills) {
+    const name = nameById.get(bill.sponsorId);
+    if (name && !sponsors.includes(name)) sponsors.push(name);
+    if (sponsors.length === SPONSOR_QUERIES) break;
+  }
+  return [...CORE_NEWS_QUERIES, ...sponsors];
 }
 
 export async function syncNewsFromApi() {
@@ -37,9 +55,16 @@ export async function syncNewsFromApi() {
     };
   }
 
-  const articles = dedupeNewsArticles(
-    (await Promise.all(queries.map((query) => fetchTopPoliticalArticles(query))))
-      .flat(),
+  // Newest first across all queries, so the 25-item cap keeps the most recent stories rather than
+  // whichever query happened to come first.
+  const articles = dedupeByHeadline(
+    dedupeNewsArticles(
+      (await Promise.all(queries.map((query) => fetchTopPoliticalArticles(query))))
+        .flat(),
+    ).sort((left, right) =>
+      String(right.dateTime || right.date || "").localeCompare(String(left.dateTime || left.date || "")),
+    ),
+    (article) => article.title,
   ).slice(0, 25);
 
   const newsRows: NewsItemRow[] = articles.map((article) => {
@@ -57,12 +82,13 @@ export async function syncNewsFromApi() {
       source: article.source?.title || "NewsAPI.ai",
       published_at: article.dateTime || article.date || new Date().toISOString(),
       related_ids: relatedIds,
-      summary: article.body || "Stored political article.",
+      summary: summarizeArticleBody(article.body) || "Stored political article.",
       url: article.url || null,
       source_system: "newsapi_ai",
       source_id: article.url || id,
       synced_at: new Date().toISOString(),
-      raw_payload: article,
+      // The full article body again; nothing reads it (rawAvailable is only ever a Boolean).
+      raw_payload: null,
     };
   });
 

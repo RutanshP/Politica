@@ -33,7 +33,8 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
 import { BILL_STATUS_TONE, partyTone } from "@/components/ui/tones";
 import { getCommitteesData } from "@/lib/data/committees";
-import { getFundingGraphData } from "@/lib/data/graph";
+import { formatMoney } from "@/components/funding/funding-graph-theme";
+import { getMemberReceipts } from "@/lib/data/money";
 import { getNewsData } from "@/lib/data/news";
 import {
   getCommitteeMembershipsForPolitician,
@@ -43,7 +44,7 @@ import {
   isLivePoliticianSource,
 } from "@/lib/data/politicians";
 import { billHref, hasVotePerformanceStats } from "@/lib/utils";
-import type { Bill, Committee, FundingEdge, NewsItem } from "@/types/civic";
+import type { Bill, Committee, NewsItem } from "@/types/civic";
 
 export const revalidate = 21600;
 
@@ -56,11 +57,11 @@ export default async function PoliticianProfilePage({
   const { politician, source } = await getPoliticianData(slug);
   if (!politician) notFound();
 
-  const [sponsoredBills, committeesData, graphData, newsData, committeeMemberships] =
+  const [sponsoredBills, committeesData, receipts, newsData, committeeMemberships] =
     await Promise.all([
       getSponsoredBillsForPolitician(slug),
       getCommitteesData(),
-      getFundingGraphData(slug),
+      getMemberReceipts(politician.id),
       getNewsData(),
       getCommitteeMembershipsForPolitician(slug),
     ]);
@@ -71,9 +72,6 @@ export default async function PoliticianProfilePage({
   const relatedNews = newsData.news.filter(
     (item: NewsItem) =>
       item.relatedIds.includes(politician.id) || item.relatedIds.includes(politician.slug),
-  );
-  const fundingEdges = graphData.graph.edges.filter(
-    (edge: FundingEdge) => edge.target === politician.slug || edge.target === politician.id,
   );
 
   const hasVoteStats = hasVotePerformanceStats(politician.stats);
@@ -163,9 +161,11 @@ export default async function PoliticianProfilePage({
           </div>
           <div className="min-w-[140px]">
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
-              Funding links
+              {receipts ? `Raised ${receipts.cycle - 1}–${String(receipts.cycle).slice(2)}` : "Fundraising"}
             </p>
-            <p className="num text-[13px] font-semibold">{fundingEdges.length}</p>
+            <p className="num text-[13px] font-semibold">
+              {receipts ? formatMoney(receipts.receipts) || "$0" : "No FEC filing stored"}
+            </p>
             <Link
               href={`/politicians/${politician.slug}/funding`}
               className="text-xs text-[var(--accent-2)] hover:underline"

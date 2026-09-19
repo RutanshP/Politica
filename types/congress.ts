@@ -58,6 +58,11 @@ export interface CongressBillDetailPayload {
       count?: number;
       url?: string;
     };
+    cosponsors?: {
+      count?: number;
+      countIncludingWithdrawnCosponsors?: number;
+      url?: string;
+    };
     titles?: Array<{
       title?: string;
       titleType?: string;

@@ -1,4 +1,5 @@
 import { emptyResult, withData } from "@/lib/data/result";
+import { dedupeByHeadline, summarizeArticleBody } from "@/lib/news-text";
 import { listStoredNewsItems } from "@/lib/supabase/news";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
@@ -15,10 +16,13 @@ export async function getNewsData() {
   }
 
   try {
-    const [news, latestRun] = await Promise.all([
+    const [storedNews, latestRun] = await Promise.all([
       listStoredNewsItems(),
       getLatestSyncRun("news_sync").catch(() => undefined),
     ]);
+    // The sync now stores deduped, summarized items; this also cleans rows written before it did.
+    const news = dedupeByHeadline(storedNews, (item) => item.headline)
+      .map((item) => ({ ...item, summary: summarizeArticleBody(item.summary) || item.summary }));
     const result = withData(
       news.length > 0 ? "supabase" : "unavailable",
       "news_sync",

@@ -14,6 +14,7 @@ import {
 } from "@/lib/graph/fec-graph-normalizer";
 import {
   listFecSyncedPoliticianEntities,
+  pruneStaleFecEdges,
   purgeDemoFixture,
   upsertCandidateFinanceSnapshots,
   upsertGraphEdges,
@@ -93,6 +94,8 @@ export async function syncFundingGraphFromFec(options?: FecFundingGraphSyncOptio
   const snapshotRowsById = new Map<string, CandidateFinanceSnapshotRow>();
   const failures: Array<{ slug: string; error: string }> = [];
   const syncedPoliticianEntityIds: string[] = [];
+  const syncedScopes: Array<{ politicianId: string; cycle: number }> = [];
+  const runStartedAt = new Date().toISOString();
 
   for (const politician of queue) {
     try {
@@ -143,6 +146,7 @@ export async function syncFundingGraphFromFec(options?: FecFundingGraphSyncOptio
       }
       snapshotRowsById.set(rows.snapshot.id, rows.snapshot);
       syncedPoliticianEntityIds.push(`pol-${politician.id}`);
+      syncedScopes.push({ politicianId: politician.id, cycle });
     } catch (error) {
       failures.push({
         slug: politician.slug,
@@ -159,6 +163,11 @@ export async function syncFundingGraphFromFec(options?: FecFundingGraphSyncOptio
   await upsertGraphEntities(entityRows);
   await upsertGraphEdges(edgeRows);
   await upsertCandidateFinanceSnapshots(snapshotRows);
+
+  // Only after the fresh rows are written, so a failed upsert never leaves a member with no edges.
+  for (const { politicianId, cycle } of syncedScopes) {
+    await pruneStaleFecEdges(politicianId, cycle, runStartedAt);
+  }
 
   // Real data has replaced the demo politician: retire the whole fixture.
   const demoPurged = syncedPoliticianEntityIds.some((entityId) => demoPoliticianEntityIds.has(entityId));

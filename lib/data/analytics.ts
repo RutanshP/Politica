@@ -10,28 +10,47 @@ type SeriesPoint = { label: string; value: number };
 
 export type AnalyticsDataSource = "supabase" | "supabase-derived" | "unconfigured" | "unavailable";
 
-function emptySeries(labels: string[]) {
-  return labels.map((label) => ({ label, value: 0 }));
-}
+export type AnalyticsSummary = Awaited<ReturnType<typeof computeAnalyticsSummary>>;
 
-function buildMonthlySeries(values: string[]) {
-  const formatter = new Intl.DateTimeFormat("en-US", { month: "short" });
-  const counts = new Map<string, number>();
+/*
+ * Bumped whenever the summary's shape or meaning changes. A stored snapshot with any other version
+ * is ignored and the summary is computed live instead, so a deploy never renders a snapshot the
+ * current code does not understand. Version 1 had no field at all -- that snapshot was frozen at
+ * 1,000 bills and 0 committees because the rebuild re-saved whatever was already stored.
+ */
+export const ANALYTICS_SNAPSHOT_VERSION = 2;
 
+const MONTHS_SHOWN = 12;
+
+/**
+ * Bills introduced per calendar month, oldest first, ending at the latest month on record.
+ *
+ * Keyed by year and month. Keying on the month name alone merged every January in the corpus
+ * into one bucket and emitted buckets in first-seen order, which is why the chart ran backwards.
+ * Months with no introductions are filled with zero rather than skipped.
+ */
+function buildMonthlySeries(values: string[]): SeriesPoint[] {
+  const counts = new Map<number, number>();
   for (const value of values) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) continue;
-    const label = formatter.format(date);
-    counts.set(label, (counts.get(label) || 0) + 1);
+    const key = date.getUTCFullYear() * 12 + date.getUTCMonth();
+    counts.set(key, (counts.get(key) || 0) + 1);
   }
+  if (counts.size === 0) return [];
 
-  return [...counts.entries()]
-    .slice(-6)
-    .map(([label, count]) => ({ label, value: count }));
+  const latest = Math.max(...counts.keys());
+  const formatter = new Intl.DateTimeFormat("en-US", { month: "short", year: "2-digit", timeZone: "UTC" });
+  const series: SeriesPoint[] = [];
+  for (let key = latest - MONTHS_SHOWN + 1; key <= latest; key += 1) {
+    const date = new Date(Date.UTC(Math.floor(key / 12), key % 12, 1));
+    series.push({ label: formatter.format(date), value: counts.get(key) || 0 });
+  }
+  return series;
 }
 
-function withFallbackSeries(series: SeriesPoint[], labels: string[]) {
-  return series.length > 0 ? series : emptySeries(labels);
+function countByStatus(bills: Array<{ status: string }>, status: string) {
+  return bills.filter((bill) => bill.status === status).length;
 }
 
 export async function computeAnalyticsSummary() {
@@ -40,111 +59,74 @@ export async function computeAnalyticsSummary() {
     getCommitteesData(),
     getPoliticiansData(),
   ]);
+  const { bills } = billsData;
 
-  const activeBills = billsData.bills.length;
-  const upcomingVotes = billsData.bills.filter((bill) =>
-    bill.status === "On Floor"
-    || bill.status === "Passed Chamber"
-    || bill.status === "Sent to President",
-  ).length;
-  const committees = committeesData.committees.length;
-  const watchlistHits =
-    billsData.bills.filter((bill) => bill.status !== "Introduced").length
-    + committeesData.committees.filter((committee) => committee.activeBillIds.length > 0).length;
+  const activitySeries = (["Introduced", "In Committee", "On Floor", "Passed Chamber", "Signed"] as const)
+    .map((status) => ({
+      label: status === "In Committee" ? "Committee" : status === "On Floor" ? "Floor" : status === "Passed Chamber" ? "Passed" : status,
+      value: countByStatus(bills, status),
+    }));
 
-  const activitySeries = withFallbackSeries(
-    ([
-      ["Introduced", billsData.bills.filter((bill) => bill.status === "Introduced").length],
-      ["Committee", billsData.bills.filter((bill) => bill.status === "In Committee").length],
-      ["Floor", billsData.bills.filter((bill) => bill.status === "On Floor").length],
-      ["Passed", billsData.bills.filter((bill) => bill.status === "Passed Chamber").length],
-      ["Signed", billsData.bills.filter((bill) => bill.status === "Signed").length],
-    ] as Array<[string, number]>).map(([label, value]) => ({ label, value })),
-    ["Introduced", "Committee", "Floor", "Passed", "Signed"],
-  );
-
-  const voteCadenceSeries = withFallbackSeries(
-    billsData.bills.slice(0, 5).map((bill) => ({ label: bill.number, value: bill.stats.votes })),
-    ["Bill 1", "Bill 2", "Bill 3", "Bill 4", "Bill 5"],
-  );
-
-  const committeeSeries = withFallbackSeries(
-    committeesData.committees.slice(0, 5).map((committee) => ({
-      label: committee.name.split(" ").slice(0, 2).join(" "),
-      value: committee.activeBillIds.length,
-    })),
-    ["Cmte 1", "Cmte 2", "Cmte 3", "Cmte 4", "Cmte 5"],
-  );
-
-  const alertSeries = withFallbackSeries(
-    politiciansData.politicians.slice(0, 5).map((politician) => ({
-      label: politician.name.split(" ").slice(-1)[0] || politician.name,
-      value: politician.stats.billsIntroduced,
-    })),
-    ["M1", "M2", "M3", "M4", "M5"],
-  );
-
-  const introductionsSeries = withFallbackSeries(
-    buildMonthlySeries(
-      billsData.bills.map((bill) =>
-        bill.introducedAt === "Unknown" || bill.introducedAt === "Not available"
-          ? bill.lastActionAt
-          : bill.introducedAt,
-      ),
+  const introductionsSeries = buildMonthlySeries(
+    bills.map((bill) =>
+      bill.introducedAt === "Unknown" || bill.introducedAt === "Not available"
+        ? bill.lastActionAt
+        : bill.introducedAt,
     ),
-    ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
   );
 
-  const totalAlignment = politiciansData.politicians.reduce(
-    (sum, politician) => sum + politician.stats.votesWithParty,
-    0,
+  // Party-line voting, averaged over members who have actually cast recorded votes. Governors and
+  // members with no roll calls on file carry 0/0 and would drag both averages toward zero.
+  const voters = politiciansData.politicians.filter(
+    (politician) => politician.stats.votesWithParty + politician.stats.votesAgainstParty > 0,
   );
-  const totalCrossParty = politiciansData.politicians.reduce(
-    (sum, politician) => sum + politician.stats.votesAgainstParty,
-    0,
-  );
-  const politicianCount = Math.max(politiciansData.politicians.length, 1);
+  const average = (pick: (value: (typeof voters)[number]) => number) =>
+    voters.length === 0 ? 0 : Math.round(voters.reduce((sum, item) => sum + pick(item), 0) / voters.length);
 
   return {
-    activeBills,
-    upcomingVotes,
-    committees,
-    watchlistHits,
+    version: ANALYTICS_SNAPSHOT_VERSION,
+    activeBills: bills.length,
+    upcomingVotes: bills.filter((bill) =>
+      bill.status === "On Floor"
+      || bill.status === "Passed Chamber"
+      || bill.status === "Sent to President",
+    ).length,
+    enacted: countByStatus(bills, "Signed"),
+    committees: committeesData.committees.length,
     activitySeries,
-    voteCadenceSeries,
-    committeeSeries,
-    alertSeries,
     introductionsSeries,
-    partisanSeries: [
-      {
-        label: "With party",
-        value: Math.round(totalAlignment / politicianCount),
-      },
-      {
-        label: "Cross-party",
-        value: Math.round(totalCrossParty / politicianCount),
-      },
-    ],
+    partisanSeries: voters.length === 0
+      ? []
+      : [
+          { label: "With party", value: average((item) => item.stats.votesWithParty) },
+          { label: "Against party", value: average((item) => item.stats.votesAgainstParty) },
+        ],
   };
+}
+
+const EMPTY_SUMMARY: AnalyticsSummary = {
+  version: ANALYTICS_SNAPSHOT_VERSION,
+  activeBills: 0,
+  upcomingVotes: 0,
+  enacted: 0,
+  committees: 0,
+  activitySeries: [],
+  introductionsSeries: [],
+  partisanSeries: [],
+};
+
+function isCurrentSnapshot(payload: unknown): payload is AnalyticsSummary {
+  return Boolean(payload)
+    && typeof payload === "object"
+    && (payload as { version?: unknown }).version === ANALYTICS_SNAPSHOT_VERSION;
 }
 
 export async function getAnalyticsData() {
   if (!isSupabaseConfigured()) {
     return {
-      ...emptyResult("unconfigured", "analytics_rebuild", { activeBills: 0, upcomingVotes: 0, committees: 0, watchlistHits: 0, activitySeries: [], voteCadenceSeries: [], committeeSeries: [], alertSeries: [], introductionsSeries: [], partisanSeries: [] }, "unconfigured"),
+      ...emptyResult("unconfigured", "analytics_rebuild", EMPTY_SUMMARY, "unconfigured"),
       source: "unconfigured" as AnalyticsDataSource,
-      summary: {
-        activeBills: 0,
-        upcomingVotes: 0,
-        committees: 0,
-        watchlistHits: 0,
-        activitySeries: [],
-        voteCadenceSeries: [],
-        committeeSeries: [],
-        alertSeries: [],
-        introductionsSeries: [],
-        partisanSeries: [],
-      },
+      summary: EMPTY_SUMMARY,
     };
   }
 
@@ -153,8 +135,8 @@ export async function getAnalyticsData() {
     getLatestSyncRun("analytics_rebuild").catch(() => undefined),
   ]);
 
-  if (snapshot?.payload) {
-    const summary = snapshot.payload as Awaited<ReturnType<typeof computeAnalyticsSummary>>;
+  if (isCurrentSnapshot(snapshot?.payload)) {
+    const summary = snapshot.payload;
     const result = withData(
       "supabase",
       "analytics_rebuild",
@@ -181,7 +163,7 @@ export async function getAnalyticsData() {
     latestRun?.finished_at || latestRun?.started_at,
     {
       availability: summary.activeBills > 0 ? "partial" : "empty",
-      detail: "Using derived analytics because no stored snapshot exists yet",
+      detail: "Computed live because no current stored snapshot exists",
     },
   );
 

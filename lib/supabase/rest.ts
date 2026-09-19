@@ -383,7 +383,7 @@ function dedupeByConflictTarget<T extends object>(rows: T[], onConflict: string)
   for (const row of rows) {
     const key = keyColumns
       .map((column) => String((row as Record<string, unknown>)[column]))
-      .join(" ");
+      .join("\u0000");
     byKey.set(key, row);
   }
 

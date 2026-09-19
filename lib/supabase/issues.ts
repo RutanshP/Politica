@@ -8,7 +8,13 @@ function mapRowToIssue(row: IssueRow): Issue {
     slug: row.slug,
     name: row.name,
     description: row.description,
-    stats: row.stats,
+    // Rows rebuilt before `enacted` existed carry `bipartisanSupport` instead; read those as 0
+    // until the next rebuild rather than as undefined.
+    stats: {
+      activeBills: row.stats.activeBills ?? 0,
+      recentVotes: row.stats.recentVotes ?? 0,
+      enacted: (row.stats as { enacted?: number }).enacted ?? 0,
+    },
     topBillIds: row.top_bill_ids,
     committeeIds: row.committee_ids,
     sourceMetadata: {

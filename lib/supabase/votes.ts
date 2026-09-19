@@ -295,17 +295,36 @@ export async function listStoredVoteHeadersByBillIds(billIds: string[]) {
  * Once nothing is missing a question it degrades to a staleness rotation, which is what a periodic
  * re-fetch wants anyway.
  */
+type VoteHeader = Pick<VoteRow, "id" | "canonical_id" | "source_system" | "bill_id">;
+
+/**
+ * The nightly refresh queue: roll calls still missing their question first, then the rest oldest-
+ * synced first, so a fixed offset of 0 rotates through every stored roll call.
+ *
+ * Two reads, because PostgREST cannot order by an expression. The single read this replaced
+ * ordered by `question.asc.nullsfirst` -- which does put nulls first, but then sorts the rest of
+ * the queue *alphabetically by question text*. "Call by States", "Call of the House" and "Election
+ * of the Speaker" sort ahead of every "On ..." question, so those three were re-fetched in every
+ * chunk of every run, and the rotation followed the alphabet rather than staleness.
+ */
 export async function listStoredFederalVoteHeadersPage(limit: number, offset: number) {
-  return fetchSupabasePage<Pick<VoteRow, "id" | "canonical_id" | "source_system" | "bill_id">>(
+  const base = "source_system=in.(house_clerk,senate_lis)";
+  const options = { cache: "no-store" as const, select: "id,canonical_id,source_system,bill_id" };
+
+  const missing = await fetchSupabasePage<VoteHeader>(
     "votes",
-    "source_system=in.(house_clerk,senate_lis)&order=question.asc.nullsfirst,synced_at.asc,id.asc",
-    {
-      cache: "no-store",
-      select: "id,canonical_id,source_system,bill_id",
-      limit,
-      offset,
-    },
+    `${base}&question=is.null&order=synced_at.asc,id.asc`,
+    { ...options, limit, offset },
   );
+  const remaining = limit - missing.rows.length;
+  if (remaining <= 0) return missing;
+
+  const stale = await fetchSupabasePage<VoteHeader>(
+    "votes",
+    `${base}&question=not.is.null&order=synced_at.asc,id.asc`,
+    { ...options, limit: remaining, offset: Math.max(0, offset - missing.total) },
+  );
+  return { rows: [...missing.rows, ...stale.rows], total: missing.total + stale.total };
 }
 
 export async function listStoredVotePositionsByVoteIds(voteIds: string[]) {

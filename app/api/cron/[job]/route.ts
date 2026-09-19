@@ -57,8 +57,6 @@ const JOBS: Record<string, string[]> = {
     "/api/internal/sync/stock-disclosures?chamber=both&limit=150",
     "/api/internal/sync/stock-performance?limit=25",
   ],
-  // Weekly-ish deeper refresh.
-  finance: ["/api/internal/sync/finance"],
   committees: ["/api/internal/sync/legislation?offset=0&limit=25&syncCommittees=true"],
 };
 

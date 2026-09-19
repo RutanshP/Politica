@@ -1,3 +1,4 @@
+import { chanceOfBecomingLaw } from "@/lib/bill-odds";
 import type { Bill, BillAction, BillStatus, BillVersion } from "@/types/civic";
 import type {
   CongressBillActionPayload,
@@ -262,10 +263,11 @@ export function normalizeCongressBillListItem(bill: CongressBillListItem): Bill 
     lastActionAt: formatDisplayDate(bill.latestAction?.actionDate || bill.updateDate),
     introducedAt: formatDisplayDate(undefined),
     session: `${bill.congress || "Unknown"}th Congress`,
-    chanceOfPassing: chanceOfPassingForStatus(status, 50),
+    chanceOfPassing: chanceOfBecomingLaw(status),
     stats: {
       amendments: 0,
-      cosponsors: Math.max((bill.sponsors?.length || 1) - 1, 0),
+      // The list endpoint carries no cosponsor count; the detail sync fills it in.
+      cosponsors: 0,
       votes: 0,
       bipartisanScore: 0,
     },
@@ -369,12 +371,15 @@ export function mergeCongressBillDetail(
       || [detail.sponsors?.[0]?.firstName, detail.sponsors?.[0]?.lastName].filter(Boolean).join(" ")
       || seed.sponsorName,
     topic: topicFromPolicyArea(detail.policyArea) || seed.topic,
-    chanceOfPassing: chanceOfPassingForStatus(status, deriveChanceOfPassing(detail, actions.length)),
+    chanceOfPassing: chanceOfBecomingLaw(status),
     stats: {
       amendments: 0,
-      cosponsors: Math.max((detail.sponsors?.length || 1) - 1, 0),
+      // `sponsors` only ever holds the sponsor, so `sponsors.length - 1` made this 0 on every bill.
+      cosponsors: detail.cosponsors?.count ?? 0,
       votes: actions.filter((action) => action.type === "floor").length,
-      bipartisanScore: deriveBipartisanScore(detail, actions.length),
+      // No party breakdown of cosponsors is fetched, so there is nothing to score. The old value
+      // was 20 + 5 x sponsors + 4 x actions -- activity, not bipartisanship.
+      bipartisanScore: 0,
     },
     actions: actions.length > 0 ? actions : seed.actions,
     versions: versions.length > 0 ? versions : seed.versions,
@@ -387,22 +392,6 @@ export function mergeCongressBillDetail(
   };
 }
 
-function chanceOfPassingForStatus(status: Bill["status"], computed: number) {
-  if (status === "Failed") return 0;
-  if (status === "Signed") return 100;
-  return computed;
-}
-
-function deriveChanceOfPassing(detail: NonNullable<CongressBillDetailPayload["bill"]>, actionCount: number) {
-  const sponsorCount = detail.sponsors?.length || 1;
-  const committeeSignal = detail.committees?.count || 0;
-  return Math.min(85, 30 + sponsorCount * 4 + committeeSignal * 3 + actionCount * 3);
-}
-
-function deriveBipartisanScore(detail: NonNullable<CongressBillDetailPayload["bill"]>, actionCount: number) {
-  const sponsorCount = detail.sponsors?.length || 1;
-  return Math.min(100, 20 + sponsorCount * 5 + actionCount * 4);
-}
 
 export function parseBillId(billId: string) {
   const match = billId.match(/^([a-z]+)-(\d+)$/i);

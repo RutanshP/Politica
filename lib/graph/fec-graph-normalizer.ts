@@ -51,20 +51,37 @@ const NON_EMPLOYER_VALUES = new Set([
   "",
   "RETIRED",
   "NOT EMPLOYED",
-  "NOT-EMPLOYED",
   "UNEMPLOYED",
   "SELF",
-  "SELF-EMPLOYED",
-  "SELF EMPLOYED",
   "NONE",
-  "N/A",
   "NA",
-  "INFORMATION REQUESTED",
+  "N A",
+  "NULL",
+  "UNKNOWN",
+  "NOT APPLICABLE",
   "HOMEMAKER",
+  "STUDENT",
+  "DISABLED",
+  "ENTREPRENEUR",
 ]);
 
+/*
+ * The exact-match set alone let through what FEC filers actually type: "NULL" (338 edges, $16.8M,
+ * stored as if it were a company), "INFORMATION REQUESTED PER BEST EFFORTS", and self-employment
+ * spelled "SELF EMLOYED", "SELF - EMPLOYED", "SELF EEMPLOYED" and so on.
+ */
+const NON_EMPLOYER_PATTERNS = [
+  /^SELF\s*-?\s*E+M/, // self-employed, however it is misspelled
+  /^(INFO(RMATION)?\s+)?REQUESTED\b/, // "information requested (per best efforts)"
+];
+
 export function isRealEmployer(employer: string | null | undefined) {
-  return Boolean(employer && !NON_EMPLOYER_VALUES.has(employer.trim().toUpperCase()));
+  if (!employer) return false;
+  // Punctuation is noise here: "N/A", "RETIRED.", "NOT-EMPLOYED" and "SELF - EMPLOYED" are all
+  // the same non-answer as their bare forms.
+  const normalized = employer.toUpperCase().replace(/[^A-Z0-9&]+/g, " ").trim();
+  if (NON_EMPLOYER_VALUES.has(normalized)) return false;
+  return !NON_EMPLOYER_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 function round(value: number | undefined | null) {

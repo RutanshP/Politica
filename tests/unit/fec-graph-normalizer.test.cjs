@@ -71,6 +71,27 @@ test("isRealEmployer filters non-employment statuses", () => {
   assert.equal(isRealEmployer(null), false);
 });
 
+test("isRealEmployer filters the placeholders and misspellings FEC filers actually use", () => {
+  for (const junk of [
+    "NULL",
+    "INFORMATION REQUESTED PER BEST EFFORTS",
+    "INFO REQUESTED",
+    "REQUESTED",
+    "SELF EMLOYED",
+    "SELF - EMPLOYED",
+    "SELF EEMPLOYED",
+    "RETIRED.",
+    "N/A",
+    "STUDENT",
+  ]) {
+    assert.equal(isRealEmployer(junk), false, junk);
+  }
+  // Real organizations that merely contain those words survive.
+  for (const real of ["NULLFRAME INC", "CAMBRIDGE INFORMATION GROUP", "PUTNEY STUDENT TRAVEL", "SELF STORAGE LLC"]) {
+    assert.equal(isRealEmployer(real), true, real);
+  }
+});
+
 test("buildFecGraphRows maps totals into tile-ready numbers", () => {
   const { totals } = buildFecGraphRows(POLITICIAN, "H8NY15148", payloads());
   assert.equal(totals.totalReceipts, 1000000);

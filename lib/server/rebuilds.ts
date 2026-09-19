@@ -1,4 +1,4 @@
-import { getAnalyticsData as getDerivedAnalyticsData } from "@/lib/data/analytics";
+import { computeAnalyticsSummary } from "@/lib/data/analytics";
 import { billHref, slugifySegment } from "@/lib/utils";
 import { listStoredBills } from "@/lib/supabase/bills";
 import { listStoredCommittees } from "@/lib/supabase/committees";
@@ -58,8 +58,7 @@ export async function rebuildIssuesFromStoredData(inputs?: RebuildInputs) {
     stats: {
       activeBills: topicBills.length,
       recentVotes: topicBills.reduce((sum, bill) => sum + bill.stats.votes, 0),
-      bipartisanSupport:
-        Math.round(topicBills.reduce((sum, bill) => sum + bill.stats.bipartisanScore, 0) / Math.max(topicBills.length, 1)),
+      enacted: topicBills.filter((bill) => bill.status === "Signed").length,
     },
     top_bill_ids: topicBills.slice(0, 4).map((bill) => bill.id),
     committee_ids: [...new Set(topicBills.map((bill) => bill.committeeId))],
@@ -189,19 +188,23 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
 // (26MB), and `entity_relationships`, a copy of bills.related_bill_ids plus news links (30MB) that
 // nothing ever read. /entities/[entityId] now resolves through search_documents. See 029.
 
-// Analytics derives from getDerivedAnalyticsData(), which loads its own datasets, so unlike the
+// Analytics derives from computeAnalyticsSummary(), which loads its own datasets, so unlike the
 // other rebuilds it takes no shared inputs. (A zero-arg function is still assignable where the
 // caller passes the shared inputs -- the extra argument is simply ignored.)
+//
+// It must compute, not read: this used to call getAnalyticsData(), which returns the *stored*
+// snapshot whenever one exists, so every rebuild re-saved the previous snapshot unchanged. The
+// dashboard sat at 1,000 bills and 0 committees for months as a result.
 export async function rebuildAnalyticsFromStoredData() {
-  const analytics = await getDerivedAnalyticsData();
+  const summary = await computeAnalyticsSummary();
   const rows: AnalyticsSnapshotRow[] = [{
     id: "dashboard-summary",
     key: "dashboard-summary",
-    payload: analytics.summary,
+    payload: summary,
     source_system: "rebuild",
     source_id: "dashboard-summary",
     synced_at: new Date().toISOString(),
-    raw_payload: analytics,
+    raw_payload: null,
   }];
 
   await replaceAnalyticsSnapshots(rows);

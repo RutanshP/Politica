@@ -210,7 +210,7 @@ export default async function BillDetailPage({
           value={bill.stats.cosponsors.toLocaleString()}
           icon={<Users />}
           tone="indigo"
-          footnote={`${bill.stats.bipartisanScore}% bipartisan score`}
+          footnote="Members signed on after the sponsor"
         />
         <StatTile
           label="Amendments"
@@ -251,7 +251,7 @@ export default async function BillDetailPage({
             </Card>
 
             <Card>
-              <CardHeader title="Chance of passing" />
+              <CardHeader title="Odds of becoming law" />
               <CardBody>
                 <div className="flex items-baseline gap-1.5">
                   <span className="num text-[34px] font-semibold tracking-[-0.02em]">
@@ -266,7 +266,8 @@ export default async function BillDetailPage({
                 />
               </CardBody>
               <CardNote>
-                Derived from cosponsor count, committee traction, and bipartisan activity.
+                Historical odds for a bill at this stage — about 3% of bills in committee become
+                law, and about a third of those that clear a chamber. Not a forecast for this bill.
               </CardNote>
             </Card>
 
