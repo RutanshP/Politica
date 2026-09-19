@@ -251,8 +251,8 @@ jobs:
           code=$(curl -sS -L --max-time 60 -o /tmp/health -w "%{http_code}"             -H "Authorization: Bearer $SYNC_SECRET" "$APP_URL/api/internal/sync-health" || echo "000")
           cat /tmp/health; echo
           test "$code" = "200" || { echo "::error::sync-health returned $code"; exit 1; }
-          node -e '
-            const report = JSON.parse(require("fs").readFileSync("/tmp/health", "utf8"));
+          cat /tmp/health | node -e '
+            const report = JSON.parse(require("fs").readFileSync(0, "utf8"));
             for (const w of report.warnings) console.log("::warning::" + w.pipeline + ": " + w.detail);
             for (const i of report.issues) console.log("::error::" + i.pipeline + " (" + i.kind + "): " + i.detail);
             process.exit(report.ok ? 0 : 1);

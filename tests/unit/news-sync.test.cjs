@@ -100,3 +100,12 @@ test("isAboutCongress keeps Congress coverage and drops what only matched a comm
   assert.equal(isAboutCongress({ title: "Meet the 16-year-old pianist who raised $70,000", body: "For Everett, the piano has become..." }), false);
   assert.equal(isAboutCongress({ title: "Cal Gamma tours flood damage", body: "" }, ["Cal Gamma"]), true);
 });
+
+test("headline matches outrank passing mentions, and sports/markets copy is dropped", () => {
+  const { isAboutCongress, isHeadlineAboutCongress } = jiti("@/lib/server/news-sync");
+  assert.equal(isHeadlineAboutCongress({ title: "Ohio governor, Senate races nearly tied: Poll" }), true);
+  assert.equal(isHeadlineAboutCongress({ title: "People's houses are collapsing into the ocean" }), false);
+  assert.equal(isAboutCongress({ title: "XRP Price Prediction: Bull Flag Breakout", body: "the Senate bill" }), false);
+  assert.equal(isAboutCongress({ title: "Live Game Thread: Mizzou vs Troy", body: "Congress" }), false);
+  assert.equal(isAboutCongress({ title: "Chris Simms eviscerates ESPN, U.S. Congress over Protect College Sports Act" }), true);
+});

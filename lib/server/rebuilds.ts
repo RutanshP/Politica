@@ -100,8 +100,15 @@ const NO_RAW_PAYLOAD = null;
 
 export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
   const { bills, politicians, committees, issues, news } = inputs ?? await loadRebuildInputs();
-  // Optional: search still rebuilds if the lobbying tables are unreachable.
-  const lobbyingClients = await listLobbyingClientsForIndex().catch(() => []);
+  /*
+   * Optional: search still rebuilds if the lobbying tables are unreachable -- but the failure is
+   * logged. Swallowed silently, it cost a whole rebuild: the index function used to take 5.5s, the
+   * statement timed out, and the search index shipped with no lobbying organizations at all.
+   */
+  const lobbyingClients = await listLobbyingClientsForIndex().catch((error: unknown) => {
+    console.error("[rebuild] lobbying client index failed:", error instanceof Error ? error.message : error);
+    return [];
+  });
 
   // One timestamp for the whole run: replaceStoredSearchDocuments prunes the previous index by
   // synced_at, and a uniform stamp makes that cutoff exact.

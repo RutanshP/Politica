@@ -50,12 +50,26 @@ export function mentions(text: string, term: string | null | undefined) {
 }
 
 const CONGRESS_TERMS = /\b(Congress(?:ional|man|woman)?|Senate|Senators?|House (?:Republicans|Democrats|GOP|Speaker|floor|vote|passes|passed|committee)|Speaker (?:of the House|Johnson)|lawmakers?|Capitol Hill|filibuster|appropriations|shutdown|legislation)\b|\b(?:Rep|Sen)\.\s/i;
-const NOT_NEWS = /promo code|bonus code|best crypto|crypto to buy|betting odds|sportsbook|horoscope|UPSC/i;
+const NOT_NEWS = /promo code|bonus code|best crypto|crypto to buy|price prediction|betting odds|sportsbook|horoscope|UPSC|game thread|box score|starting lineup|fantasy (?:football|basketball)|stock forecast/i;
+
+/** The headline itself is about Congress, or about a member or bill this app tracks. */
+export function isHeadlineAboutCongress(
+  article: { title?: string | null },
+  trackedTerms: Array<string | null | undefined> = [],
+) {
+  const title = article.title ?? "";
+  if (!title || NOT_NEWS.test(title)) return false;
+  return CONGRESS_TERMS.test(title) || trackedTerms.some((term) => mentions(title, term));
+}
 
 /**
  * Whether an article is about the US Congress: its headline or lede names Congress or its work, or
  * it names a tracked member or bill. The keyword queries alone let through anything that matched a
  * common word -- a Senate anywhere, a "house" in a real-estate story.
+ *
+ * Lede matches are kept but rank below headline matches (see the sort in syncNewsFromApi), because
+ * a passing mention of the Senate in paragraph two is how a crypto forecast and a college football
+ * game thread reached the feed.
  */
 export function isAboutCongress(
   article: { title?: string | null; body?: string | null },
@@ -63,8 +77,8 @@ export function isAboutCongress(
 ) {
   const title = article.title ?? "";
   if (!title || NOT_NEWS.test(title)) return false;
-  if (trackedTerms.some((term) => mentions(title, term))) return true;
-  const lede = `${title} ${(article.body ?? "").slice(0, 600)}`;
+  if (isHeadlineAboutCongress(article, trackedTerms)) return true;
+  const lede = `${title} ${(article.body ?? "").slice(0, 400)}`;
   return CONGRESS_TERMS.test(lede);
 }
 
@@ -99,9 +113,13 @@ export async function syncNewsFromApi() {
       (await Promise.all(queries.map((query) => fetchTopPoliticalArticles(query))))
         .flat()
         .filter((article) => isAboutCongress(article, trackedNames)),
-    ).sort((left, right) =>
-      String(right.dateTime || right.date || "").localeCompare(String(left.dateTime || left.date || "")),
-    ),
+    ).sort((left, right) => {
+      // Headline matches first, then newest: a story whose headline is about Congress belongs
+      // above one that merely mentions it further down.
+      const byHeadline = Number(isHeadlineAboutCongress(right, trackedNames)) - Number(isHeadlineAboutCongress(left, trackedNames));
+      if (byHeadline !== 0) return byHeadline;
+      return String(right.dateTime || right.date || "").localeCompare(String(left.dateTime || left.date || ""));
+    }),
     (article) => article.title,
   ).slice(0, 25);
 
