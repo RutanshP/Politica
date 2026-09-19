@@ -7,7 +7,6 @@ import { runPipeline } from "@/lib/server/pipeline-orchestrator";
 import {
   loadRebuildInputs,
   rebuildAnalyticsFromStoredData,
-  rebuildEntitiesFromStoredData,
   rebuildIssuesFromStoredData,
   rebuildSearchIndexFromStoredData,
   type RebuildInputs,
@@ -25,7 +24,6 @@ const REBUILDERS: Record<string, {
   run: (inputs: RebuildInputs) => Promise<{ rebuilt: number; at: string }>;
 }> = {
   issues: { pipeline: "issue_rebuild", run: rebuildIssuesFromStoredData },
-  entities: { pipeline: "entity_rebuild", run: rebuildEntitiesFromStoredData },
   search: { pipeline: "search_rebuild", run: rebuildSearchIndexFromStoredData },
   analytics: { pipeline: "analytics_rebuild", run: rebuildAnalyticsFromStoredData },
 };

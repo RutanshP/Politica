@@ -1,10 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import { getAnalyticsData as getDerivedAnalyticsData } from "@/lib/data/analytics";
 import { billHref, slugifySegment } from "@/lib/utils";
 import { listStoredBills } from "@/lib/supabase/bills";
 import { listStoredCommittees } from "@/lib/supabase/committees";
-import { replaceStoredEntities } from "@/lib/supabase/entities";
 import { listStoredIssues, replaceStoredIssues } from "@/lib/supabase/issues";
 import { listStoredNewsItems } from "@/lib/supabase/news";
 import { listStoredPoliticians } from "@/lib/supabase/politicians";
@@ -12,8 +9,6 @@ import { replaceStoredSearchDocuments } from "@/lib/supabase/search";
 import { replaceAnalyticsSnapshots } from "@/lib/supabase/analytics";
 import type {
   AnalyticsSnapshotRow,
-  EntityRelationshipRow,
-  EntityRow,
   IssueBillLinkRow,
   IssueRow,
   SearchDocumentRow,
@@ -190,111 +185,9 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
   };
 }
 
-export async function rebuildEntitiesFromStoredData(inputs?: RebuildInputs) {
-  const { bills, politicians, committees, issues, news } = inputs ?? await loadRebuildInputs();
-
-  const syncedAt = new Date().toISOString();
-
-  const entityRows: EntityRow[] = [
-    ...bills.map((bill) => ({
-      id: bill.id,
-      entity_type: "bill",
-      label: bill.number,
-      title: bill.title,
-      description: bill.summary,
-      href: billHref(bill.id),
-      meta: `${bill.status} | ${bill.topic}`,
-      source_system: "rebuild",
-      source_id: bill.id,
-      synced_at: syncedAt,
-      raw_payload: NO_RAW_PAYLOAD,
-    })),
-    ...politicians.map((politician) => ({
-      id: politician.slug,
-      entity_type: "politician",
-      label: politician.name,
-      title: politician.title,
-      description: politician.biography,
-      href: `/politicians/${politician.slug}`,
-      meta: `${politician.party} | ${politician.state}`,
-      source_system: "rebuild",
-      source_id: politician.id,
-      synced_at: syncedAt,
-      raw_payload: NO_RAW_PAYLOAD,
-    })),
-    ...committees.map((committee) => ({
-      id: committee.slug,
-      entity_type: "committee",
-      label: committee.name,
-      title: committee.chamber,
-      description: committee.description,
-      href: `/committees/${committee.slug}`,
-      meta: `${committee.activeBillIds.length} active bills`,
-      source_system: "rebuild",
-      source_id: committee.id,
-      synced_at: syncedAt,
-      raw_payload: NO_RAW_PAYLOAD,
-    })),
-    ...issues.map((issue) => ({
-      id: issue.slug,
-      entity_type: "issue",
-      label: issue.name,
-      title: "Issue area",
-      description: issue.description,
-      href: `/issues/${issue.slug}`,
-      meta: `${issue.stats.activeBills} active bills`,
-      source_system: "rebuild",
-      source_id: issue.id,
-      synced_at: syncedAt,
-      raw_payload: NO_RAW_PAYLOAD,
-    })),
-    ...news.map((item) => ({
-      id: item.id,
-      entity_type: "news",
-      label: item.headline,
-      title: item.source,
-      description: item.summary,
-      href: "/news",
-      meta: item.publishedAt,
-      source_system: "rebuild",
-      source_id: item.id,
-      synced_at: syncedAt,
-      raw_payload: NO_RAW_PAYLOAD,
-    })),
-  ];
-
-  const relationshipRows: EntityRelationshipRow[] = [
-    ...bills.flatMap((bill) => bill.relatedBillIds.map((relatedId) => ({
-      id: randomUUID(),
-      source_entity_id: bill.id,
-      target_entity_id: relatedId,
-      relationship_type: "related-bill",
-      weight: 1,
-      source_system: "rebuild",
-      source_id: `${bill.id}-${relatedId}`,
-      synced_at: syncedAt,
-      raw_payload: { billId: bill.id, relatedId },
-    }))),
-    ...news.flatMap((item) => item.relatedIds.map((relatedId) => ({
-      id: randomUUID(),
-      source_entity_id: item.id,
-      target_entity_id: relatedId,
-      relationship_type: "mentioned-in-news",
-      weight: 1,
-      source_system: "rebuild",
-      source_id: `${item.id}-${relatedId}`,
-      synced_at: syncedAt,
-      raw_payload: { newsItemId: item.id, relatedId },
-    }))),
-  ];
-
-  await replaceStoredEntities(entityRows, relationshipRows);
-
-  return {
-    rebuilt: entityRows.length,
-    at: new Date().toISOString(),
-  };
-}
+// There is no entity rebuild any more. It wrote `entities`, a second copy of every search document
+// (26MB), and `entity_relationships`, a copy of bills.related_bill_ids plus news links (30MB) that
+// nothing ever read. /entities/[entityId] now resolves through search_documents. See 029.
 
 // Analytics derives from getDerivedAnalyticsData(), which loads its own datasets, so unlike the
 // other rebuilds it takes no shared inputs. (A zero-arg function is still assignable where the

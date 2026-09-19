@@ -47,6 +47,21 @@ export async function searchStoredSearchDocuments(query: string, limit: number) 
   return rows.map(mapRowToSearchEntity);
 }
 
+/**
+ * One document by the id of the record it indexes -- a bill id, or a politician/committee/issue
+ * slug. This is what /entities/[entityId] resolves through; the `entities` table it used to read
+ * was a second copy of this index.
+ */
+export async function getStoredSearchDocumentByEntityId(entityId: string) {
+  const rows = await fetchSupabaseRows<SearchDocumentRow>(
+    "search_documents",
+    `entity_id=eq.${encodeURIComponent(entityId)}&limit=1`,
+    { select: SEARCH_DOCUMENT_SELECT, tags: [SEARCH_CACHE_TAG] },
+  );
+  const row = rows[0];
+  return row ? mapRowToSearchEntity(row) : undefined;
+}
+
 export async function listStoredSearchDocuments() {
   const rows = await fetchSupabaseRows<SearchDocumentRow>("search_documents", "order=label.asc", {
     select: SEARCH_DOCUMENT_SELECT,
