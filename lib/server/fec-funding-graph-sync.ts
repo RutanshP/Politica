@@ -4,6 +4,7 @@ import {
   fetchFecScheduleAByEmployer,
   fetchFecScheduleABySize,
   fetchFecScheduleEByCandidate,
+  FecQuotaExhaustedError,
   isFecConfigured,
 } from "@/lib/adapters/fec";
 import { fetchCongressLegislatorsFecIds } from "@/lib/adapters/congress-legislators";
@@ -148,6 +149,11 @@ export async function syncFundingGraphFromFec(options?: FecFundingGraphSyncOptio
       syncedPoliticianEntityIds.push(`pol-${politician.id}`);
       syncedScopes.push({ politicianId: politician.id, cycle });
     } catch (error) {
+      // Out of hourly quota: keep what this run has built and let the next run continue.
+      if (error instanceof FecQuotaExhaustedError) {
+        failures.push({ slug: politician.slug, error: error.message });
+        break;
+      }
       failures.push({
         slug: politician.slug,
         error: error instanceof Error ? error.message : "FEC sync failed",

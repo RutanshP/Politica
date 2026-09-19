@@ -76,6 +76,15 @@ export async function fetchFecCandidateTotals(candidateId: string, cycle = 2024)
 
 const FEC_RATE_LIMIT_RETRIES = 3;
 const FEC_RATE_LIMIT_BACKOFF_MS = 20000;
+const FEC_MAX_RETRY_WAIT_MS = 60_000;
+
+/** The key's hourly quota is spent; callers should stop and let the next run carry on. */
+export class FecQuotaExhaustedError extends Error {
+  constructor(public readonly retryAfterSeconds: number) {
+    super(`FEC API hourly quota exhausted; retry in ${retryAfterSeconds}s`);
+    this.name = "FecQuotaExhaustedError";
+  }
+}
 
 // The FEC key allows 60 requests/minute. Rather than fire calls as fast as
 // possible and recover from 429s with backoff (which makes throughput lurch
@@ -130,6 +139,12 @@ async function fetchFecJsonFresh<T>(
       const waitMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
         ? retryAfterSeconds * 1000
         : FEC_RATE_LIMIT_BACKOFF_MS * (attempt + 1);
+      // A short burst limit is worth waiting out. The hourly quota answers with a Retry-After of
+      // ten minutes or more, and sleeping through that three times outlives any function
+      // timeout -- the sync then dies without saving the members it had already finished.
+      if (waitMs > FEC_MAX_RETRY_WAIT_MS) {
+        throw new FecQuotaExhaustedError(Math.round(waitMs / 1000));
+      }
       await new Promise((resolve) => setTimeout(resolve, waitMs));
       continue;
     }

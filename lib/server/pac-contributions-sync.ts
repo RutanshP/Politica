@@ -4,6 +4,7 @@ import {
   fetchFecCandidateCommittees,
   fetchFecCommitteeGiftsToRecipient,
   fetchFecCommitteesByIds,
+  FecQuotaExhaustedError,
   isFecConfigured,
   type FecCommitteeDetailRow,
 } from "@/lib/adapters/fec";
@@ -128,6 +129,10 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
   let membersSynced = 0;
   let contributionsWritten = 0;
   let committeesWritten = 0;
+  let quotaExhausted = false;
+  // Joint fundraisers are not stored, so without this every later member in the run would fetch
+  // their committee records again.
+  const excludedCommitteeIds = new Set<string>();
 
   for (const politician of queue) {
     try {
@@ -148,18 +153,17 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
         .filter((gift) => gift.committee_id && gift.committee_id !== principal && (gift.total ?? 0) > 0);
 
       // Committee records only for payers not seen before -- most PACs give to many members.
-      const unknownIds = [...new Set(gifts.map((gift) => gift.committee_id!))].filter((id) => !knownCommitteeIds.has(id));
+      const unknownIds = [...new Set(gifts.map((gift) => gift.committee_id!))].filter((id) => !knownCommitteeIds.has(id) && !excludedCommitteeIds.has(id));
       const details: FecCommitteeDetailRow[] = [];
       for (let index = 0; index < unknownIds.length; index += COMMITTEE_BATCH) {
         details.push(...await fetchFecCommitteesByIds(unknownIds.slice(index, index + COMMITTEE_BATCH)));
       }
 
       const committeeRows: CommitteeRow[] = [];
-      const excludedIds = new Set<string>();
       for (const detail of details) {
         const category = classifyCommittee(detail);
         if (!category) {
-          excludedIds.add(detail.committee_id);
+          excludedCommitteeIds.add(detail.committee_id);
           continue;
         }
         const owner = committeeOwner(detail, category, bioguideByFecId);
@@ -195,7 +199,7 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
       const contributions: ContributionRow[] = gifts
         .filter((gift) =>
           knownCommitteeIds.has(gift.committee_id!)
-          && !excludedIds.has(gift.committee_id!)
+          && !excludedCommitteeIds.has(gift.committee_id!)
           && !selfCommitteeIds.has(gift.committee_id!))
         .map((gift) => ({
           politician_id: politician.id,
@@ -224,6 +228,12 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
       contributionsWritten += contributions.length;
       membersSynced += 1;
     } catch (error) {
+      // Out of hourly quota: stop here. Everyone finished so far is saved, and the staleness
+      // order means the next run starts with whoever this one did not reach.
+      if (error instanceof FecQuotaExhaustedError) {
+        quotaExhausted = true;
+        break;
+      }
       failures.push({
         politicianId: politician.id,
         error: error instanceof Error ? error.message : "PAC sync failed",
@@ -240,6 +250,7 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
     membersSynced,
     contributionsWritten,
     committeesWritten,
+    quotaExhausted,
     failures,
     at: new Date().toISOString(),
   };
