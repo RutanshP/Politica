@@ -157,9 +157,8 @@ export default async function ElectionRacePage({
           </div>
           {withMoney.length < candidates.length ? (
             <CardNote>
-              Fundraising is stored for sitting members only ({withMoney.length} of{" "}
-              {candidates.length} here). A blank is a gap in Politica&apos;s data, not a candidate
-              who raised nothing.
+              {`Fundraising is stored for sitting members only (${withMoney.length} of ${candidates.length} here). `}
+              A blank is a gap in Politica&apos;s data, not a candidate who raised nothing.
             </CardNote>
           ) : null}
         </Card>

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { CongressNetwork } from "@/components/congress-network/congress-network";
+import { EmptyState } from "@/components/empty-state";
 import { FundingStatTiles } from "@/components/funding/funding-stat-tiles";
 import { PageHeader } from "@/components/page-header";
 import { PoliticianTabs } from "@/components/politician-tabs";
@@ -63,7 +64,14 @@ export default async function PoliticianFundingPage({
         them and the members they share the most donors with are lit. Clicking anything moves the
         focus, so the tab is a starting point into the whole network rather than a dead end.
       */}
-      <CongressNetwork initialFocus={`m:${politician.id}`} variant="embedded" />
+      {politician.jurisdictionType === "state" ? (
+        <EmptyState
+          title="Not in the Congress money network"
+          description="State officials file with their state, not the FEC, so there are no federal PAC gifts to show for them."
+        />
+      ) : (
+        <CongressNetwork initialFocus={`m:${politician.id}`} variant="embedded" />
+      )}
     </div>
   );
 }

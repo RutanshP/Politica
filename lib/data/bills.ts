@@ -12,7 +12,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { resolveSortDirection } from "@/lib/sort-direction";
 import { getLatestSyncRun } from "@/lib/supabase/sync";
-import { sortLabelsAlphabetically } from "@/lib/utils";
+import { isPlaceholderText, sortLabelsAlphabetically } from "@/lib/utils";
 import type { Bill } from "@/types/civic";
 
 export type BillDataSource = "supabase" | "unconfigured" | "unavailable";
@@ -155,7 +155,7 @@ export async function getBillsDirectoryData(searchParams: BillsDirectorySearchPa
       sessions: ["All sessions", ...sortLabelsAlphabetically(facetValues("session"))],
       topics: ["All topics", ...sortLabelsAlphabetically(facetValues("topic"))],
       sponsors: ["Any sponsor", ...sortLabelsAlphabetically(facetValues("sponsor"))],
-      committees: ["Any committee", ...sortLabelsAlphabetically(facetValues("committee"))],
+      committees: ["Any committee", ...sortLabelsAlphabetically(facetValues("committee").filter((name) => !isPlaceholderText(name)))],
       sortOptions: ["Recent activity", "Bill number", "Title"],
     };
 

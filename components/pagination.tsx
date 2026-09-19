@@ -64,12 +64,17 @@ export function Pagination({
   const prevPage = Math.max(1, page - 1);
   const nextPage = Math.min(pageCount, page + 1);
 
-  function control(target: number, content: React.ReactNode, key: string, disabled?: boolean) {
-    const classes = cn(CONTROL, target === page && content !== null && ACTIVE, disabled && DISABLED);
+  function control(target: number, content: React.ReactNode, key: string, disabled?: boolean, label?: string) {
+    const current = target === page && !label;
+    const classes = cn(CONTROL, current && ACTIVE, disabled && DISABLED);
+    const a11y = {
+      "aria-label": label ?? `Page ${target}`,
+      "aria-current": current ? ("page" as const) : undefined,
+    };
 
     if (buildHref) {
       return (
-        <Link key={key} href={buildHref(target)} className={classes}>
+        <Link key={key} href={buildHref(target)} className={classes} aria-disabled={disabled || undefined} {...a11y}>
           {content}
         </Link>
       );
@@ -80,6 +85,7 @@ export function Pagination({
         type="button"
         onClick={() => onPageChange?.(target)}
         disabled={disabled}
+        {...a11y}
         className={cn(classes, "disabled:pointer-events-none disabled:opacity-40")}
       >
         {content}
@@ -95,7 +101,7 @@ export function Pagination({
       </p>
       {buildHref || onPageChange ? (
         <div className="ml-auto flex items-center gap-1">
-          {control(prevPage, <ChevronLeft className="h-3.5 w-3.5" />, "prev", page <= 1)}
+          {control(prevPage, <ChevronLeft className="h-3.5 w-3.5" />, "prev", page <= 1, "Previous page")}
           {pageWindow(page, pageCount).map((value, index) =>
             value === null ? (
               <span key={`gap-${index}`} className="px-1 text-xs text-[var(--faint)]">
@@ -105,7 +111,7 @@ export function Pagination({
               control(value, value.toLocaleString(), `p-${value}`)
             ),
           )}
-          {control(nextPage, <ChevronRight className="h-3.5 w-3.5" />, "next", page >= pageCount)}
+          {control(nextPage, <ChevronRight className="h-3.5 w-3.5" />, "next", page >= pageCount, "Next page")}
         </div>
       ) : null}
     </div>
