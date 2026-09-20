@@ -229,6 +229,17 @@ jobs:
           # Derived data (issues/entities/search/analytics) changes slowly and each rebuild scans
           # the whole corpus, so rebuilding daily was the main Supabase egress drain. Run it weekly
           # (Sundays). One call now loads the corpus once and rebuilds all parts in sequence.
+          # Committee rosters and the bills referred to them. Nothing refreshed these on a schedule,
+          # so a sync whose committee detail fetch failed left a committee empty until someone
+          # noticed -- which is exactly what happened to seven Senate committees in September 2026.
+          # Weekly is plenty: committee membership changes a few times a Congress.
+          if [ "$(date -u +%u)" = "7" ]; then
+            echo "== Committee rosters (weekly) =="
+            post "/api/internal/sync/legislation?offset=0&limit=5&syncCommittees=true"
+          else
+            echo "== Skipping committee rosters (only runs Sundays) =="
+          fi
+
           if [ "$(date -u +%u)" = "7" ]; then
             echo "== Rebuild derived data (weekly) =="
             post "/api/internal/rebuild"

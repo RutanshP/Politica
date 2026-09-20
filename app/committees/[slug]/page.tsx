@@ -62,7 +62,21 @@ export default async function CommitteePage({
   // Pair each membership role with the member record, preserving the synced roster order.
   const roleRank = (role: string) =>
     /chair/i.test(role) && !/vice|co-?chair/i.test(role) ? 0 : /ranking/i.test(role) ? 1 : 2;
-  const members: CommitteeMember[] = memberships
+  /*
+   * The roster rows carry each member's role, so they are preferred -- but committee_members can be
+   * emptied by a sync whose detail fetch failed, and the stored member_ids on the committee row
+   * survive that (a trigger keeps them; see supabase/sql/040). Falling back to them keeps the page
+   * showing who sits on the committee, without roles, instead of showing an empty committee.
+   */
+  const rosterFallback: CommitteeMember[] = roster.map((person) => ({
+    id: person.id,
+    slug: person.slug,
+    name: person.name,
+    party: person.party,
+    state: person.state,
+    role: "Member",
+  }));
+  const members: CommitteeMember[] = (memberships.length > 0 ? memberships : [])
     .map((membership) => {
       const person = roster.find((member) => member.id === membership.politicianId);
       if (!person) return undefined;
@@ -77,6 +91,7 @@ export default async function CommitteePage({
     })
     .filter((member): member is CommitteeMember => Boolean(member))
     .sort((left, right) => roleRank(left.role) - roleRank(right.role) || left.name.localeCompare(right.name));
+  const shownMembers = members.length > 0 ? members : rosterFallback;
 
   const leadership = deriveCommitteeLeadership(memberships, nameById);
   const committeeWithLeadership = {
@@ -87,9 +102,9 @@ export default async function CommitteePage({
   const chair = members.find((member) => roleRank(member.role) === 0);
   const ranking = members.find((member) => roleRank(member.role) === 1);
 
-  const democrats = members.filter((member) => /^d/i.test(member.party)).length;
-  const republicans = members.filter((member) => /^r/i.test(member.party)).length;
-  const partyFootnote = members.length
+  const democrats = shownMembers.filter((member) => /^d/i.test(member.party)).length;
+  const republicans = shownMembers.filter((member) => /^r/i.test(member.party)).length;
+  const partyFootnote = shownMembers.length
     ? [democrats ? `${democrats} D` : "", republicans ? `${republicans} R` : ""].filter(Boolean).join(" · ")
     : undefined;
 
@@ -123,14 +138,14 @@ export default async function CommitteePage({
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Referred bills" value={billsCount.toLocaleString()} icon={<FileText />} tone="indigo" />
-        <StatTile label="Members" value={members.length} icon={<Users />} tone="sky" footnote={partyFootnote} />
+        <StatTile label="Members" value={shownMembers.length} icon={<Users />} tone="sky" footnote={partyFootnote} />
         <StatTile label="Subcommittees" value={committee.subcommittees?.length ?? 0} icon={<Layers />} tone="amber" />
         <StatTile label="Issue areas" value={topics.length} icon={<TagIcon />} tone="emerald" footnote="Across referred bills" />
       </div>
 
       <CommitteeTabsView
         committee={committeeWithLeadership}
-        members={members}
+        members={shownMembers}
         bills={bills}
         billsCount={billsCount}
         topics={topics}
