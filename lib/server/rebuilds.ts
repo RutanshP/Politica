@@ -105,8 +105,12 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
    * logged. Swallowed silently, it cost a whole rebuild: the index function used to take 5.5s, the
    * statement timed out, and the search index shipped with no lobbying organizations at all.
    */
+  let lobbyingError: string | null = null;
   const lobbyingClients = await listLobbyingClientsForIndex().catch((error: unknown) => {
-    console.error("[rebuild] lobbying client index failed:", error instanceof Error ? error.message : error);
+    // Recorded in the run metadata, not just the console: this failed silently on Vercel while
+    // working locally, and the index shipped twice with no lobbying organizations in it.
+    lobbyingError = error instanceof Error ? error.message : String(error);
+    console.error("[rebuild] lobbying client index failed:", lobbyingError);
     return [];
   });
 
@@ -209,6 +213,8 @@ export async function rebuildSearchIndexFromStoredData(inputs?: RebuildInputs) {
 
   return {
     rebuilt: docs.length,
+    lobbyingClients: lobbyingClients.length,
+    lobbyingError,
     at: new Date().toISOString(),
   };
 }
