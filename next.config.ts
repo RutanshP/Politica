@@ -10,15 +10,29 @@ const nextConfig: NextConfig = {
    */
   serverExternalPackages: ["pdfjs-dist"],
   /*
-   * pdf.js 5+ needs DOMMatrix, which Node lacks, and fills it from @napi-rs/canvas -- loaded with a
-   * createRequire() call the file tracer cannot follow. The package never shipped to Vercel, so
-   * every PDF failed with "DOMMatrix is not defined": amendment text since at least 2026-08-31, and
-   * the same 128 House disclosures re-marked extract_failed every night. The glob also picks up
-   * the platform binary (canvas-linux-x64-gnu on Vercel).
+   * Two files pdf.js loads at runtime that the file tracer cannot see, so neither shipped to
+   * Vercel and every PDF failed there while working locally:
+   *
+   *   @napi-rs/canvas  - where pdf.js 5+ gets DOMMatrix, which Node lacks. Loaded through a
+   *                      createRequire() call. Until 2026-09-19 every PDF failed with "DOMMatrix
+   *                      is not defined" (amendment text since at least 2026-08-31, and the same
+   *                      128 House disclosures re-marked extract_failed every night). The glob
+   *                      also picks up the platform binary (canvas-linux-x64-gnu on Vercel).
+   *   pdf.worker.mjs   - pdf.js runs parsing in a worker and resolves the file relative to itself.
+   *                      With canvas fixed, the nightly run failed one step later: "Setting up
+   *                      fake worker failed: Cannot find module .../pdf.worker.mjs".
+   *
+   * Both are listed per route rather than globally so only these two functions carry ~15MB.
    */
   outputFileTracingIncludes: {
-    "/api/internal/sync/bill-amendments": ["./node_modules/@napi-rs/canvas*/**/*"],
-    "/api/internal/sync/stock-disclosures": ["./node_modules/@napi-rs/canvas*/**/*"],
+    "/api/internal/sync/bill-amendments": [
+      "./node_modules/@napi-rs/canvas*/**/*",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+    ],
+    "/api/internal/sync/stock-disclosures": [
+      "./node_modules/@napi-rs/canvas*/**/*",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+    ],
   },
   experimental: {
     /*
