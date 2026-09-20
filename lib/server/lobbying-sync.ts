@@ -190,7 +190,9 @@ export async function syncLobbyingFilings(options?: {
   // Per-bill counts for the "most lobbied" rankings, recomputed from the mentions just written:
   // ranking them live cost 3.5s a query once every report was stored.
   if (!windowed && reports.length > 0) {
-    await invokeSupabaseRpc<number>("lobbying_refresh_bill_stats", {}, { cache: "no-store" }).catch(() => undefined);
+    for (const fn of ["lobbying_refresh_bill_stats", "lobbying_refresh_client_stats"]) {
+      await invokeSupabaseRpc<number>(fn, {}, { cache: "no-store" }).catch(() => undefined);
+    }
   }
 
   if (!windowed) {
