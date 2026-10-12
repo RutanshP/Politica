@@ -152,30 +152,6 @@
   background-clip: content-box;
 }
 
-/* --- react-flow theme overrides (funding graph) --- */
-.react-flow__panel {
-  margin: 0;
-}
-.react-flow__background {
-  background: var(--canvas);
-}
-.react-flow__controls-button {
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
-  color: var(--ink);
-  fill: currentColor;
-}
-.react-flow__controls-button:hover {
-  background: var(--panel-3);
-}
-.react-flow__attribution {
-  background: transparent;
-  color: var(--faint);
-}
-.react-flow__minimap {
-  background: var(--panel);
-}
-
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

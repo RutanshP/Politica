@@ -2,7 +2,7 @@ import { Briefcase, Building2, FileText, Search, Users } from "lucide-react";
 import Link from "next/link";
 
 import { EmptyState } from "@/components/empty-state";
-import { formatMoney } from "@/components/funding/funding-graph-theme";
+import { formatMoney } from "@/lib/format-money";
 import { LobbyingMethodNote, QuarterBars, YearSwitch } from "@/components/lobbying/lobbying-parts";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";

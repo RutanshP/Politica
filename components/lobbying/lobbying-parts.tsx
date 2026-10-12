@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { formatMoney } from "@/components/funding/funding-graph-theme";
+import { formatMoney } from "@/lib/format-money";
 import { cn } from "@/lib/utils";
 
 /** Spend per quarter as bars, the tallest quarter full height. Quarters with no reports yet show empty. */

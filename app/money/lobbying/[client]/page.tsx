@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { BackLink } from "@/components/back-link";
-import { formatMoney } from "@/components/funding/funding-graph-theme";
+import { formatMoney } from "@/lib/format-money";
 import { LobbyingMethodNote, QuarterBars } from "@/components/lobbying/lobbying-parts";
 import { PageHeader } from "@/components/page-header";
 import { WatchButton } from "@/components/watch-button";

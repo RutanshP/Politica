@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { SectionCard } from "@/components/section-card";
 import { SourceBadge } from "@/components/source-badge";
 import { StatCard } from "@/components/stat-card";
-import { formatMoney } from "@/components/funding/funding-graph-theme";
+import { formatMoney } from "@/lib/format-money";
 import { LobbiedBillsCard } from "@/components/lobbying/lobbied-bills-card";
 import {
   clientHref,

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { formatMoney } from "@/components/funding/funding-graph-theme";
+import { formatMoney } from "@/lib/format-money";
 import { EmptyState } from "@/components/empty-state";
 import { Card, CardHeader } from "@/components/ui/card";
 import type { MoneyFlow } from "@/lib/graph/build-money-flow";

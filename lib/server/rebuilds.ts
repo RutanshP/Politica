@@ -1,4 +1,4 @@
-import { formatMoney } from "@/components/funding/funding-graph-theme";
+import { formatMoney } from "@/lib/format-money";
 import { clientHref, listLobbyingClientsForIndex } from "@/lib/data/lobbying";
 import { computeAnalyticsSummary } from "@/lib/data/analytics";
 import { billHref, slugifySegment } from "@/lib/utils";

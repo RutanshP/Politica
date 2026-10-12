@@ -33,7 +33,7 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { TopicIcon, topicVisual } from "@/components/ui/topic-icon";
 import { BILL_STATUS_TONE, partyTone } from "@/components/ui/tones";
 import { getCommitteesData } from "@/lib/data/committees";
-import { formatMoney } from "@/components/funding/funding-graph-theme";
+import { formatMoney } from "@/lib/format-money";
 import { getMemberReceipts } from "@/lib/data/money";
 import { getNewsData } from "@/lib/data/news";
 import {
