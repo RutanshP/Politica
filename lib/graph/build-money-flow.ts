@@ -4,12 +4,14 @@ import { buildPoliticianFundingGraph } from "@/lib/graph/build-politician-fundin
 import {
   collectSources,
   findBothSides,
+  mergeNamedPacs,
   topSourcesWithRemainder,
   type MoneyFlowBill,
   type MoneyFlowBothSides,
   type MoneyFlowSource,
 } from "@/lib/graph/money-flow-model";
 import { getBillLobbying, getMostLobbiedBills } from "@/lib/data/lobbying";
+import { listNamedPacsForPolitician } from "@/lib/data/money";
 import { organizationKey } from "@/lib/organization-names";
 import { billHref } from "@/lib/utils";
 import type { FundingGraphFilters, FundingGraphTotals, PoliticianGraphSummary } from "@/types/funding-graph";
@@ -48,7 +50,11 @@ export async function buildMoneyFlow(
   const graph = await buildPoliticianFundingGraph(slug, filters);
   if (!graph) return null;
 
-  const allSources = collectSources(graph);
+  // The FEC summary gives one "PACs & party committees" number; the PAC sync knows the committees
+  // inside it. Named committees are what can be matched against a lobbying client, so prefer them.
+  const namedPacs = await listNamedPacsForPolitician(graph.politician.id, filters.cycle ?? undefined)
+    .catch(() => []);
+  const allSources = mergeNamedPacs(collectSources(graph), namedPacs);
   const { shown, remainder } = topSourcesWithRemainder(allSources, MONEY_FLOW_SOURCE_LIMIT);
 
   const cycleLabel = filters.cycle

@@ -263,3 +263,61 @@ export async function getMoneyDashboard(): Promise<MoneyDashboard> {
     })),
   };
 }
+
+interface MemberPacRow {
+  committee_id: string;
+  total: number | string;
+  contribution_count: number | string;
+  pac_committees: { name: string; category: PacCategory; connected_org: string | null } | null;
+}
+
+export interface NamedPacGift {
+  committeeId: string;
+  name: string;
+  /** The company or union behind a connected PAC, which is what an LDA filing would name. */
+  connectedOrg: string | null;
+  category: PacCategory;
+  total: number;
+  contributions: number;
+}
+
+/**
+ * Every named PAC that gave to one member in a cycle, biggest first.
+ *
+ * The FEC's own candidate totals roll all of this into a single "PACs & party committees" figure,
+ * so this is the only place the individual committees can be read per member. `connected_org` is
+ * carried through because a corporate PAC files under a name like "ACME CORPORATION EMPLOYEES
+ * PAC" while the same company lobbies as "Acme Corporation" -- the connected organization is what
+ * makes those two the same entity.
+ */
+export async function listNamedPacsForPolitician(
+  politicianId: string,
+  cycle = NETWORK_CYCLE,
+): Promise<NamedPacGift[]> {
+  if (!isSupabaseConfigured()) return [];
+  const rows = await fetchSupabaseRows<MemberPacRow>(
+    "pac_contributions",
+    `politician_id=eq.${encodeURIComponent(politicianId)}&cycle=eq.${cycle}&order=total.desc`,
+    {
+      tags: [FUNDING_GRAPH_CACHE_TAG],
+      paginateAll: true,
+      pageSize: 1000,
+      paginateTiebreaker: null,
+      select: "committee_id,total,contribution_count,pac_committees(name,category,connected_org)",
+    },
+  ).catch(() => []);
+
+  return rows
+    .filter((row) => row.pac_committees)
+    .map((row) => ({
+      committeeId: row.committee_id,
+      name: tidyCommitteeName(row.pac_committees!.name),
+      connectedOrg: row.pac_committees!.connected_org
+        ? tidyCommitteeName(row.pac_committees!.connected_org)
+        : null,
+      category: row.pac_committees!.category,
+      total: Number(row.total) || 0,
+      contributions: Number(row.contribution_count) || 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+}

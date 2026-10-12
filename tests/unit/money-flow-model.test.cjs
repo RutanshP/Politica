@@ -7,6 +7,7 @@ const {
   classifySource,
   collectSources,
   findBothSides,
+  mergeNamedPacs,
   stackBand,
   topSourcesWithRemainder,
 } = jiti("@/lib/graph/money-flow-model");
@@ -164,4 +165,80 @@ test("stackBand divides evenly when there is no money at all", () => {
 
 test("stackBand handles an empty band", () => {
   assert.deepEqual(stackBand([], { height: 100, gap: 5, minHeight: 10 }), []);
+});
+
+const rollupSources = (rollupAmount) => collectSources({
+  nodes: [
+    node("fec-pacagg-C001098", "pac", "PACs & party committees", { isAggregate: true }),
+    node("cmte", "candidateCommittee", "FRIENDS OF X"),
+  ],
+  edges: [edge("a", "fec-pacagg-C001098", "cmte", "contributed_to", rollupAmount)],
+});
+
+const pac = (committeeId, name, total, connectedOrg = null, category = "corporate") => ({
+  committeeId, name, total, connectedOrg, category,
+});
+
+test("mergeNamedPacs replaces the FEC roll-up with the committees behind it", () => {
+  const merged = mergeNamedPacs(rollupSources(10000), [
+    pac("C1", "ACME CORP PAC", 6000, "ACME CORPORATION"),
+    pac("C2", "BETA PAC", 4000),
+  ]);
+  assert.deepEqual(merged.map((s) => s.label), ["ACME CORP PAC", "BETA PAC"]);
+  assert.equal(merged.reduce((sum, s) => sum + s.amount, 0), 10000);
+});
+
+test("mergeNamedPacs keeps whatever the roll-up claims above the named gifts", () => {
+  const merged = mergeNamedPacs(rollupSources(10000), [pac("C1", "ACME CORP PAC", 6000)]);
+  const rest = merged.find((s) => s.label === "Other PACs and party committees");
+  assert.ok(rest, "expected a remainder row");
+  assert.equal(rest.amount, 4000);
+  assert.equal(merged.reduce((sum, s) => sum + s.amount, 0), 10000);
+});
+
+test("mergeNamedPacs adds no remainder when the named gifts meet or exceed the roll-up", () => {
+  const merged = mergeNamedPacs(rollupSources(5000), [pac("C1", "ACME CORP PAC", 6000)]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].amount, 6000);
+});
+
+test("mergeNamedPacs matches a connected PAC on the organization behind it", () => {
+  const merged = mergeNamedPacs(rollupSources(1000), [
+    pac("C1", "ACME CORPORATION EMPLOYEES PAC", 1000, "ACME CORPORATION, INC."),
+  ]);
+  assert.equal(merged[0].orgKey, "acme");
+});
+
+test("mergeNamedPacs falls back to the committee name with no connected organization", () => {
+  const merged = mergeNamedPacs(rollupSources(1000), [pac("C1", "SIERRA CLUB PAC", 1000)]);
+  assert.equal(merged[0].orgKey, "sierra-club-pac");
+});
+
+test("mergeNamedPacs routes party committees to the party band", () => {
+  const merged = mergeNamedPacs(rollupSources(1000), [pac("C1", "DCCC", 1000, null, "party")]);
+  assert.equal(merged[0].kind, "party");
+});
+
+test("mergeNamedPacs leaves the roll-up alone when nothing is stored for the member", () => {
+  const sources = rollupSources(10000);
+  assert.deepEqual(mergeNamedPacs(sources, []), sources);
+});
+
+test("mergeNamedPacs leaves a member with no roll-up untouched", () => {
+  const sources = collectSources({
+    nodes: [node("emp", "employer", "ACME CORP"), node("cmte", "candidateCommittee", "FRIENDS OF X")],
+    edges: [edge("a", "emp", "cmte", "employee_contributions", 500)],
+  });
+  assert.deepEqual(mergeNamedPacs(sources, [pac("C1", "ACME CORP PAC", 100)]), sources);
+});
+
+test("named PACs make a both-sides match that the roll-up could never make", () => {
+  const merged = mergeNamedPacs(rollupSources(5000), [
+    pac("C1", "ACME CORPORATION EMPLOYEES PAC", 5000, "ACME CORPORATION"),
+  ]);
+  const both = findBothSides(merged, [
+    { billId: "hr-1-119", number: "HR.1", href: "/bills/hr-1-119", clientKeys: ["acme"] },
+  ]);
+  assert.equal(both.length, 1);
+  assert.equal(both[0].amount, 5000);
 });

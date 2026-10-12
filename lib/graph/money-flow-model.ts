@@ -148,6 +148,61 @@ export function collectSources(graph: Pick<FundingGraphResponse, "nodes" | "edge
   return [...byId.values()].sort((a, b) => b.amount - a.amount);
 }
 
+/** The FEC rolls every committee into one figure per candidate; this node is that roll-up. */
+const PAC_ROLLUP_PREFIX = "fec-pacagg-";
+
+export interface NamedPacInput {
+  committeeId: string;
+  name: string;
+  connectedOrg: string | null;
+  category: string;
+  total: number;
+}
+
+/**
+ * Swaps the FEC's single "PACs & party committees" figure for the named committees behind it.
+ *
+ * The two numbers come from different places -- the roll-up from the candidate's own summary
+ * filing, the named gifts from each committee's filings -- and they rarely agree exactly, because
+ * the committee sync only covers what it has walked. So whatever the roll-up claims above the sum
+ * of the named gifts stays on screen as its own row. Dropping it would quietly shrink the
+ * member's PAC money to whatever we happened to have collected.
+ *
+ * With no named committees stored for a member, the roll-up is left exactly as it was.
+ */
+export function mergeNamedPacs(sources: MoneyFlowSource[], named: NamedPacInput[]): MoneyFlowSource[] {
+  const rollup = sources.find((source) => source.id.startsWith(PAC_ROLLUP_PREFIX) && !source.isOpposition);
+  if (!rollup || named.length === 0) return sources;
+
+  const namedTotal = named.reduce((sum, pac) => sum + Math.max(0, pac.total), 0);
+  if (namedTotal <= 0) return sources;
+
+  const rows: MoneyFlowSource[] = named.map((pac) => ({
+    id: `pac-${pac.committeeId}`,
+    label: pac.name,
+    kind: pac.category === "party" ? "party" : "pac",
+    amount: pac.total,
+    isAggregate: false,
+    isOpposition: false,
+    // A connected PAC is matched on the organization behind it, which is the name that lobbies.
+    orgKey: organizationKey(pac.connectedOrg || pac.name),
+    sourceUrl: rollup.sourceUrl,
+  }));
+
+  const unaccounted = rollup.amount - namedTotal;
+  if (unaccounted > 0) {
+    rows.push({
+      ...rollup,
+      id: `${rollup.id}::rest`,
+      label: "Other PACs and party committees",
+      amount: unaccounted,
+      orgKey: "",
+    });
+  }
+
+  return [...sources.filter((source) => source !== rollup), ...rows].sort((a, b) => b.amount - a.amount);
+}
+
 /**
  * The rows the diagram can actually draw, plus one honest remainder. A diagram that silently
  * shows the top eight of ninety reads as the whole picture, so whatever is cut comes back as a
