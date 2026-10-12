@@ -20,7 +20,7 @@ export function Meter({
 
   return (
     <span
-      className={cn("block h-1.5 overflow-hidden rounded-full bg-white/8", className)}
+      className={cn("block h-1.5 overflow-hidden rounded-full bg-black/8", className)}
       role="presentation"
     >
       <span

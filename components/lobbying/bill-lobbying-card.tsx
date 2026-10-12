@@ -41,7 +41,7 @@ function LobbyingRow({ row }: { row: BillLobbyingRow }) {
           rel="noopener noreferrer"
           aria-label={`Latest report by ${row.name}`}
           title="Latest report"
-          className="flex-none rounded-[var(--r-sm)] p-1 text-[var(--faint)] transition hover:bg-white/5 hover:text-[var(--accent-2)]"
+          className="flex-none rounded-[var(--r-sm)] p-1 text-[var(--faint)] transition hover:bg-black/5 hover:text-[var(--accent-2)]"
         >
           <ExternalLink className="h-3.5 w-3.5" />
         </a>
@@ -70,7 +70,7 @@ export function BillLobbyingCard({ lobbying }: { lobbying: BillLobbying }) {
         </ul>
         {rows.length > SHOWN ? (
           <details className="group">
-            <summary className="cursor-pointer list-none px-2 py-2.5 text-xs font-medium text-[var(--accent-2)] hover:text-[#a5adff]">
+            <summary className="cursor-pointer list-none px-2 py-2.5 text-xs font-medium text-[var(--accent-2)] hover:text-[var(--accent-hover)]">
               <span className="group-open:hidden">
                 {rows.length < totalClients ? `Show the ${rows.length} most active` : `Show all ${rows.length.toLocaleString()}`}
               </span>

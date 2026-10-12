@@ -32,7 +32,7 @@ export function StatDonut({
             cy={size / 2}
             r={radius}
             fill="none"
-            stroke="rgba(255,255,255,0.07)"
+            stroke="var(--line)"
             strokeWidth={stroke}
           />
           {value != null ? (

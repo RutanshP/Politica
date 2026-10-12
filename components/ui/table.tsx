@@ -69,7 +69,7 @@ export function Table({
             rows.map((row, rowIndex) => (
               <tr
                 key={rowIndex}
-                className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-white/2"
+                className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-black/2"
               >
                 {row.map((cell, cellIndex) => (
                   <td

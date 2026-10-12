@@ -3,9 +3,9 @@ import { Landmark } from "lucide-react";
 import { TopicIcon } from "@/components/ui/topic-icon";
 
 const CHAMBER_RING: Record<string, string> = {
-  House: "rgba(96,165,250,0.5)",
-  Senate: "rgba(52,211,153,0.5)",
-  Joint: "rgba(167,139,250,0.5)",
+  House: "rgba(21,96,127,0.55)",
+  Senate: "rgba(29,111,66,0.55)",
+  Joint: "rgba(107,78,168,0.55)",
 };
 
 /**
@@ -22,7 +22,7 @@ export function CommitteeSeal({
   sector: string;
   className?: string;
 }) {
-  const ring = CHAMBER_RING[chamber] ?? "rgba(255,255,255,0.18)";
+  const ring = CHAMBER_RING[chamber] ?? "var(--line-2)";
 
   return (
     <span
@@ -37,8 +37,8 @@ export function CommitteeSeal({
         borderRadius: "9999px",
         border: `2px solid ${ring}`,
         background:
-          "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.06), rgba(255,255,255,0) 60%), var(--panel-2)",
-        boxShadow: "inset 0 0 0 4px rgba(255,255,255,0.03)",
+          "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.75), rgba(255,255,255,0) 60%), var(--panel-2)",
+        boxShadow: "inset 0 0 0 4px var(--wash)",
       }}
     >
       <span

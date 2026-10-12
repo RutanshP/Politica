@@ -97,7 +97,7 @@ export function CommitteeTabsView({
               <span
                 className={cn(
                   "num rounded-full px-1.5 py-px text-[11px] font-semibold",
-                  active === tab.key ? "bg-[var(--accent-soft)] text-[var(--accent-2)]" : "bg-white/6 text-[var(--muted)]",
+                  active === tab.key ? "bg-[var(--accent-soft)] text-[var(--accent-2)]" : "bg-black/6 text-[var(--muted)]",
                 )}
               >
                 {tab.count}
@@ -125,7 +125,7 @@ export function CommitteeTabsView({
                   <button
                     type="button"
                     onClick={() => setActive("members")}
-                    className="text-xs font-medium text-[var(--accent-2)] transition hover:text-[#a5adff]"
+                    className="text-xs font-medium text-[var(--accent-2)] transition hover:text-[var(--accent-hover)]"
                   >
                     View all →
                   </button>
@@ -150,7 +150,7 @@ export function CommitteeTabsView({
                   <button
                     type="button"
                     onClick={() => setActive("bills")}
-                    className="text-xs font-medium text-[var(--accent-2)] transition hover:text-[#a5adff]"
+                    className="text-xs font-medium text-[var(--accent-2)] transition hover:text-[var(--accent-hover)]"
                   >
                     View all →
                   </button>
@@ -306,7 +306,7 @@ function BillsTable({ bills }: { bills: Bill[] }) {
         </thead>
         <tbody>
           {bills.map((bill) => (
-            <tr key={bill.id} className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-white/2">
+            <tr key={bill.id} className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-black/2">
               <td className="whitespace-nowrap px-3.5 py-3 align-top">
                 <Link href={billHref(bill.id)} className="font-semibold text-[var(--accent-2)]">
                   {bill.number}

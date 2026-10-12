@@ -187,7 +187,7 @@ export default async function PoliticianTenurePage({
                       {orderedTerms.map(({ term, nth }) => (
                         <tr
                           key={`${term.chamber}-${term.startYear}`}
-                          className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-white/2"
+                          className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-black/2"
                         >
                           <td className="whitespace-nowrap px-3.5 py-2.5 align-top">
                             <span className="flex items-center gap-2">

@@ -19,9 +19,9 @@ function photoUrl(id?: string | null) {
 }
 
 const PARTY_GRADIENT = {
-  "party-d": "bg-[linear-gradient(150deg,#3b82f6,#1e40af)]",
-  "party-r": "bg-[linear-gradient(150deg,#ef4444,#991b1b)]",
-  "party-i": "bg-[linear-gradient(150deg,#a78bfa,#6d28d9)]",
+  "party-d": "bg-[linear-gradient(150deg,#1d4ed8,#1e3a8a)]",
+  "party-r": "bg-[linear-gradient(150deg,#b91c1c,#7f1d1d)]",
+  "party-i": "bg-[linear-gradient(150deg,#6b4ea8,#4c1d95)]",
   slate: "bg-[linear-gradient(150deg,#475569,#1e293b)]",
 } as const;
 

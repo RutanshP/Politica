@@ -1,53 +1,71 @@
 @import "tailwindcss";
 
 /*
- * Politica runs a single dark theme. There is deliberately no light palette and no toggle --
- * every surface is designed against the dark ground, so a naive inversion would break the
- * semantic colors (pass/fail) and the party colors at the same time.
+ * Politica runs a single light theme ("Record"): a warm paper ground, near-black ink, and one
+ * deep navy accent. There is deliberately no dark palette and no toggle -- every surface is
+ * designed against the paper ground, so a naive inversion would break the semantic colors
+ * (pass/fail) and the party colors at the same time.
+ *
+ * The site is mostly long text -- bill summaries, filing descriptions, committee rosters -- so
+ * it is set to read as a public record rather than a dashboard. Because the chrome carries
+ * almost no hue, a colored dot on screen nearly always means something.
  *
  * Separation between surfaces comes from a 1px hairline plus the value gap between --canvas
  * and --panel, never from a drop shadow. Radii cap at --r-lg (16px): the old UI used 28-32px
  * radii with 60px shadows, which read as floating bubbles rather than a console.
  */
 :root {
-  --canvas: #0a0e17;
-  --panel: #111726;
-  --panel-2: #161d2e;
-  --panel-3: #1b2336;
-  --sidebar: #080c15;
+  --canvas: #f6f4ef;
+  --panel: #ffffff;
+  --panel-2: #f1eee7;
+  --panel-3: #e9e5db;
+  --sidebar: #efebe2;
 
-  --line: rgba(255, 255, 255, 0.07);
-  --line-2: rgba(255, 255, 255, 0.12);
+  --line: rgba(27, 26, 23, 0.12);
+  --line-2: rgba(27, 26, 23, 0.22);
 
-  --ink: #e8edf7;
   /*
-   * Both clear WCAG AA (4.5:1) for small text on every surface, --panel-3 included. --faint was
-   * #5c6780 at ~3:1, and it carries most of the 10-11px uppercase labels, where contrast matters
-   * most. --muted moved up with it so the two stay distinct.
+   * Tints for hover and elevation. On the dark theme these were white washes; on paper they have
+   * to run the other way, so every "lift this surface slightly" effect goes through these two
+   * rather than a literal rgba() at the call site.
    */
-  --muted: #9aa4bb;
-  --faint: #808ca6;
+  --wash: rgba(27, 26, 23, 0.04);
+  --wash-2: rgba(27, 26, 23, 0.08);
 
-  --accent: #6366f1;
-  --accent-2: #818cf8;
-  --accent-soft: rgba(99, 102, 241, 0.14);
+  --ink: #1b1a17;
+  /*
+   * Both clear WCAG AA (4.5:1) for small text on every surface, --panel-3 included. --faint
+   * carries most of the 10-11px uppercase labels, where contrast matters most, so it stays above
+   * 5:1 on white rather than drifting into decorative grey.
+   */
+  --muted: #5f5b52;
+  --faint: #6e695e;
+
+  /*
+   * A desaturated navy, dark enough to pass AA as text and to carry white text as a fill. It sits
+   * well clear of --party-d, which is a brighter, far more saturated blue.
+   */
+  --accent: #1f4e79;
+  --accent-2: #1a5c96;
+  --accent-hover: #123a5c;
+  --accent-soft: rgba(31, 78, 121, 0.1);
 
   /* Semantic tones are kept distinct from --accent so "passed"/"failed" never reads as branding. */
-  --success: #34d399;
-  --success-soft: rgba(52, 211, 153, 0.13);
-  --warning: #fbbf24;
-  --warning-soft: rgba(251, 191, 36, 0.13);
-  --danger: #f87171;
-  --danger-soft: rgba(248, 113, 113, 0.13);
-  --info: #60a5fa;
-  --info-soft: rgba(96, 165, 250, 0.13);
+  --success: #1d6f42;
+  --success-soft: rgba(29, 111, 66, 0.11);
+  --warning: #9a5b00;
+  --warning-soft: rgba(154, 91, 0, 0.11);
+  --danger: #a52a1f;
+  --danger-soft: rgba(165, 42, 31, 0.1);
+  --info: #15607f;
+  --info-soft: rgba(21, 96, 127, 0.11);
 
-  --party-d: #3b82f6;
-  --party-d-soft: rgba(59, 130, 246, 0.14);
-  --party-r: #ef4444;
-  --party-r-soft: rgba(239, 68, 68, 0.14);
-  --party-i: #a78bfa;
-  --party-i-soft: rgba(167, 139, 250, 0.14);
+  --party-d: #1d4ed8;
+  --party-d-soft: rgba(29, 78, 216, 0.1);
+  --party-r: #b91c1c;
+  --party-r-soft: rgba(185, 28, 28, 0.1);
+  --party-i: #6b4ea8;
+  --party-i-soft: rgba(107, 78, 168, 0.1);
 
   --r-sm: 8px;
   --r-md: 12px;
@@ -63,39 +81,47 @@
   --font-mono: "Cascadia Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
-* {
-  box-sizing: border-box;
-}
+/*
+ * These element resets live in @layer base on purpose. Unlayered CSS beats layered CSS whatever
+ * the specificity, so an unlayered `a { color: inherit }` silently overrides Tailwind's
+ * `text-white` -- which put --ink text on every accent-filled link and failed contrast at 2:1.
+ * Inside a layer, the utilities win, which is what a utility is for.
+ */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 
-html {
-  scroll-behavior: smooth;
-  color-scheme: dark;
-}
+  html {
+    scroll-behavior: smooth;
+    color-scheme: light;
+  }
 
-body {
-  margin: 0;
-  background: var(--canvas);
-  color: var(--ink);
-  -webkit-font-smoothing: antialiased;
-}
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  color: inherit;
-}
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
 
-/* Native select popups render in the OS light theme without this. */
-select option {
-  background: var(--panel-2);
-  color: var(--ink);
+  /* Native select popups render in the OS default theme without this. */
+  select option {
+    background: var(--panel-2);
+    color: var(--ink);
+  }
 }
 
 :focus-visible {
@@ -116,17 +142,17 @@ select option {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(27, 26, 23, 0.18);
   border-radius: 99px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(27, 26, 23, 0.3);
   background-clip: content-box;
 }
 
-/* --- react-flow dark overrides (funding graph) --- */
+/* --- react-flow theme overrides (funding graph) --- */
 .react-flow__panel {
   margin: 0;
 }

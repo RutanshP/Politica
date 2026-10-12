@@ -25,7 +25,7 @@ import { FilterPanel, FocusPanel, NetworkSearch } from "./network-panels";
  * A translucent color for sigma's WebGL edges. Sigma blends with premultiplied alpha
  * (ONE, ONE_MINUS_SRC_ALPHA), so the RGB has to be scaled by alpha up front -- a plain
  * rgba(r, g, b, 0.02) adds full-strength RGB per edge, and thirty thousand of them turned the
- * whole network into a white blob.
+ * whole network into a solid blob.
  */
 function translucent(hex: string, alpha: number) {
   const value = Number.parseInt(hex.slice(1), 16);
@@ -33,16 +33,17 @@ function translucent(hex: string, alpha: number) {
   return `rgba(${channel(16)}, ${channel(8)}, ${channel(0)}, ${alpha})`;
 }
 
-// Faint enough that ~97k of them read as structure rather than a haze over the middle.
-const EDGE_REST_COLOR = translucent("#6f86b8", 0.03);
-const OWNS_EDGE_COLOR = translucent("#e2e8f0", 0.9);
+// Faint enough that ~97k of them read as structure rather than a wash over the middle. On paper
+// each edge lays down a little ink, so density shows up as the drawing getting darker.
+const EDGE_REST_COLOR = translucent("#334155", 0.04);
+const OWNS_EDGE_COLOR = translucent("#1b1a17", 0.9);
 const PEERS_ON_CANVAS = 6;
 /** Past this many neighbours, forced labels pile up; sigma's own collision-aware labels take over. */
 const FORCED_LABEL_LIMIT = 28;
 /** Width of the details panel that overlays the canvas's right edge on wide screens. */
 const FOCUS_PANEL_PX = 380;
 
-/** Sigma's default hover label is a white box; this one matches the dark console. */
+/** Sigma's default hover label is an unstyled white box; this one matches the panels around it. */
 function drawNodeHover(
   context: CanvasRenderingContext2D,
   data: { x: number; y: number; size: number; label?: string | null; color?: string },
@@ -50,7 +51,7 @@ function drawNodeHover(
 ) {
   context.beginPath();
   context.arc(data.x, data.y, data.size + 3, 0, Math.PI * 2);
-  context.strokeStyle = "rgba(255,255,255,0.9)";
+  context.strokeStyle = "rgba(27,26,23,0.9)";
   context.lineWidth = 1.5;
   context.stroke();
 
@@ -62,14 +63,14 @@ function drawNodeHover(
   // Starts where sigma draws the plain label, so the box covers it rather than doubling it.
   const left = data.x + data.size + 1;
   const top = data.y - height / 2;
-  context.fillStyle = "rgba(17, 23, 38, 0.96)";
-  context.strokeStyle = "rgba(255, 255, 255, 0.14)";
+  context.fillStyle = "rgba(255, 255, 255, 0.97)";
+  context.strokeStyle = "rgba(27, 26, 23, 0.18)";
   context.lineWidth = 1;
   context.beginPath();
   context.roundRect(left, top, width, height, 7);
   context.fill();
   context.stroke();
-  context.fillStyle = "#e8edf7";
+  context.fillStyle = "#1b1a17";
   context.fillText(data.label, left + 9, data.y + size / 3);
 }
 
@@ -166,7 +167,7 @@ export function CongressNetwork({
       const renderer = new SigmaRenderer(graph, containerRef.current, {
         renderEdgeLabels: false,
         defaultEdgeColor: EDGE_REST_COLOR,
-        labelColor: { color: "#dfe6f3" },
+        labelColor: { color: "#1b1a17" },
         labelFont: '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif',
         labelSize: 12,
         labelWeight: "600",
@@ -316,7 +317,7 @@ export function CongressNetwork({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-[var(--r-lg)] border border-[var(--line)] bg-[#070a12] ${
+      className={`relative overflow-hidden rounded-[var(--r-lg)] border border-[var(--line)] bg-[var(--panel)] ${
         variant === "page" ? "h-[calc(100dvh-7rem)] min-h-[560px]" : "h-[720px] max-h-[85dvh] min-h-[520px]"
       }`}
     >
@@ -375,7 +376,7 @@ export function CongressNetwork({
                 title={label}
                 aria-label={label}
                 onClick={() => zoom(factor)}
-                className="grid h-8 w-8 place-items-center rounded-[var(--r-sm)] border border-[var(--line-2)] bg-[rgba(17,23,38,0.92)] text-[var(--muted)] transition hover:text-[var(--ink)]"
+                className="grid h-8 w-8 place-items-center rounded-[var(--r-sm)] border border-[var(--line-2)] bg-[rgba(255,255,255,0.92)] text-[var(--muted)] transition hover:text-[var(--ink)]"
               >
                 <Icon className="h-4 w-4" />
               </button>
@@ -383,7 +384,7 @@ export function CongressNetwork({
           </div>
 
           {!focusable ? (
-            <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-[var(--line)] bg-[rgba(17,23,38,0.85)] px-3.5 py-1.5 text-xs text-[var(--muted)] md:flex">
+            <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.88)] px-3.5 py-1.5 text-xs text-[var(--muted)] md:flex">
               {/* The server layout is rotated so this is always true -- see congress-network-layout. */}
               <span className="h-2 w-2 rounded-full bg-[var(--party-d)]" /> Democrats left
               <span className="text-[var(--faint)]">·</span>
@@ -397,7 +398,7 @@ export function CongressNetwork({
             <button
               type="button"
               onClick={() => setFocus(null)}
-              className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--line-2)] bg-[rgba(17,23,38,0.92)] px-3 py-1.5 text-xs text-[var(--muted)] transition hover:text-[var(--ink)] max-lg:hidden"
+              className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--line-2)] bg-[rgba(255,255,255,0.92)] px-3 py-1.5 text-xs text-[var(--muted)] transition hover:text-[var(--ink)] max-lg:hidden"
             >
               <X className="h-3.5 w-3.5" /> Clear focus <span className="text-[var(--faint)]">Esc</span>
             </button>

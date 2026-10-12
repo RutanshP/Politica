@@ -27,7 +27,7 @@ export function LobbiedBillsCard({
           <Link
             key={row.billId}
             href={`${billHref(row.billId)}#lobbying`}
-            className="flex items-center gap-3 rounded-[var(--r-sm)] px-2 py-2.5 transition hover:bg-white/3 [&+&]:rounded-none [&+&]:border-t [&+&]:border-[var(--line)]"
+            className="flex items-center gap-3 rounded-[var(--r-sm)] px-2 py-2.5 transition hover:bg-black/3 [&+&]:rounded-none [&+&]:border-t [&+&]:border-[var(--line)]"
           >
             <span className="min-w-0 flex-1">
               <span className="line-clamp-1 text-[13px] font-medium text-[var(--ink)]">

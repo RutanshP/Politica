@@ -48,7 +48,7 @@ export function CardHeader({
         {title}
       </h3>
       {count != null ? (
-        <span className="num rounded-full bg-white/6 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--muted)]">
+        <span className="num rounded-full bg-black/6 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--muted)]">
           {count}
         </span>
       ) : null}
@@ -56,7 +56,7 @@ export function CardHeader({
       {!children && actionLabel && actionHref ? (
         <Link
           href={actionHref}
-          className="ml-auto text-xs font-medium text-[var(--accent-2)] transition hover:text-[#a5adff]"
+          className="ml-auto text-xs font-medium text-[var(--accent-2)] transition hover:text-[var(--accent-hover)]"
         >
           {actionLabel}
         </Link>
@@ -108,7 +108,7 @@ export function CardFooter({
       {label && href ? (
         <Link
           href={href}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent-2)] transition hover:text-[#a5adff]"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent-2)] transition hover:text-[var(--accent-hover)]"
         >
           {label}
           <ArrowRight className="h-3.5 w-3.5" />

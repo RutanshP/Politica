@@ -12,9 +12,9 @@ import type { PacCategory } from "@/lib/graph/pac-classification";
  */
 
 export const PARTY_COLOR: Record<NetworkParty, string> = {
-  D: "#3b82f6",
-  R: "#ef4444",
-  I: "#a78bfa",
+  D: "#1d4ed8",
+  R: "#b91c1c",
+  I: "#6b4ea8",
 };
 
 export const PARTY_LABEL: Record<NetworkParty, string> = {
@@ -23,15 +23,21 @@ export const PARTY_LABEL: Record<NetworkParty, string> = {
   I: "Independent",
 };
 
+/*
+ * Read in CATEGORY_ORDER, this is the one arrangement of these hues that clears a colorblind
+ * separation check against the paper ground -- so reorder the list and you have to re-check the
+ * colors. `party` is the deliberate neutral rather than an eighth hue, and `leadership` avoids
+ * PARTY_COLOR.D so a leadership PAC never reads as a Democrat on the same canvas.
+ */
 export const CATEGORY_COLOR: Record<PacCategory, string> = {
-  corporate: "#f59e0b",
-  trade: "#2dd4bf",
-  labor: "#4ade80",
-  ideological: "#e879f9",
-  super_pac: "#fb7185",
-  party: "#94a3b8",
-  leadership: "#38bdf8",
-  campaign: "#cbd5e1",
+  corporate: "#b45309",
+  trade: "#0891b2",
+  labor: "#4d7c0f",
+  ideological: "#db2777",
+  super_pac: "#be123c",
+  party: "#475569",
+  leadership: "#4338ca",
+  campaign: "#7c3aed",
 };
 
 export const CATEGORY_ORDER: PacCategory[] = [
@@ -45,7 +51,8 @@ export const CATEGORY_ORDER: PacCategory[] = [
   "campaign",
 ];
 
-export const DIM_NODE_COLOR = "#1a2133";
+/** What a filtered-out node fades to: close enough to the paper to recede, dark enough to still read as a node. */
+export const DIM_NODE_COLOR = "#d9d5cb";
 
 export interface MemberAttributes {
   kind: "member";

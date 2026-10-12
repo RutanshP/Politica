@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 function Bar({ className }: { className?: string }) {
-  return <div className={cn("animate-pulse rounded-md bg-white/6", className)} />;
+  return <div className={cn("animate-pulse rounded-md bg-black/6", className)} />;
 }
 
 function Panel({ children }: { children: React.ReactNode }) {

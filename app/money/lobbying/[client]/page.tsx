@@ -146,7 +146,7 @@ export default async function LobbyingClientPage({ params }: { params: Params })
                     href={report.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-3 rounded-[var(--r-sm)] px-2 py-2.5 text-[13px] transition hover:bg-white/3"
+                    className="flex items-center gap-3 rounded-[var(--r-sm)] px-2 py-2.5 text-[13px] transition hover:bg-black/3"
                   >
                     <span className="num w-16 flex-none text-xs text-[var(--muted)]">{report.quarter}</span>
                     <span className="min-w-0 flex-1 truncate text-[var(--ink)]">{report.inHouse ? "In-house report" : report.firm}</span>

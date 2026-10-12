@@ -19,7 +19,7 @@ function NodeContent({ node }: { node: BillTextNode }) {
       style={{ marginLeft: indent }}
       className={cn(
         node.quoted
-          && "rounded-md border-l-2 border-[var(--line-2)] bg-white/3 py-2 pl-3 pr-2",
+          && "rounded-md border-l-2 border-[var(--line-2)] bg-black/3 py-2 pl-3 pr-2",
       )}
     >
       {heading ? (
@@ -90,7 +90,7 @@ export function BillTextViewer({
           <button
             type="button"
             onClick={toggleAll}
-            className="text-xs font-medium text-[var(--accent-2)] hover:text-[#a5adff]"
+            className="text-xs font-medium text-[var(--accent-2)] hover:text-[var(--accent-hover)]"
           >
             {allOpen ? "Collapse all" : "Expand all"}
           </button>
@@ -110,7 +110,7 @@ export function BillTextViewer({
         {sourceUrl ? (
           <a
             href={sourceUrl}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent-2)] hover:text-[#a5adff]"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent-2)] hover:text-[var(--accent-hover)]"
           >
             <ExternalLink className="h-3.5 w-3.5" /> Official source{versionLabel ? ` · ${versionLabel}` : ""}
           </a>
@@ -141,7 +141,7 @@ export function BillTextViewer({
               <button
                 type="button"
                 onClick={() => toggle(node.id)}
-                className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-white/2"
+                className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-black/2"
               >
                 {isOpen ? (
                   <ChevronDown className="h-4 w-4 shrink-0 text-[var(--muted)]" />

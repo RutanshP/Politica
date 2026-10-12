@@ -22,37 +22,46 @@ import { IconTile } from "@/components/ui/icon-tile";
 import type { Tone } from "@/components/ui/tones";
 
 /*
- * Recharts renders SVG with its own defaults tuned for a light background, so grid, axis, and
- * tooltip styling all have to be passed explicitly. These constants keep every chart in the app
- * reading against --panel rather than each one drifting.
+ * Recharts writes these straight into SVG attributes, where a var() reference is not reliably
+ * resolved, so the theme tokens have to be repeated here as literals. These constants keep every
+ * chart in the app reading against --panel rather than each one drifting.
  */
-const GRID = "rgba(255,255,255,0.07)";
-const AXIS_TICK = { fill: "#9aa4bb", fontSize: 11 };
+const GRID = "rgba(27,26,23,0.1)";
+const AXIS_TICK = { fill: "#5f5b52", fontSize: 11 };
 
 const TOOLTIP_PROPS = {
   contentStyle: {
-    background: "#161d2e",
-    border: "1px solid rgba(255,255,255,0.12)",
+    background: "#ffffff",
+    border: "1px solid rgba(27,26,23,0.14)",
     borderRadius: 8,
     fontSize: 12,
-    color: "#e8edf7",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+    color: "#1b1a17",
+    boxShadow: "0 8px 24px rgba(27,26,23,0.12)",
   },
-  labelStyle: { color: "#9aa4bb", marginBottom: 2 },
-  itemStyle: { color: "#e8edf7" },
-  cursor: { fill: "rgba(255,255,255,0.04)" },
+  labelStyle: { color: "#5f5b52", marginBottom: 2 },
+  itemStyle: { color: "#1b1a17" },
+  cursor: { fill: "rgba(27,26,23,0.05)" },
 } as const;
 
+/*
+ * The categorical series colors, in assignment order: indigo, emerald, amber, sky, rose. That
+ * order is not arbitrary -- it is the one ordering of these five that clears a colorblind
+ * separation check against the white panel, so a chart that takes tones in order stays readable.
+ * Keep emerald and rose non-adjacent if you add a slot.
+ *
+ * `slate` is the deliberate neutral ("everything else"), not a sixth category, and the party
+ * tones mirror --party-* because their meaning is fixed.
+ */
 const CHART_COLOR: Record<Tone, string> = {
-  indigo: "#6366f1",
-  emerald: "#34d399",
-  sky: "#60a5fa",
-  amber: "#fbbf24",
-  rose: "#f87171",
-  slate: "#5c6780",
-  "party-d": "#3b82f6",
-  "party-r": "#ef4444",
-  "party-i": "#a78bfa",
+  indigo: "#4338ca",
+  emerald: "#047857",
+  amber: "#b45309",
+  sky: "#0369a1",
+  rose: "#be123c",
+  slate: "#6b7280",
+  "party-d": "#1d4ed8",
+  "party-r": "#b91c1c",
+  "party-i": "#6b4ea8",
 };
 
 export function SparklineCard({
@@ -147,7 +156,7 @@ export function PartisanDonutChart({ data }: { data: Array<{ label: string; valu
           verticalAlign="bottom"
           iconType="circle"
           iconSize={8}
-          wrapperStyle={{ fontSize: 12, color: "#9aa4bb" }}
+          wrapperStyle={{ fontSize: 12, color: "#5f5b52" }}
           formatter={(label) => {
             const value = data.find((entry) => entry.label === label)?.value;
             return value === undefined ? label : `${label} · ${value.toLocaleString()}`;

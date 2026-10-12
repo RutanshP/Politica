@@ -6,7 +6,7 @@ const BASE =
   "inline-flex items-center justify-center gap-1.5 rounded-[var(--r-sm)] text-[13px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 [&>svg]:h-3.5 [&>svg]:w-3.5";
 
 const VARIANTS = {
-  primary: "bg-[var(--accent)] font-semibold text-white hover:bg-[#5457e5]",
+  primary: "bg-[var(--accent)] font-semibold text-white hover:bg-[var(--accent-hover)]",
   ghost:
     "border border-[var(--line)] text-[var(--ink)] hover:border-[var(--line-2)] hover:bg-[var(--panel-2)] [&>svg]:text-[var(--muted)]",
   subtle: "text-[var(--muted)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]",

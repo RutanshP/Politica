@@ -156,7 +156,7 @@ export function MemberVoteTable({ positions }: { positions: VotePosition[] }) {
               rows.map((p) => (
                 <tr
                   key={p.politicianId || p.name}
-                  className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-white/2"
+                  className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-black/2"
                 >
                   <td className="px-3.5 py-3 align-middle font-medium text-[var(--ink)]">{p.name}</td>
                   <td className="px-3.5 py-3 align-middle text-[var(--ink)]">{p.party}</td>

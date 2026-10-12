@@ -37,7 +37,7 @@ export function CollapsibleText({
         <span className="group-has-[details[open]]/collapsible:hidden">…</span>
       </p>
       <details className="group/details">
-        <summary className="mt-2 cursor-pointer list-none text-xs font-medium text-[var(--accent-2)] hover:text-[#a5adff]">
+        <summary className="mt-2 cursor-pointer list-none text-xs font-medium text-[var(--accent-2)] hover:text-[var(--accent-hover)]">
           <span className="group-open/details:hidden">Read more</span>
           <span className="hidden group-open/details:inline">Show less</span>
         </summary>
@@ -50,7 +50,7 @@ export function CollapsibleText({
             href={moreHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-block text-xs font-medium text-[var(--accent-2)] hover:text-[#a5adff]"
+            className="mt-2 inline-block text-xs font-medium text-[var(--accent-2)] hover:text-[var(--accent-hover)]"
           >
             {moreLabel} →
           </a>

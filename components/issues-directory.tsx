@@ -122,7 +122,7 @@ export function IssuesDirectory({ issues }: { issues: Issue[] }) {
               {rows.map((issue) => (
                 <tr
                   key={issue.id}
-                  className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-white/2"
+                  className="border-b border-[var(--line)] transition last:border-b-0 hover:bg-black/2"
                 >
                   <td className="px-3.5 py-3 align-middle">
                     <Link href={`/issues/${issue.slug}`} className="font-semibold text-[var(--accent-2)]">

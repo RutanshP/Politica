@@ -24,7 +24,7 @@ import {
   type Visibility,
 } from "./network-model";
 
-const panel = "pointer-events-auto rounded-[var(--r-md)] border border-[var(--line-2)] bg-[rgba(13,18,30,0.94)] shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md";
+const panel = "pointer-events-auto rounded-[var(--r-md)] border border-[var(--line-2)] bg-[rgba(255,255,255,0.94)] shadow-[0_8px_30px_rgba(27,26,23,0.14)] backdrop-blur-md";
 
 function Dot({ color, className }: { color: string; className?: string }) {
   return <span className={cn("inline-block h-2.5 w-2.5 flex-none rounded-full", className)} style={{ background: color }} />;

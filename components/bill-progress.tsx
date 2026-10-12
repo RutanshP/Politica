@@ -72,7 +72,7 @@ export function BillProgressStepper({ bill }: { bill: Bill }) {
                 className={cn(
                   "z-[1] grid h-8 w-8 place-items-center rounded-full border [&>svg]:h-3.5 [&>svg]:w-3.5",
                   done && "border-[var(--accent)] bg-[var(--accent)] text-white",
-                  isCurrent && "border-[var(--success)] bg-[var(--success)] text-[#04140d]",
+                  isCurrent && "border-[var(--success)] bg-[var(--success)] text-white",
                   !reached && "border-[var(--line-2)] bg-[var(--panel-3)] text-[var(--faint)]",
                 )}
               >

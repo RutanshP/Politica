@@ -38,7 +38,7 @@ export default async function SearchPage({
                 className="block rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--panel-2)] p-5 transition hover:border-[var(--line-2)]"
               >
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="rounded-full bg-white/6 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  <span className="rounded-full bg-black/6 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
                     {result.type}
                   </span>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">

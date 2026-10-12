@@ -29,7 +29,7 @@ export function Modal({
   return (
     <div
       className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 transition",
+        "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 transition",
         open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
       aria-hidden={!open}
@@ -38,7 +38,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-2xl rounded-[var(--r-lg)] border border-[var(--line-2)] bg-[var(--panel)] shadow-[0_24px_60px_rgba(0,0,0,0.5)]"
+        className="w-full max-w-2xl rounded-[var(--r-lg)] border border-[var(--line-2)] bg-[var(--panel)] shadow-[0_24px_60px_rgba(27,26,23,0.18)]"
       >
         <div className="flex items-center gap-3 border-b border-[var(--line)] px-4 py-3.5">
           <h2 className="text-sm font-semibold text-[var(--ink)]">{title}</h2>

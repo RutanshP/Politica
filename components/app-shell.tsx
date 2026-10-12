@@ -86,8 +86,8 @@ function NavLink({
         "flex items-center gap-3 rounded-[var(--r-sm)] px-2.5 py-2.5 text-[13.5px] transition",
         collapsed && "justify-center px-0",
         active
-          ? "bg-[var(--accent-soft)] text-[#c7ccff]"
-          : "text-[var(--muted)] hover:bg-white/4 hover:text-[var(--ink)]",
+          ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+          : "text-[var(--muted)] hover:bg-black/4 hover:text-[var(--ink)]",
       )}
     >
       <Icon className={cn("h-4.5 w-4.5 flex-none", active && "text-[var(--accent-2)]")} />
@@ -130,7 +130,7 @@ export function AppShell({
           type="button"
           aria-label="Close navigation"
           onClick={close}
-          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
         />
       ) : null}
 
@@ -191,7 +191,7 @@ export function AppShell({
             <Link
               href="/status"
               title="Data status"
-              className="rounded-[var(--r-md)] border border-[var(--line)] bg-white/2 px-3 py-2.5 transition hover:border-[var(--line-2)]"
+              className="rounded-[var(--r-md)] border border-[var(--line)] bg-black/2 px-3 py-2.5 transition hover:border-[var(--line-2)]"
             >
               <div className="flex items-center gap-2">
                 <span
@@ -209,7 +209,7 @@ export function AppShell({
             type="button"
             onClick={() => setCollapsed((value) => !value)}
             className={cn(
-              "hidden items-center gap-2.5 rounded-[var(--r-sm)] px-2.5 py-2 text-xs text-[var(--faint)] transition hover:bg-white/4 hover:text-[var(--ink)] lg:flex",
+              "hidden items-center gap-2.5 rounded-[var(--r-sm)] px-2.5 py-2 text-xs text-[var(--faint)] transition hover:bg-black/4 hover:text-[var(--ink)] lg:flex",
               collapsed && "justify-center px-0",
             )}
             aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
@@ -222,7 +222,7 @@ export function AppShell({
       </aside>
 
       <div className="flex min-w-0 flex-col lg:col-start-2">
-        <header className="sticky top-0 z-30 flex h-16 flex-none items-center gap-3 border-b border-[var(--line)] bg-[rgba(10,14,23,0.86)] px-4 backdrop-blur-md sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 flex-none items-center gap-3 border-b border-[var(--line)] bg-[rgba(246,244,239,0.86)] px-4 backdrop-blur-md sm:px-6">
           <IconButton label="Open navigation" onClick={() => setOpen(true)} className="lg:hidden">
             <Menu />
           </IconButton>

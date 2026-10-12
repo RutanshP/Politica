@@ -183,7 +183,7 @@ export function BillsDirectory({
               </Badge>
               <Link
                 href={pathname}
-                className="text-xs font-medium text-[var(--accent-2)] hover:text-[#a5adff]"
+                className="text-xs font-medium text-[var(--accent-2)] hover:text-[var(--accent-hover)]"
               >
                 Reset
               </Link>

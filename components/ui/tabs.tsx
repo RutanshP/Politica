@@ -45,7 +45,7 @@ export function Tabs({ items, className }: { items: TabItem[]; className?: strin
                 "num rounded-full px-1.5 py-px text-[11px] font-semibold",
                 item.active
                   ? "bg-[var(--accent-soft)] text-[var(--accent-2)]"
-                  : "bg-white/6 text-[var(--muted)]",
+                  : "bg-black/6 text-[var(--muted)]",
               )}
             >
               {item.count}

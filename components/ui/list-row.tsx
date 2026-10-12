@@ -47,7 +47,7 @@ export function ListRow({
   const classes = cn(
     "flex min-w-0 items-center gap-2.5 rounded-[var(--r-sm)] px-2 py-2.5 transition",
     "[&+&]:rounded-none [&+&]:border-t [&+&]:border-[var(--line)]",
-    href && "hover:bg-white/3",
+    href && "hover:bg-black/3",
     className,
   );
 
@@ -65,7 +65,7 @@ export function ListRow({
 /** Numeric rank chip for ordered lists (trending bills). */
 export function Rank({ children }: { children: React.ReactNode }) {
   return (
-    <span className="num grid h-5.5 w-5.5 flex-none place-items-center rounded-md bg-white/5 text-[11.5px] font-semibold text-[var(--muted)]">
+    <span className="num grid h-5.5 w-5.5 flex-none place-items-center rounded-md bg-black/5 text-[11.5px] font-semibold text-[var(--muted)]">
       {children}
     </span>
   );

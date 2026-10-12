@@ -19,7 +19,7 @@ export function QuarterBars({
           <span className="num text-[11.5px] font-semibold text-[var(--ink)]">
             {quarter.pending ? "—" : formatMoney(quarter.spend) || "$0"}
           </span>
-          <div className="flex h-28 w-full items-end rounded-[var(--r-sm)] bg-white/4">
+          <div className="flex h-28 w-full items-end rounded-[var(--r-sm)] bg-black/4">
             <div
               className="w-full rounded-[var(--r-sm)] bg-[var(--accent)]"
               style={{ height: quarter.pending ? 0 : `${Math.max(2, (quarter.spend / max) * 100)}%` }}
