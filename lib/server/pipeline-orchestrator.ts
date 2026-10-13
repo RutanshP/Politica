@@ -14,6 +14,30 @@ import type { SyncErrorRow, SyncRunRow } from "@/types/supabase";
 // triggers. State is intentionally module-level (resets on server restart).
 const runningPipelines = new Set<string>();
 
+/*
+ * The Set above only covers one process. Across Vercel instances (and anything else holding the
+ * secret key) the lock is the `running` row itself: sync_runs_one_running_per_pipeline (migration
+ * 044) lets only one exist per pipeline. A row is only treated as abandoned once it is older than
+ * any function could run -- Vercel stops a route at its 300s maxDuration -- so a run that is still
+ * working elsewhere is never marked failed underneath it.
+ */
+const ABANDONED_RUN_AFTER_MS = 330_000;
+
+function skippedSummary(pipeline: string, startedAt: string, reason: string): SyncPipelineSummary {
+  return {
+    pipeline,
+    status: "skipped",
+    startedAt,
+    finishedAt: startedAt,
+    recordCount: 0,
+    metadata: { skipped: true, reason },
+  };
+}
+
+function isUniqueViolation(error: unknown) {
+  return error instanceof Error && /\b409\b|23505/.test(error.message);
+}
+
 export async function runPipeline(
   pipeline: string,
   worker: () => Promise<{ recordCount: number; metadata?: unknown }>,
@@ -21,14 +45,7 @@ export async function runPipeline(
   const startedAt = new Date().toISOString();
 
   if (runningPipelines.has(pipeline)) {
-    return {
-      pipeline,
-      status: "skipped",
-      startedAt,
-      finishedAt: startedAt,
-      recordCount: 0,
-      metadata: { skipped: true, reason: "A run for this pipeline is already in progress" },
-    };
+    return skippedSummary(pipeline, startedAt, "A run for this pipeline is already in progress");
   }
   runningPipelines.add(pipeline);
   try {
@@ -43,14 +60,21 @@ async function runPipelineLocked(
   worker: () => Promise<{ recordCount: number; metadata?: unknown }>,
   startedAt: string,
 ): Promise<SyncPipelineSummary> {
-  const staleRunningRows = await listRunningSyncRuns(pipeline).catch(() => []);
-  if (staleRunningRows.length > 0) {
+  const runningRows = await listRunningSyncRuns(pipeline).catch(() => []);
+  const abandonedBefore = Date.parse(startedAt) - ABANDONED_RUN_AFTER_MS;
+  const abandoned = runningRows.filter((row) => Date.parse(row.started_at) < abandonedBefore);
+  if (abandoned.length < runningRows.length) {
+    return skippedSummary(pipeline, startedAt, "A run for this pipeline is already in progress elsewhere");
+  }
+  if (abandoned.length > 0) {
     await upsertSyncRuns(
-      staleRunningRows.map((row) => ({
+      abandoned.map((row) => ({
         ...row,
         status: "failed",
         finished_at: startedAt,
-        error_message: row.error_message || "Superseded by a newer pipeline run",
+        // sync-health ignores "superseded" rows; the real outcome of that chunk is the 504 the
+        // caller already saw.
+        error_message: row.error_message || "Superseded: no finish was recorded within the function timeout",
       })),
     ).catch(() => undefined);
   }
@@ -66,7 +90,15 @@ async function runPipelineLocked(
     metadata: {},
   };
 
-  await upsertSyncRuns([runningRow]);
+  try {
+    await upsertSyncRuns([runningRow]);
+  } catch (error) {
+    // Another process inserted its own `running` row between the read above and this write.
+    if (isUniqueViolation(error)) {
+      return skippedSummary(pipeline, startedAt, "A run for this pipeline is already in progress elsewhere");
+    }
+    throw error;
+  }
 
   try {
     const result = await worker();
