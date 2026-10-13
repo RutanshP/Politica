@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { isAuthorizedSyncRequest } from "@/lib/server/internal-api";
 import { revalidatePoliticaCaches } from "@/lib/server/revalidate";
 import { runPipeline } from "@/lib/server/pipeline-orchestrator";
-import { syncLegislationFromCongress } from "@/lib/server/legislation-sync";
+import { syncFederalCommitteeRosters, syncLegislationFromCongress } from "@/lib/server/legislation-sync";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -26,6 +26,20 @@ export async function POST(request: Request) {
     const mode = /^full$/i.test(url.searchParams.get("mode") || "") ? "full" : "incremental";
     const listOffset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
     const listLimit = Number.parseInt(url.searchParams.get("limit") || "0", 10);
+
+    // Rosters and roles only: seconds, where the full committee sync runs past the timeout.
+    if (syncCommittees && /^(1|true|yes)$/i.test(url.searchParams.get("rostersOnly") || "")) {
+      const rosters = await runPipeline("committee_roster_sync", async () => {
+        const sync = await syncFederalCommitteeRosters();
+        return { recordCount: sync.membershipsWritten, metadata: sync };
+      });
+      revalidatePoliticaCaches();
+      revalidatePath("/committees");
+      revalidatePath("/committees/[slug]", "page");
+      revalidatePath("/politicians/[slug]", "page");
+      return NextResponse.json(rosters, { status: rosters.status === "failed" ? 500 : 200 });
+    }
+
     const result = await runPipeline("federal_legislation_sync", async () => {
       const sync = await syncLegislationFromCongress({
         targetBillIds,

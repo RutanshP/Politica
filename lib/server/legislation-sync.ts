@@ -41,7 +41,7 @@ import {
   listStoredBillVersionRowsByBillIds,
   upsertStoredBills,
 } from "@/lib/supabase/bills";
-import { replaceStoredCommitteeMemberships, upsertStoredCommittees } from "@/lib/supabase/committees";
+import { listStoredCommittees, replaceStoredCommitteeMemberships, upsertStoredCommittees } from "@/lib/supabase/committees";
 import { deleteSupabaseRows, fetchSupabaseRows, invokeSupabaseRpc, updateSupabaseRows } from "@/lib/supabase/rest";
 import {
   appendStoredVotes,
@@ -1552,6 +1552,42 @@ async function buildFederalCommitteeMembershipRows(
   });
 
   return uniqueByKey(rows, (row) => `${row.committee_id}:${row.politician_id}`);
+}
+
+/**
+ * Committee rosters and roles only, for every stored committee.
+ *
+ * The full committee sync also pages every bill referred to every committee (941 for Senate
+ * Judiciary alone) and never finished inside the function timeout, so a roster that something
+ * emptied was never restored: 15 committees, Senate Judiciary among them, showed Chuck Grassley
+ * as a "Member". The roster itself comes from one congress-legislators file and needs none of
+ * that. Only committees the build produced rows for are replaced, so a gap in the source cannot
+ * blank a stored roster.
+ */
+export async function syncFederalCommitteeRosters() {
+  const [committees, politicians] = await Promise.all([
+    listStoredCommittees({ fresh: true }),
+    fetchSupabaseRows<PoliticianRow>("politicians", "jurisdiction_type=eq.federal&order=id.asc", {
+      cache: "no-store",
+      paginateAll: true,
+      select: "id,name",
+    }),
+  ]);
+  const federalCommittees = committees.filter((committee) => !committee.state);
+
+  const rows = await buildFederalCommitteeMembershipRows(federalCommittees, politicians);
+  if (rows === null) {
+    throw new Error("The congress-legislators committee roster could not be fetched");
+  }
+
+  const committeeIds = [...new Set(rows.map((row) => row.committee_id))];
+  await replaceStoredCommitteeMemberships(committeeIds, rows);
+
+  return {
+    committeesChecked: federalCommittees.length,
+    committeesWithRoster: committeeIds.length,
+    membershipsWritten: rows.length,
+  };
 }
 
 function chamberFromBillType(type?: string) {

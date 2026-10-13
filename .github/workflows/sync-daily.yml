@@ -235,7 +235,7 @@ jobs:
           # Weekly is plenty: committee membership changes a few times a Congress.
           if [ "$(date -u +%u)" = "7" ]; then
             echo "== Committee rosters (weekly) =="
-            post "/api/internal/sync/legislation?offset=0&limit=5&syncCommittees=true"
+            post "/api/internal/sync/legislation?syncCommittees=true&rostersOnly=1"
           else
             echo "== Skipping committee rosters (only runs Sundays) =="
           fi
