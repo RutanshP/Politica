@@ -54,7 +54,15 @@ function parse(raw: string | null): WatchedItem[] {
 export function readWatchlist(): WatchedItem[] {
   if (typeof window === "undefined") return EMPTY;
   if (cache) return cache;
-  cache = parse(window.localStorage.getItem(STORAGE_KEY));
+  let stored: string | null = null;
+  try {
+    stored = window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    // Blocked storage (sandboxed frames, some privacy modes) throws a SecurityError on access.
+    // An empty watchlist is the right fallback; letting it throw broke every page with a Watch
+    // button.
+  }
+  cache = parse(stored);
   return cache;
 }
 
