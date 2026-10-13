@@ -326,7 +326,15 @@ async function fetchTextOrNull(
 export async function fetchHouseRollCallVote(year: number, rollCallNumber: number) {
   const url = `${HOUSE_VOTE_BASE}/${year}/roll${String(rollCallNumber).padStart(3, "0")}.xml`;
   const xml = await fetchTextOrNull(url, HOUSE_NOT_FOUND_STATUSES);
-  return xml ? parseHouseRollCallVoteXml(xml) : null;
+  /*
+   * The Clerk answers a roll call that does not exist yet with 200 and
+   * `<xml>Error sanitizing file "roll315.xml"...</xml>`, not a 404. Parsing that threw "House
+   * vote metadata not found", which aborted the whole vote step -- the Senate walk runs after the
+   * House one -- so every nightly run since at least Oct 2026 synced 0 votes and Senate roll calls
+   * 601-659 of 2025 were never picked up. No metadata block means "not published": stop walking.
+   */
+  if (!xml || !/<vote-metadata>/i.test(xml)) return null;
+  return parseHouseRollCallVoteXml(xml);
 }
 
 export async function fetchSenateRollCallVote(

@@ -194,3 +194,23 @@ test("parseSenateRollCallVoteXml does not read a longer tag that starts with the
   assert.equal(vote.positions[0].name, "Adam Schiff");
   assert.equal(vote.positions[0].vote, "Yea");
 });
+
+test("a House roll call the Clerk has not published yet reads as missing, not an error", async () => {
+  const { fetchHouseRollCallVote } = jiti("@/lib/adapters/federal-votes");
+  const originalFetch = global.fetch;
+  // What clerk.house.gov actually returns for an unpublished roll call: 200, not 404.
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    headers: new Map(),
+    async text() {
+      return '<xml>Error sanitizing file "roll315.xml". Please try again.</xml>';
+    },
+  });
+  try {
+    assert.equal(await fetchHouseRollCallVote(2026, 315), null);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
