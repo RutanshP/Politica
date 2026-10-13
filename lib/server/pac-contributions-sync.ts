@@ -32,6 +32,7 @@ import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } fro
 const DEFAULT_CYCLE = 2026;
 const DEFAULT_LIMIT = 20;
 const COMMITTEE_BATCH = 100;
+const FEC_COMMITTEE_ID = /^C\d{8}$/;
 
 export interface PacContributionsSyncOptions {
   limit?: number;
@@ -168,7 +169,13 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
       }
 
       const gifts = (await fetchFecCommitteeGiftsToRecipient(principal, cycle))
-        .filter((gift) => gift.committee_id && gift.committee_id !== principal && (gift.total ?? 0) > 0);
+        .filter((gift) => gift.committee_id && gift.committee_id !== principal && (gift.total ?? 0) > 0)
+        /*
+         * Contributor ids come from the campaign's own filing, typos included ("C0009923", seven
+         * digits, on Bennie Thompson's). One malformed id made FEC reject the whole /committees/
+         * batch with 422, so the member failed on every run and burned quota each time.
+         */
+        .filter((gift) => FEC_COMMITTEE_ID.test(gift.committee_id!));
 
       // Committee records only for payers not seen before -- most PACs give to many members.
       const unknownIds = [...new Set(gifts.map((gift) => gift.committee_id!))].filter((id) => !knownCommitteeIds.has(id) && !excludedCommitteeIds.has(id));
