@@ -52,9 +52,14 @@ export async function searchStoredSearchDocuments(query: string, limit: number) 
    * search for a member could fill up with bills whose summaries merely mention them, and the
    * member never appeared. The body-only read is bounded because it is only a backfill.
    */
+  /*
+   * Encoded because applyRestQuery splits the query on "&": a raw "x&entity_type=eq.bill" typed
+   * into the search box became a second PostgREST parameter. bills.ts encodes its and=() the same
+   * way.
+   */
   const [named, mentioned] = await Promise.all([
-    read(`or=(label.ilike.*${normalized}*,title.ilike.*${normalized}*)`, limit * 3),
-    read(`or=(description.ilike.*${normalized}*,meta.ilike.*${normalized}*)`, limit),
+    read(`or=${encodeURIComponent(`(label.ilike.*${normalized}*,title.ilike.*${normalized}*)`)}`, limit * 3),
+    read(`or=${encodeURIComponent(`(description.ilike.*${normalized}*,meta.ilike.*${normalized}*)`)}`, limit),
   ]);
 
   const needle = normalized.toLowerCase();

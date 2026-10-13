@@ -96,8 +96,29 @@ function buildReadInit(options?: SupabaseReadOptions): RequestInit {
   };
 }
 
+const NETWORK_RETRY_DELAYS_MS = [500, 1500];
+
+/**
+ * fetch(), retried when the request never got an HTTP response ("fetch failed", a reset
+ * connection). One such blip failed whole legislation runs -- "Bill actions write failed: fetch
+ * failed" on 2026-10-10, 11 and 12. HTTP errors are not retried: a 4xx will not change, and a
+ * statement timeout would only run again. Only used for idempotent calls -- reads, merge upserts,
+ * PATCH and DELETE -- never for RPCs, which may not be safe to repeat.
+ */
+async function fetchWithNetworkRetry(url: string, init: RequestInit) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      const delay = NETWORK_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 async function readJson<T>(url: string, init: RequestInit) {
-  const response = await fetch(url, init);
+  const response = await fetchWithNetworkRetry(url, init);
 
   if (!response.ok) {
     // Include PostgREST's error body: a bare "500 Internal Server Error" gives no way to tell a
@@ -186,7 +207,7 @@ export async function fetchSupabaseRows<T>(
   // began after page N returned -- which made a full-table read take (rows / pageSize)
   // round trips end to end.
   const firstUrl = buildRestUrl(pathname, [query, "offset=0", `limit=${pageSize}`].filter(Boolean).join("&"), options?.select);
-  const firstResponse = await fetch(firstUrl, {
+  const firstResponse = await fetchWithNetworkRetry(firstUrl, {
     ...init,
     headers: buildHeaders({
       Prefer: "count=planned",
@@ -306,7 +327,7 @@ export async function fetchSupabasePage<T>(
     .join("&");
 
   const init = buildReadInit(options);
-  const response = await fetch(buildRestUrl(pathname, pagedQuery, options?.select), {
+  const response = await fetchWithNetworkRetry(buildRestUrl(pathname, pagedQuery, options?.select), {
     ...init,
     headers: buildHeaders({
       Prefer: `count=${options?.count || "exact"}`,
@@ -399,7 +420,7 @@ export async function upsertSupabaseRows<T extends object>(
     throw new Error("Supabase is not configured");
   }
 
-  const response = await fetch(buildRestMutationUrl(pathname, `on_conflict=${encodeURIComponent(onConflict)}`), {
+  const response = await fetchWithNetworkRetry(buildRestMutationUrl(pathname, `on_conflict=${encodeURIComponent(onConflict)}`), {
     method: "POST",
     headers: buildHeaders({
       "Content-Type": "application/json",
@@ -446,7 +467,7 @@ export async function updateSupabaseRows<T extends object>(
     throw new Error("Supabase is not configured");
   }
 
-  const response = await fetch(buildRestMutationUrl(pathname, query), {
+  const response = await fetchWithNetworkRetry(buildRestMutationUrl(pathname, query), {
     method: "PATCH",
     headers: buildHeaders({
       "Content-Type": "application/json",
@@ -466,7 +487,7 @@ export async function deleteSupabaseRows(pathname: string, query: string) {
     throw new Error("Supabase is not configured");
   }
 
-  const response = await fetch(buildRestMutationUrl(pathname, query), {
+  const response = await fetchWithNetworkRetry(buildRestMutationUrl(pathname, query), {
     method: "DELETE",
     headers: buildHeaders({
       Prefer: "return=minimal",

@@ -77,6 +77,11 @@ export async function fetchFecCandidateTotals(candidateId: string, cycle = 2024)
 const FEC_RATE_LIMIT_RETRIES = 3;
 const FEC_RATE_LIMIT_BACKOFF_MS = 20000;
 const FEC_MAX_RETRY_WAIT_MS = 60_000;
+const FEC_REQUEST_TIMEOUT_MS = 30_000;
+// Timeouts, dropped connections and 5xx. Separate from the 429 budget above, which waits out a
+// rate window rather than a flaky request.
+const FEC_TRANSIENT_RETRIES = 2;
+const FEC_TRANSIENT_BACKOFF_MS = 2000;
 
 /** The key's hourly quota is spent; callers should stop and let the next run carry on. */
 export class FecQuotaExhaustedError extends Error {
@@ -123,13 +128,31 @@ async function fetchFecJsonFresh<T>(
     }
   }
 
-  for (let attempt = 0; ; attempt += 1) {
+  for (let attempt = 0, transientAttempt = 0; ;) {
     await fecRateGate();
-    const response = await fetch(url.toString(), {
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(30000),
-    });
+    let response: Response;
+    try {
+      response = await fetch(url.toString(), {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(FEC_REQUEST_TIMEOUT_MS),
+      });
+    } catch (error) {
+      // A page that hangs past the abort, or a dropped connection, is usually gone on the next
+      // try. Without this, one slow page failed the whole candidate roster sync (2026-10-12).
+      if (transientAttempt < FEC_TRANSIENT_RETRIES) {
+        transientAttempt += 1;
+        await new Promise((resolve) => setTimeout(resolve, FEC_TRANSIENT_BACKOFF_MS * transientAttempt));
+        continue;
+      }
+      throw error;
+    }
+
+    if (response.status >= 500 && transientAttempt < FEC_TRANSIENT_RETRIES) {
+      transientAttempt += 1;
+      await new Promise((resolve) => setTimeout(resolve, FEC_TRANSIENT_BACKOFF_MS * transientAttempt));
+      continue;
+    }
 
     if (response.status === 429 && attempt < FEC_RATE_LIMIT_RETRIES) {
       // The hourly key also enforces a short-window burst limit; honor
@@ -146,6 +169,7 @@ async function fetchFecJsonFresh<T>(
         throw new FecQuotaExhaustedError(Math.round(waitMs / 1000));
       }
       await new Promise((resolve) => setTimeout(resolve, waitMs));
+      attempt += 1;
       continue;
     }
 
