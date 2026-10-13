@@ -19,8 +19,10 @@ import { deleteSupabaseRows, fetchSupabaseRows, upsertSupabaseRowsInChunks } fro
  *
  * The funding graph only ever had one "PACs & party committees" figure per member -- FEC's
  * candidate totals -- so no two members could be connected through a PAC they share. This reads
- * FEC's Schedule B aggregates by recipient: every committee that reported paying a member's
- * principal campaign committee in the cycle, totalled per payer. Stored in pac_committees /
+ * the member's own itemized receipts from party and other political committees (Form 3 lines 11B
+ * and 11C), totalled per giver, so conduit earmarks and transfers between the member's own
+ * committees are not counted as a PAC's gift (see fetchFecCommitteeGiftsToRecipient). Summed per
+ * member, they match FEC's PAC + party totals exactly. Stored in pac_committees /
  * pac_contributions rather than graph_edges, whose wide rows would cost several times the space
  * for ~80k pairs against a 500MB database.
  *

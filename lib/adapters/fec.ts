@@ -273,29 +273,62 @@ export interface FecCommitteeGiftRow {
 
 const FEC_AGGREGATE_PAGE_SIZE = 100;
 
+/*
+ * Form 3 receipt lines that are a committee's own money: 11B from party committees, 11C from
+ * other political committees (PACs, leadership PACs, other campaigns). Earmarked contributions a
+ * conduit forwards are reported on the individual lines (11A), and transfers from the
+ * candidate's own committees on line 12, so neither is counted as a committee's gift.
+ */
+const COMMITTEE_RECEIPT_LINES = ["F3-11B", "F3-11C"] as const;
+
+interface FecScheduleAReceiptRow {
+  contributor_id?: string | null;
+  contribution_receipt_amount?: number;
+  memo_code?: string | null;
+}
+
 /**
- * Every committee that paid a candidate's committee in a cycle, totalled per payer.
+ * Every committee that gave to a candidate's committee in a cycle, totalled per giver, from the
+ * *recipient's* own itemized receipts.
  *
- * This is Schedule B from the *payer's* side -- PACs, party committees, leadership PACs and
- * other campaigns reporting what they gave -- aggregated by FEC per (payer, recipient). One call
- * per 100 payers; a senator runs to a few hundred.
+ * This replaced FEC's Schedule B "by recipient" aggregates, built from the payers' reports, which
+ * counted conduit earmarks as the conduit's own gifts (AIPAC PAC "gave" Josh Gottheimer $70,723
+ * in 2026; its own contribution was $5,000, and the $784,126 it forwarded was individuals'
+ * money), counted transfers between a member's own committees, and lagged the itemized filings.
  */
 export async function fetchFecCommitteeGiftsToRecipient(recipientCommitteeId: string, cycle: number) {
-  const rows: FecCommitteeGiftRow[] = [];
-  for (let page = 1; ; page += 1) {
-    const payload = await fetchFecJsonFresh<{
-      results?: FecCommitteeGiftRow[];
-      pagination?: { pages?: number };
-    }>("/schedules/schedule_b/by_recipient_id/", {
-      recipient_id: recipientCommitteeId,
-      cycle,
-      per_page: FEC_AGGREGATE_PAGE_SIZE,
-      sort: "-total",
-      page,
-    });
-    rows.push(...(payload.results ?? []));
-    if (page >= (payload.pagination?.pages ?? 1)) return rows;
+  const byGiver = new Map<string, FecCommitteeGiftRow>();
+  for (const line of COMMITTEE_RECEIPT_LINES) {
+    let lastIndexes: Record<string, string> = {};
+    for (;;) {
+      const payload = await fetchFecJsonFresh<{
+        results?: FecScheduleAReceiptRow[];
+        pagination?: { last_indexes?: { last_index?: string; last_contribution_receipt_date?: string } | null };
+      }>("/schedules/schedule_a/", {
+        committee_id: recipientCommitteeId,
+        two_year_transaction_period: cycle,
+        line_number: line,
+        per_page: FEC_AGGREGATE_PAGE_SIZE,
+        ...lastIndexes,
+      });
+      const results = payload.results ?? [];
+      for (const row of results) {
+        // Memo lines restate money already counted on another line.
+        if (!row.contributor_id || row.memo_code === "X") continue;
+        const entry = byGiver.get(row.contributor_id) ?? { committee_id: row.contributor_id, total: 0, count: 0 };
+        entry.total = (entry.total ?? 0) + (row.contribution_receipt_amount ?? 0);
+        entry.count = (entry.count ?? 0) + 1;
+        byGiver.set(row.contributor_id, entry);
+      }
+      const next = payload.pagination?.last_indexes;
+      if (results.length < FEC_AGGREGATE_PAGE_SIZE || !next?.last_index) break;
+      lastIndexes = {
+        last_index: next.last_index,
+        ...(next.last_contribution_receipt_date ? { last_contribution_receipt_date: next.last_contribution_receipt_date } : {}),
+      };
+    }
   }
+  return [...byGiver.values()];
 }
 
 export interface FecCommitteeDetailRow {

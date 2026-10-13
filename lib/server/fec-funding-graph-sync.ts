@@ -2,7 +2,6 @@ import {
   fetchFecCandidateCommittees,
   fetchFecCandidateTotalsDetailed,
   fetchFecScheduleAByEmployer,
-  fetchFecScheduleABySize,
   fetchFecScheduleEByCandidate,
   FecQuotaExhaustedError,
   isFecConfigured,
@@ -119,12 +118,9 @@ export async function syncFundingGraphFromFec(options?: FecFundingGraphSyncOptio
       const byEmployer = principal?.committee_id
         ? await fetchFecScheduleAByEmployer(principal.committee_id, cycle).catch(() => [])
         : [];
-      const bySize = principal?.committee_id
-        ? await fetchFecScheduleABySize(principal.committee_id, cycle).catch(() => [])
-        : [];
       const scheduleE = await fetchFecScheduleEByCandidate(candidateId, cycle).catch(() => []);
 
-      const payloads: FecPoliticianPayloads = { cycle, totals, committees, byEmployer, bySize, scheduleE };
+      const payloads: FecPoliticianPayloads = { cycle, totals, committees, byEmployer, scheduleE };
       const rows = buildFecGraphRows(
         {
           id: politician.id,

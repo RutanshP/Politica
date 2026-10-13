@@ -4,7 +4,6 @@ import type {
   FecCommitteeRow,
   FecEmployerAggregateRow,
   FecScheduleEByCandidateRow,
-  FecSizeAggregateRow,
 } from "@/lib/adapters/fec";
 import type { GraphEdgeRow, GraphEntityRow } from "@/types/funding-graph";
 import type { CandidateFinanceSnapshotRow } from "@/types/supabase";
@@ -24,7 +23,6 @@ export interface FecPoliticianPayloads {
   totals: FecCandidateTotalsRow[];
   committees: FecCommitteeRow[];
   byEmployer: FecEmployerAggregateRow[];
-  bySize: FecSizeAggregateRow[];
   scheduleE: FecScheduleEByCandidateRow[];
 }
 
@@ -88,8 +86,6 @@ function round(value: number | undefined | null) {
   return Math.round(value || 0);
 }
 
-const SMALL_DOLLAR_SIZE_BUCKET = 0; // by_size bucket 0 = contributions under $200
-
 export interface FecGraphRows {
   entities: GraphEntityRow[];
   edges: GraphEdgeRow[];
@@ -128,8 +124,14 @@ export function buildFecGraphRows(
   const pac = round(totalsRow.other_political_committee_contributions)
     + round(totalsRow.political_party_committee_contributions);
   const selfFunding = round(totalsRow.candidate_contribution);
-  const smallDollarBucket = payloads.bySize.find((row) => row.size === SMALL_DOLLAR_SIZE_BUCKET);
-  const smallDollar = round(smallDollarBucket?.total ?? totalsRow.individual_unitemized_contributions);
+  /*
+   * Unitemized individual contributions -- donors under $200 for the cycle, the standard
+   * small-dollar measure. Not FEC's by_size "under $200" bucket: those buckets also count each
+   * donor's money again when it arrives through a joint fundraising committee, so they summed to
+   * $21.5M against Mike Johnson's $12.3M of individual giving and put him at 94% small-dollar
+   * (unitemized: 31.5%).
+   */
+  const smallDollar = round(totalsRow.individual_unitemized_contributions);
   const ieSupport = round(
     payloads.scheduleE
       .filter((row) => row.support_oppose_indicator === "S")
@@ -337,7 +339,7 @@ export function buildFecGraphRows(
       entityId,
       "contributed_to",
       smallDollar,
-      smallDollarBucket?.count ?? null,
+      null,
       { subsetOf: `fec-ind-${politician.id}-${cycle}` },
       donorRollupTarget,
     ));
