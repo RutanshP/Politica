@@ -133,7 +133,7 @@ export default async function BillDetailPage({
           </div>
         </div>
 
-        <div className="flex flex-none flex-wrap gap-7">
+        <div className="flex max-w-full flex-none flex-wrap gap-7">
           <div className="min-w-[150px]">
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
               Sponsor
@@ -189,7 +189,7 @@ export default async function BillDetailPage({
           </div>
         </div>
 
-        <div className="ml-auto flex flex-none items-center gap-2">
+        <div className="ml-auto flex max-w-full flex-none flex-wrap items-center gap-2">
           <SourceBadge label={getBillsSourceLabel(source)} live={live} />
           <WatchButton item={watchItem} />
           <ButtonLink href={billHref(bill.id, "/text")}>

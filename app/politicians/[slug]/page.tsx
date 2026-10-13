@@ -157,7 +157,7 @@ export default async function PoliticianProfilePage({
           </div>
         </div>
 
-        <div className="flex flex-none flex-wrap gap-7">
+        <div className="flex max-w-full flex-none flex-wrap gap-7">
           <div className="min-w-[140px]">
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
               Committees
@@ -188,7 +188,7 @@ export default async function PoliticianProfilePage({
           </div>
         </div>
 
-        <div className="ml-auto flex flex-none items-center gap-2">
+        <div className="ml-auto flex max-w-full flex-none flex-wrap items-center gap-2">
           <SourceBadge
             label={getPoliticianSourceLabel(source)}
             live={isLivePoliticianSource(source)}

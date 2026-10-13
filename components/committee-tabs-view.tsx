@@ -108,7 +108,7 @@ export function CommitteeTabsView({
       </div>
 
       {active === "overview" ? (
-        <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+        <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
           <div className="space-y-6">
             <Card>
               <CardHeader
@@ -133,7 +133,7 @@ export function CommitteeTabsView({
               </CardHeader>
               <CardBody>
                 {members.length > 0 ? (
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-2 [&>*]:min-w-0">
                     {members.slice(0, 6).map((member) => (
                       <MemberCard key={member.id} member={member} />
                     ))}
@@ -226,7 +226,7 @@ export function CommitteeTabsView({
       {active === "members" ? (
         <div id="members">
           {members.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 [&>*]:min-w-0">
               {members.map((member) => (
                 <MemberCard key={member.id} member={member} />
               ))}
