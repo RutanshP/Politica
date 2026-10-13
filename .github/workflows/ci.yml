@@ -28,6 +28,12 @@ jobs:
       # `npm ci` needs the lockfile to match package.json exactly, which is what we want in CI.
       - run: npm ci
 
+      # Next.js 16.2.10 sat inside three critical advisories (unauthenticated RCE) for weeks with
+      # nothing flagging it. Only shipped dependencies are checked, so a dev-tool advisory cannot
+      # block a deploy.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Typecheck
         run: npx tsc --noEmit
 

@@ -34,6 +34,23 @@ const nextConfig: NextConfig = {
       "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
     ],
   },
+  /*
+   * Production sent HSTS (from Vercel) and nothing else. No CSP yet: the money network loads
+   * WebGL and the pages inline styles, so a policy needs its own pass to avoid breaking them.
+   */
+  headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
+      },
+    ];
+  },
   experimental: {
     /*
      * Page-data collection forks one worker per logical CPU by default. On a 16-thread machine
