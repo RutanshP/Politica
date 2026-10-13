@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { NextResponse } from "next/server";
 
 import { getPoliticaSyncSecret } from "@/lib/supabase/config";
@@ -37,5 +39,10 @@ export function isAuthorizedSyncRequest(request: Request) {
   const headerSecret = request.headers.get("x-sync-secret") || "";
   const providedSecret = bearer || headerSecret;
 
-  return Boolean(expectedSecret && providedSecret === expectedSecret);
+  if (!expectedSecret || !providedSecret) return false;
+
+  // Constant-time, so response timing cannot be used to guess the secret a byte at a time.
+  const expected = Buffer.from(expectedSecret);
+  const provided = Buffer.from(providedSecret);
+  return expected.length === provided.length && timingSafeEqual(expected, provided);
 }

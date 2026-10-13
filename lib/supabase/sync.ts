@@ -4,10 +4,16 @@ import { SYNC_CACHE_TAG } from "@/lib/supabase/cache-tags";
 import { fetchSupabaseRows, upsertSupabaseRows } from "@/lib/supabase/rest";
 import type { SyncErrorRow, SyncRunRow } from "@/types/supabase";
 
+/**
+ * Backs the public /api/health and /api/sync-status routes, so it reads no `metadata` or
+ * `error_message`: those carry upstream error bodies and sync internals.
+ */
 export async function listSyncRuns() {
-  return fetchSupabaseRows<SyncRunRow>("sync_runs", "order=started_at.desc&limit=50", {
-    cache: "no-store",
-  });
+  return fetchSupabaseRows<Pick<SyncRunRow, "id" | "pipeline" | "status" | "record_count" | "started_at" | "finished_at">>(
+    "sync_runs",
+    "order=started_at.desc&limit=50",
+    { cache: "no-store", select: "id,pipeline,status,record_count,started_at,finished_at" },
+  );
 }
 
 /**

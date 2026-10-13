@@ -60,7 +60,7 @@ export async function buildMoneyFlow(
   const cycleLabel = filters.cycle
     ? `${filters.cycle} cycle`
     : graph.availableFilters.cycles.length > 0
-      ? `${graph.availableFilters.cycles.join(" + ")} cycles`
+      ? `${graph.availableFilters.cycles.join(" + ")} ${graph.availableFilters.cycles.length === 1 ? "cycle" : "cycles"}`
       : "No cycle data yet";
 
   if (options.includeLobbying === false) {

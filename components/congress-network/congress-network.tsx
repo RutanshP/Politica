@@ -321,7 +321,8 @@ export function CongressNetwork({
         variant === "page" ? "h-[calc(100dvh-7rem)] min-h-[560px]" : "h-[720px] max-h-[85dvh] min-h-[520px]"
       }`}
     >
-      <div ref={containerRef} className="absolute inset-0" aria-label="Congress money network" />
+      {/* The canvas has no accessible content of its own; the label needs a role to be announced. */}
+      <div ref={containerRef} className="absolute inset-0" role="img" aria-label="Congress money network" />
 
       {!graph && !error ? (
         <div className="absolute inset-0 grid place-items-center">
