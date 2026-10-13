@@ -146,6 +146,25 @@ function toAmount(value?: string | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/*
+ * The most an outside firm is believed to bill one client in a quarter. The largest real
+ * retainers run to about $1M; a report above this is a filing error, not lobbying -- "LOC
+ * Community Association" reported $20,000,000 a quarter for a client another firm bills $20,000,
+ * which made it the top lobbying spender of 2025 at $80M. In-house reports are exempt: the U.S.
+ * Chamber legitimately reports ~$19M of its own expenses a quarter.
+ */
+export const MAX_PLAUSIBLE_FIRM_QUARTER = 5_000_000;
+
+/**
+ * The figure every total and ranking sums. The raw income and expenses are stored unchanged, so
+ * an excluded report is still on file -- it just does not count.
+ */
+export function countedAmount(isInHouse: boolean, income: number | null, expenses: number | null) {
+  const amount = isInHouse ? expenses ?? income : income ?? expenses;
+  if (!isInHouse && amount !== null && amount > MAX_PLAUSIBLE_FIRM_QUARTER) return null;
+  return amount;
+}
+
 function toId(value?: number | string | null) {
   if (value === null || value === undefined || value === "") return null;
   return String(value);
@@ -219,7 +238,7 @@ export function normalizeLdaFiling(record: LdaFilingRecord): NormalizedLdaReport
       is_in_house: isInHouse,
       income,
       expenses,
-      amount: isInHouse ? expenses ?? income : income ?? expenses,
+      amount: countedAmount(isInHouse, income, expenses),
       posted_at: record.dt_posted || null,
       issue_codes: [...new Set(activities.map((activity) => activity.general_issue_code).filter((code): code is string => Boolean(code)))],
     },
