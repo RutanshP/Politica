@@ -214,3 +214,23 @@ test("a House roll call the Clerk has not published yet reads as missing, not an
     global.fetch = originalFetch;
   }
 });
+
+test("a Senate vote that is not published yet reads as missing, not as an empty vote", async () => {
+  const { fetchSenateRollCallVote } = jiti("@/lib/adapters/federal-votes");
+  const originalFetch = global.fetch;
+  // senate.gov redirects to roll-call-vote-not-available.htm, which fetch follows to a 200 page.
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    headers: new Map(),
+    async text() {
+      return "<!DOCTYPE html><html><head><title>Roll Call Vote Not Available</title></head><body></body></html>";
+    },
+  });
+  try {
+    assert.equal(await fetchSenateRollCallVote("119", 2, 300), null);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

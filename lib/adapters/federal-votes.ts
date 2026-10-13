@@ -344,5 +344,8 @@ export async function fetchSenateRollCallVote(
 ) {
   const url = `${SENATE_VOTE_BASE}/vote${congress}${session}/vote_${congress}_${session}_${String(voteNumber).padStart(5, "0")}.xml`;
   const xml = await fetchTextOrNull(url, SENATE_NOT_FOUND_STATUSES);
-  return xml ? parseSenateRollCallVoteXml(xml) : null;
+  // senate.gov redirects a vote that does not exist yet to roll-call-vote-not-available.htm, an
+  // HTML page served with 200. Parsed as a vote it became an empty "senate--1-00000" row.
+  if (!xml || !/<roll_call_vote[\s>]/i.test(xml)) return null;
+  return parseSenateRollCallVoteXml(xml);
 }

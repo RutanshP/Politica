@@ -102,8 +102,10 @@ const FEDERAL_VOTE_MAX_CONSECUTIVE_MISSES = Number.parseInt(
   process.env.POLITICA_FEDERAL_VOTE_MAX_CONSECUTIVE_MISSES?.trim() || "6",
   10,
 );
+// A ceiling on the walk, not an expected size. It was 600, and the Senate held 659 roll calls in
+// 2025 -- votes 601-659 were never fetched. The House has passed 1,100 in a session (2007).
 const FEDERAL_VOTE_MAX_PER_SESSION = Number.parseInt(
-  process.env.POLITICA_FEDERAL_VOTE_MAX_PER_SESSION?.trim() || "600",
+  process.env.POLITICA_FEDERAL_VOTE_MAX_PER_SESSION?.trim() || "1500",
   10,
 );
 
@@ -986,6 +988,12 @@ function buildExistingFederalVoteCursor(
 ) {
   const houseBySession = new Map<number, number>();
   const senateBySession = new Map<number, number>();
+  const houseStored = new Map<number, Set<number>>();
+  const senateStored = new Map<number, Set<number>>();
+  const remember = (stored: Map<number, Set<number>>, session: number, number: number) => {
+    if (!stored.has(session)) stored.set(session, new Set());
+    stored.get(session)!.add(number);
+  };
 
   existingVoteRows.forEach((row) => {
     if (row.source_system === "house_clerk") {
@@ -998,6 +1006,7 @@ function buildExistingFederalVoteCursor(
         parsed.session,
         Math.max(houseBySession.get(parsed.session) || 0, parsed.rollCall),
       );
+      remember(houseStored, parsed.session, parsed.rollCall);
       return;
     }
 
@@ -1011,13 +1020,32 @@ function buildExistingFederalVoteCursor(
         parsed.session,
         Math.max(senateBySession.get(parsed.session) || 0, parsed.voteNumber),
       );
+      remember(senateStored, parsed.session, parsed.voteNumber);
     }
   });
 
   return {
     houseBySession,
     senateBySession,
+    houseStored,
+    senateStored,
   };
+}
+
+/*
+ * Roll calls missing below the highest one stored. The walk only moves forward from the
+ * maximum, so a vote whose fetch failed once was never retried -- Senate 2026 votes 157, 158,
+ * 159 and 164 stayed missing while later ones arrived. Bounded so a large backlog spreads over
+ * several runs.
+ */
+const FEDERAL_VOTE_GAP_FILL_PER_SESSION = 25;
+
+function missingBelow(stored: Set<number> | undefined, max: number) {
+  const missing: number[] = [];
+  for (let number = 1; number < max && missing.length < FEDERAL_VOTE_GAP_FILL_PER_SESSION; number += 1) {
+    if (!stored?.has(number)) missing.push(number);
+  }
+  return missing;
 }
 
 function buildVotePositionSignature(row: Pick<VotePositionRow, "vote_id" | "politician_id" | "name" | "party" | "state" | "vote">) {
@@ -1068,6 +1096,11 @@ async function collectIncrementalFederalHouseVotes(
     let nextRollCall = (cursor.houseBySession.get(session) || 0) + 1;
     let consecutiveMisses = 0;
 
+    const gaps = missingBelow(cursor.houseStored.get(session), nextRollCall - 1);
+    for (const result of await Promise.all(gaps.map((rollCallNumber) => fetchHouseRollCallVote(year, rollCallNumber)))) {
+      if (result) votes.push(result);
+    }
+
     while (nextRollCall <= FEDERAL_VOTE_MAX_PER_SESSION && consecutiveMisses < FEDERAL_VOTE_MAX_CONSECUTIVE_MISSES) {
       const batch = Array.from({ length: FEDERAL_VOTE_BATCH_SIZE }, (_, batchIndex) => nextRollCall + batchIndex);
       const results = await Promise.all(batch.map((rollCallNumber) => fetchHouseRollCallVote(year, rollCallNumber)));
@@ -1097,6 +1130,11 @@ async function collectIncrementalFederalSenateVotes(
   for (const session of [1, 2] as const) {
     let nextVote = (cursor.senateBySession.get(session) || 0) + 1;
     let consecutiveMisses = 0;
+
+    const gaps = missingBelow(cursor.senateStored.get(session), nextVote - 1);
+    for (const result of await Promise.all(gaps.map((voteNumber) => fetchSenateRollCallVote(congress, session, voteNumber)))) {
+      if (result) votes.push(result);
+    }
 
     while (nextVote <= FEDERAL_VOTE_MAX_PER_SESSION && consecutiveMisses < FEDERAL_VOTE_MAX_CONSECUTIVE_MISSES) {
       const batch = Array.from({ length: FEDERAL_VOTE_BATCH_SIZE }, (_, index) => nextVote + index);
