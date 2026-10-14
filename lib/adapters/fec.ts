@@ -285,6 +285,28 @@ interface FecScheduleAReceiptRow {
   contributor_id?: string | null;
   contribution_receipt_amount?: number;
   memo_code?: string | null;
+  memo_text?: string | null;
+  receipt_type?: string | null;
+  receipt_type_full?: string | null;
+}
+
+/*
+ * Conduit platforms. They only ever forward individuals' contributions, so nothing they pass on
+ * is their own gift -- yet campaigns put WinRed lump sums on line 11C (Vince Fong: $28,873).
+ */
+const CONDUIT_COMMITTEE_IDS = new Set([
+  "C00401224", // ActBlue
+  "C00694323", // WinRed
+]);
+
+/*
+ * Some campaigns file a conduit's forwarded money on line 11C too, labelled as such: Norma
+ * Torres's report puts $91,820 under AIPAC PAC as "EARMARKED CONTRIBUTION(S)", against AIPAC's
+ * $10,000-a-cycle limit. Those rows say so in the receipt type or memo.
+ */
+function isForwardedMoney(row: FecScheduleAReceiptRow) {
+  if (row.receipt_type && /^15[EIJ]$/i.test(row.receipt_type)) return true;
+  return /earmark|intermediar|conduit/i.test(`${row.receipt_type_full ?? ""} ${row.memo_text ?? ""}`);
 }
 
 /**
@@ -315,6 +337,7 @@ export async function fetchFecCommitteeGiftsToRecipient(recipientCommitteeId: st
       for (const row of results) {
         // Memo lines restate money already counted on another line.
         if (!row.contributor_id || row.memo_code === "X") continue;
+        if (CONDUIT_COMMITTEE_IDS.has(row.contributor_id) || isForwardedMoney(row)) continue;
         const entry = byGiver.get(row.contributor_id) ?? { committee_id: row.contributor_id, total: 0, count: 0 };
         entry.total = (entry.total ?? 0) + (row.contribution_receipt_amount ?? 0);
         entry.count = (entry.count ?? 0) + 1;

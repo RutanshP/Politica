@@ -91,3 +91,27 @@ test("small-dollar share is unitemized giving, not FEC's double-counting size bu
   assert.equal(totals.smallDollarContributions, 3863049);
   assert.equal(totals.smallDollarPercentage, 31.5);
 });
+
+test("forwarded money a campaign filed on line 11C is not the PAC's gift", async () => {
+  process.env.POLITICA_FEC_API_KEY = "test-key";
+  const { fetchFecCommitteeGiftsToRecipient } = jiti("@/lib/adapters/fec");
+  const originalFetch = global.fetch;
+  stubScheduleA({
+    "F3-11C": [[
+      // Norma Torres's report: AIPAC's own $5,000, plus bundles labelled as earmarks.
+      row("C00797670", 5000),
+      row("C00797670", 34250, { receipt_type_full: "EARMARKED CONTRIBUTIONS" }),
+      row("C00797670", 14100, { receipt_type: "15E" }),
+      // WinRed lump sums, labelled or not.
+      row("C00694323", 12000),
+      row("C00694323", 11874.61, { receipt_type_full: "INTERMEDIARY" }),
+      row("C00401224", 900),
+    ]],
+  });
+  try {
+    const gifts = await fetchFecCommitteeGiftsToRecipient("C00557652", 2026);
+    assert.deepEqual(gifts.map((gift) => [gift.committee_id, gift.total]), [["C00797670", 5000]]);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

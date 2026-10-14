@@ -113,11 +113,11 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
       "relationship_type=eq.affiliated_with&order=id.asc",
       { cache: "no-store", paginateAll: true, select: "source_entity_id,target_entity_id" },
     ).catch(() => []),
-    fetchSupabaseRows<{ committee_id: string }>("pac_committees", "order=committee_id.asc", {
+    fetchSupabaseRows<{ committee_id: string; sponsor_politician_id: string | null }>("pac_committees", "order=committee_id.asc", {
       cache: "no-store",
       paginateAll: true,
       paginateTiebreaker: null,
-      select: "committee_id",
+      select: "committee_id,sponsor_politician_id",
     }).catch(() => []),
   ]);
 
@@ -131,6 +131,7 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
   );
   const stateByMember = new Map(syncState.map((row) => [row.politician_id, row]));
   const knownCommitteeIds = new Set(knownCommittees.map((row) => row.committee_id));
+  const sponsorByCommitteeId = new Map(knownCommittees.map((row) => [row.committee_id, row.sponsor_politician_id]));
 
   let queue = politicians.filter((politician) => fecIdsByBioguide.has(politician.id));
   if (options?.politicianIds?.length) {
@@ -208,7 +209,10 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
       if (committeeRows.length > 0) {
         await upsertSupabaseRowsInChunks("pac_committees", committeeRows, "committee_id", 250);
         committeesWritten += committeeRows.length;
-        for (const row of committeeRows) knownCommitteeIds.add(row.committee_id);
+        for (const row of committeeRows) {
+          knownCommitteeIds.add(row.committee_id);
+          sponsorByCommitteeId.set(row.committee_id, row.sponsor_politician_id);
+        }
       }
 
       // A member's own committees paying their campaign (their leadership PAC, a second
@@ -220,6 +224,11 @@ export async function syncPacContributions(options?: PacContributionsSyncOptions
             [...(detail.sponsor_candidate_ids ?? []), ...(detail.candidate_ids ?? [])].some((id) => ownFecIds.has(id)))
           .map((detail) => detail.committee_id),
       );
+      // Committees already stored are not in `details`, so check their recorded owner too: James
+      // Gallagher's own second committee showed as a $44,315 gift to him.
+      for (const gift of gifts) {
+        if (sponsorByCommitteeId.get(gift.committee_id!) === politician.id) selfCommitteeIds.add(gift.committee_id!);
+      }
 
       const contributions: ContributionRow[] = gifts
         .filter((gift) =>
