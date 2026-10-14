@@ -81,3 +81,35 @@ test("tidyCommitteeName keeps initials and PAC brands loud, and English words in
   assert.equal(tidyCommitteeName("THE BOEING COMPANY POLITICAL ACTION COMMITTEE"), "The Boeing Company Political Action Committee");
   assert.equal(tidyCommitteeName("OIL AND GAS PAC"), "Oil and Gas PAC");
 });
+
+test("committees are colored by where their money went, with a gray band for even splits", () => {
+  const { leanStep, buildNetworkGraph, committeeKey } = jiti("@/components/congress-network/network-model");
+  assert.equal(leanStep(0.1).key, "strong-d");
+  assert.equal(leanStep(0.4).key, "lean-d");
+  // The Realtors PAC: 53% Republican is roughly even, not a red committee.
+  assert.equal(leanStep(0.53).key, "even");
+  assert.equal(leanStep(0.6).key, "lean-r");
+  assert.equal(leanStep(0.9).key, "strong-r");
+  assert.equal(leanStep(null).key, "even");
+
+  const graph = buildNetworkGraph({
+    cycle: 2026,
+    members: [
+      { id: "D1", name: "Dem", party: "D", chamber: "House", state: "CA", district: "1" },
+      { id: "R1", name: "Rep", party: "R", chamber: "House", state: "TX", district: "1" },
+      { id: "I1", name: "Ind", party: "I", chamber: "Senate", state: "VT", district: null },
+    ],
+    committees: [
+      { id: "C1", name: "Mostly Republican PAC", category: "corporate", owner: null },
+      { id: "C2", name: "Independents Only PAC", category: "ideological", owner: null },
+    ],
+    // [committee index, member index, dollars]: C1 gives $1K to D, $9K to R and $50K to the
+    // independent, which counts toward neither side.
+    edges: [0, 0, 1000, 0, 1, 9000, 0, 2, 50000, 1, 2, 5000],
+    memberPositions: [0, 0, 1, 1, 2, 2],
+    committeePositions: [0, 1, 1, 0],
+  });
+  assert.equal(graph.getNodeAttribute(committeeKey("C1"), "republicanShare"), 0.9);
+  assert.equal(graph.getNodeAttribute(committeeKey("C1"), "color"), "#b91c1c");
+  assert.equal(graph.getNodeAttribute(committeeKey("C2"), "republicanShare"), null);
+});

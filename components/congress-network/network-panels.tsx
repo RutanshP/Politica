@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 
 import {
   CATEGORY_COLOR,
+  LEAN_STEPS,
+  leanStep,
   CATEGORY_ORDER,
   PARTY_COLOR,
   PARTY_LABEL,
@@ -249,10 +251,21 @@ export function FilterPanel({
             <div className="grid grid-cols-2 gap-1">
               {CATEGORY_ORDER.map((category) => (
                 <Chip key={category} active={filters.categories.has(category)} onClick={() => onToggleCategory(category)}>
-                  <Dot color={CATEGORY_COLOR[category]} className="h-2 w-2" /> <span className="truncate">{SHORT_CATEGORY_LABEL[category]}</span>
+                  <span className="truncate">{SHORT_CATEGORY_LABEL[category]}</span>
                 </Chip>
               ))}
             </div>
+          </div>
+
+          <div>
+            <SectionLabel>Committee color: where its money went</SectionLabel>
+            <ul className="space-y-1">
+              {LEAN_STEPS.map((step) => (
+                <li key={step.key} className="flex items-center gap-2 text-[11.5px] text-[var(--muted)]">
+                  <Dot color={step.color} className="h-2.5 w-2.5" /> {step.label}
+                </li>
+              ))}
+            </ul>
           </div>
 
           <div>
@@ -392,8 +405,9 @@ export function FocusPanel({
               {attributes.chamber === "Senate" ? "Senator" : "Representative"}
             </p>
           ) : (
-            <p className="mt-0.5 text-[12px]" style={{ color: attributes.color }}>
-              {PAC_CATEGORY_LABEL[attributes.category]}
+            // Muted, not the node's color: the light lean shades are 3.5:1, too faint for text.
+            <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+              {PAC_CATEGORY_LABEL[attributes.category]} · {leanStep(attributes.republicanShare).label}
             </p>
           )}
         </div>

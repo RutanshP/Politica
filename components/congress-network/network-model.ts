@@ -11,11 +11,40 @@ import type { PacCategory } from "@/lib/graph/pac-classification";
  * FEC committee id live in different namespaces and nothing guarantees they never collide.
  */
 
+/*
+ * The canvas speaks one language: blue is Democratic money, red is Republican money, gray is
+ * neither. Members take their party's color; independents are gray, since neither side claims
+ * them on the ballot.
+ */
 export const PARTY_COLOR: Record<NetworkParty, string> = {
   D: "#1d4ed8",
   R: "#b91c1c",
-  I: "#6b4ea8",
+  I: "#8a857b",
 };
+
+/*
+ * A committee is colored by where its money went, in five steps rather than a strict majority:
+ * the Realtors PAC gives 47% to Democrats and 53% to Republicans, and painting it solid red would
+ * claim a side it does not take. Each step clears 3:1 against the paper ground, and the light
+ * shade of each party stays distinct from the full one (1.7:1).
+ */
+export const LEAN_STEPS = [
+  { key: "strong-d", label: "65%+ to Democrats", color: "#1d4ed8" },
+  { key: "lean-d", label: "55–65% to Democrats", color: "#5b7fd1" },
+  { key: "even", label: "Roughly even", color: "#8a857b" },
+  { key: "lean-r", label: "55–65% to Republicans", color: "#cf5f57" },
+  { key: "strong-r", label: "65%+ to Republicans", color: "#b91c1c" },
+] as const;
+
+/** Republican share of a committee's two-party giving, as one of LEAN_STEPS. Null = gave to neither. */
+export function leanStep(republicanShare: number | null) {
+  if (republicanShare === null) return LEAN_STEPS[2];
+  if (republicanShare <= 0.35) return LEAN_STEPS[0];
+  if (republicanShare < 0.45) return LEAN_STEPS[1];
+  if (republicanShare <= 0.55) return LEAN_STEPS[2];
+  if (republicanShare < 0.65) return LEAN_STEPS[3];
+  return LEAN_STEPS[4];
+}
 
 export const PARTY_LABEL: Record<NetworkParty, string> = {
   D: "Democrat",
@@ -24,10 +53,10 @@ export const PARTY_LABEL: Record<NetworkParty, string> = {
 };
 
 /*
- * Read in CATEGORY_ORDER, this is the one arrangement of these hues that clears a colorblind
- * separation check against the paper ground -- so reorder the list and you have to re-check the
- * colors. `party` is the deliberate neutral rather than an eighth hue, and `leadership` avoids
- * PARTY_COLOR.D so a leadership PAC never reads as a Democrat on the same canvas.
+ * Committee *type* colors, now used only in the labelled breakdown bar on a member's panel -- on
+ * the canvas a committee is colored by lean (LEAN_STEPS). Read in CATEGORY_ORDER, this is the one
+ * arrangement of these hues that clears a colorblind separation check against the paper ground,
+ * so reorder the list and you have to re-check the colors.
  */
 export const CATEGORY_COLOR: Record<PacCategory, string> = {
   corporate: "#b45309",
@@ -84,6 +113,8 @@ export interface CommitteeAttributes {
   color: string;
   /** Dollars given to members in the network. */
   total: number;
+  /** Share of its Democratic + Republican giving that went to Republicans; null if it gave to neither. */
+  republicanShare: number | null;
   /** Member key of whoever runs this committee, if anyone does. */
   owner: string | null;
 }
@@ -114,9 +145,16 @@ export function buildNetworkGraph(network: CongressNetwork): NetworkGraph {
 
   const memberTotals = new Array<number>(network.members.length).fill(0);
   const committeeTotals = new Array<number>(network.committees.length).fill(0);
+  const committeeToD = new Array<number>(network.committees.length).fill(0);
+  const committeeToR = new Array<number>(network.committees.length).fill(0);
   for (let index = 0; index < network.edges.length; index += 3) {
     committeeTotals[network.edges[index]] += network.edges[index + 2];
     memberTotals[network.edges[index + 1]] += network.edges[index + 2];
+    // The lean is over all of a committee's giving, not what the current filters show, so a
+    // committee keeps its color while you narrow the view.
+    const party = network.members[network.edges[index + 1]].party;
+    if (party === "D") committeeToD[network.edges[index]] += network.edges[index + 2];
+    if (party === "R") committeeToR[network.edges[index]] += network.edges[index + 2];
   }
   const maxMember = Math.max(1, ...memberTotals);
   const maxCommittee = Math.max(1, ...committeeTotals);
@@ -141,6 +179,8 @@ export function buildNetworkGraph(network: CongressNetwork): NetworkGraph {
   });
 
   network.committees.forEach((committee, index) => {
+    const twoParty = committeeToD[index] + committeeToR[index];
+    const republicanShare = twoParty > 0 ? committeeToR[index] / twoParty : null;
     graph.addNode(committeeKey(committee.id), {
       kind: "committee",
       index,
@@ -150,8 +190,9 @@ export function buildNetworkGraph(network: CongressNetwork): NetworkGraph {
       x: network.committeePositions[index * 2] ?? 0,
       y: -(network.committeePositions[index * 2 + 1] ?? 0),
       size: 1.4 + 6 * Math.sqrt(committeeTotals[index] / maxCommittee),
-      color: CATEGORY_COLOR[committee.category],
+      color: leanStep(republicanShare).color,
       total: committeeTotals[index],
+      republicanShare,
       owner: committee.owner === null ? null : memberKey(network.members[committee.owner].id),
     });
   });
